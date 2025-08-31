@@ -1,0 +1,22 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+Centered/
+Ground_Truth/
+Mask/
+Original/
+sam2/
+TestOutput/
+.claude/
+
+.DS_Store
+
+Neural_Connections/
