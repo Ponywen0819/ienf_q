@@ -1,0 +1,14 @@
+Dataset split 'train': 186 image sets
+Total images - Train: 186, Val: 53, Test: 27
+Dataset split 'val': 53 image sets
+Total images - Train: 186, Val: 53, Test: 27
+Epoch [1/1], Batch [0], Loss: 0.7425
+Epoch [1/1], Batch [10], Loss: 0.5367
+Epoch [1/1], Batch [20], Loss: 0.3626
+Epoch [1/1] completed, Average Loss: 0.4785, LR: 0.001000
+Validation Loss: 0.8967
+
+Evaluating on test set...
+Dataset split 'test': 27 image sets
+Total images - Train: 186, Val: 53, Test: 27
+Final Test Loss: 0.9307

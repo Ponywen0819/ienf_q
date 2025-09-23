@@ -1,0 +1,40 @@
+{
+  "os": "Linux-6.8.0-60-generic-x86_64-with-glibc2.35",
+  "python": "CPython 3.12.11",
+  "startedAt": "2025-09-09T05:11:34.960943Z",
+  "program": "/home/bl515-ml/Documents/shaio_jie/ienf_q/./neural_detection_model.py",
+  "codePath": "neural_detection_model.py",
+  "codePathLocal": "neural_detection_model.py",
+  "git": {
+    "remote": "https://github.com/Ponywen0819/ienf_q.git",
+    "commit": "640676aa0c6887e97c1534f9eceb4a28e726ee23"
+  },
+  "email": "pony076152340@gmail.com",
+  "root": "/home/bl515-ml/Documents/shaio_jie/ienf_q",
+  "host": "bl515ml",
+  "executable": "/home/bl515-ml/Documents/shaio_jie/ienf_q/.venv/bin/python3",
+  "cpu_count": 20,
+  "cpu_count_logical": 28,
+  "gpu": "NVIDIA GeForce RTX 4080 SUPER",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "2014574526464",
+      "used": "381022199808"
+    }
+  },
+  "memory": {
+    "total": "134720536576"
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA GeForce RTX 4080 SUPER",
+      "memoryTotal": "17171480576",
+      "cudaCores": 10240,
+      "architecture": "Ada",
+      "uuid": "GPU-9362d02e-7f8c-78a1-58df-19b99e1dc522"
+    }
+  ],
+  "cudaVersion": "12.4",
+  "writerId": "r8pyo7mr7eapnd5xac1u9y0bovqqf8eu"
+}
