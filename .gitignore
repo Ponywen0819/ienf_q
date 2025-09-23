@@ -20,3 +20,7 @@ TestOutput/
 .DS_Store
 
 Neural_Connections/
+
+*.zip
+
+*.tif

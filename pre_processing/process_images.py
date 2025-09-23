@@ -3,7 +3,7 @@
 
 """
 圖片處理腳本：
-1. 抽取原始圖片的綠色頻道
+1. 使用原始 RGB 圖片
 2. 找到遮罩的下邊界作為中線
 3. 膨脹遮罩20像素
 4. 將新遮罩應用到原始圖片上
@@ -68,15 +68,14 @@ def load_image(image_path):
         print(f"載入圖片失敗 {image_path}: {e}")
         return None
 
-def extract_green_channel(image_array):
-    """抽取綠色頻道"""
+def prepare_image_for_processing(image_array):
+    """準備圖片進行處理（保持原始 RGB 格式）"""
     if len(image_array.shape) == 3 and image_array.shape[2] >= 3:
-        # RGB圖片，提取綠色頻道
-        green_channel = image_array[:, :, 1]
-        return green_channel
-    elif len(image_array.shape) == 2:
-        # 已經是灰階圖片
+        # RGB圖片，保持原始格式
         return image_array
+    elif len(image_array.shape) == 2:
+        # 如果是灰階圖片，轉換為 RGB 格式
+        return np.stack([image_array, image_array, image_array], axis=2)
     else:
         raise ValueError("不支援的圖片格式")
 
@@ -241,9 +240,9 @@ def process_single_image(original_path, mask_path, label_path, output_path, expa
         print(f"跳過: 載入失敗")
         return False
     
-    # 2. 抽取綠色頻道
-    green_channel = extract_green_channel(original_img)
-    print(f"  ✓ 抽取綠色頻道: {green_channel.shape}")
+    # 2. 準備原始 RGB 圖片
+    processed_img = prepare_image_for_processing(original_img)
+    print(f"  ✓ 準備 RGB 圖片: {processed_img.shape}")
     
     # 3. 找到遮罩的下邊界
     boundary_info = find_mask_bottom_boundary(mask_img)
@@ -260,9 +259,9 @@ def process_single_image(original_path, mask_path, label_path, output_path, expa
         return False
     print(f"  ✓ 創建膨脹遮罩: 膨脹 {expansion_pixels} 像素")
     
-    # 5. 將遮罩應用到綠色頻道
-    masked_green = apply_mask_to_image(green_channel, expanded_mask)
-    print(f"  ✓ 應用遮罩到綠色頻道")
+    # 5. 將遮罩應用到 RGB 圖片
+    masked_rgb = apply_mask_to_image(processed_img, expanded_mask)
+    print(f"  ✓ 應用遮罩到 RGB 圖片")
 
 
     # 6. 將遮罩套用到標記圖片
@@ -275,7 +274,7 @@ def process_single_image(original_path, mask_path, label_path, output_path, expa
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         
         # 儲存處理後的圖片
-        result_img = Image.fromarray(masked_green.astype(np.uint8), mode='L')
+        result_img = Image.fromarray(masked_rgb.astype(np.uint8), mode='RGB')
         result_img.save(output_path)
         print(f"  ✓ 儲存至: {output_path}")
         
@@ -290,6 +289,16 @@ def process_single_image(original_path, mask_path, label_path, output_path, expa
         label_result_img = Image.fromarray(masked_label.astype(np.uint8), mode='L')
         label_result_img.save(label_output_path)
         print(f"  ✓ 儲存標記至: {label_output_path}")
+
+        # 儲存中間線（用於膨脹的邊界線）
+        boundary_output_path = output_path.replace('.tif', '_boundary.tif')
+        boundary_mask = np.zeros((original_img.shape[0], original_img.shape[1]), dtype=np.uint8)
+        for point in boundary_info:
+            if 0 <= point[1] < boundary_mask.shape[0] and 0 <= point[0] < boundary_mask.shape[1]:
+                boundary_mask[point[1], point[0]] = 255
+        boundary_result_img = Image.fromarray(boundary_mask, mode='L')
+        boundary_result_img.save(boundary_output_path)
+        print(f"  ✓ 儲存中間線至: {boundary_output_path}")
 
         return True
         
@@ -351,7 +360,7 @@ def process_all_images(original_dir, mask_dir, label_dir, output_dir, expansion_
     print(f"批量處理完成: {success_counter.value}/{total_count} 成功")
 
 def main():
-    parser = argparse.ArgumentParser(description='圖片處理工具：抽取綠色頻道並應用膨脹遮罩')
+    parser = argparse.ArgumentParser(description='圖片處理工具：使用原始 RGB 圖片並應用膨脹遮罩')
     
     parser.add_argument('--original', '-o', required=True,
                        help='原始圖片目錄或單個檔案路徑')
