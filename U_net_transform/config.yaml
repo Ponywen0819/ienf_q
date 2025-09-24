@@ -1,0 +1,69 @@
+# 多階段訓練配置文件
+
+# 實驗設定
+experiment_name: "ienf_multistage_training"
+checkpoint_dir: "./checkpoints"
+use_wandb: true
+
+# 模型配置
+model:
+  nnunet_checkpoint: "path/to/your/nnunet/checkpoint.pth"  # 請更改為實際路徑
+  num_classes: 2  # 前景/背景
+
+# 數據配置
+data:
+  train_data_path: "path/to/train/data"  # 請更改為實際路徑
+  val_data_path: "path/to/val/data"      # 請更改為實際路徑
+  batch_size: 4
+  num_workers: 2
+  image_size: [512, 512]  # [H, W]
+  
+# 訓練階段配置
+stages:
+  # 階段1：基礎階段 - 學習基本前景/背景分割
+  basic:
+    epochs: 100
+    learning_rate: 1e-4
+    weight_decay: 1e-5
+    distance_alpha: 1.0    # 距離權重係數
+    distance_beta: 2.0     # 距離衰減指數
+    
+  # 階段2：連接階段 - 學習亮點間連通性
+  connectivity:
+    epochs: 80
+    learning_rate: 5e-5    # 較小學習率進行精細調整
+    weight_decay: 1e-5
+    freeze_encoder: true   # 凍結編碼器，只訓練解碼器和連接頭
+    connectivity_weight: 2.0
+    topology_weight: 1.0
+    max_connection_distance: 50  # 最大連接距離
+    
+  # 階段3：路徑階段 - 學習最優路徑預測
+  path:
+    epochs: 60
+    learning_rate: 2e-5    # 更小學習率進行最終微調
+    weight_decay: 1e-5
+    freeze_encoder: true   # 保持編碼器凍結
+    path_weight: 3.0
+    background_weight: 0.5
+
+# Wandb配置
+wandb:
+  project: "ienf-segmentation"
+  entity: "your-wandb-entity"  # 請更改為您的wandb用戶名
+  
+# 早停和檢查點配置
+training:
+  early_stopping_patience: 20
+  save_every_n_epochs: 10
+  evaluate_every_n_epochs: 5
+  
+# 數據增強配置
+augmentation:
+  enable: true
+  rotation_range: 15      # 旋轉角度範圍
+  brightness_range: 0.2   # 亮度變化範圍
+  contrast_range: 0.2     # 對比度變化範圍
+  flip_horizontal: true
+  flip_vertical: true
+  elastic_deformation: true
