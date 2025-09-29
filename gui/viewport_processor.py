@@ -79,7 +79,6 @@ class ViewportProcessor:
     def get_viewport_image(self):
         """
         獲取當前視窗區域的處理後圖片
-        只處理可見區域，大幅提升性能
         """
         if not self._has_any_image():
             return None
