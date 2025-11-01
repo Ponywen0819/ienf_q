@@ -1,0 +1,4065 @@
+{
+  "metadata": {
+    "total_components": 189,
+    "total_seeds": 367,
+    "timestamp": "2025-10-29T16:46:33.087270",
+    "source_skeletons": "output/skeletons/skeletons.json",
+    "parameters": {
+      "window_size": 5,
+      "base_segment_length": 10.0,
+      "max_segment_length": 20.0,
+      "curvature_threshold": 30.0,
+      "skip_branchpoint_range": 5,
+      "min_path_points": 10
+    }
+  },
+  "seeds": [
+    {
+      "position": {
+        "x": 3513,
+        "y": 298
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 1,
+      "seed_id": 1
+    },
+    {
+      "position": {
+        "x": 3515,
+        "y": 297
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 1,
+      "seed_id": 2
+    },
+    {
+      "position": {
+        "x": 3471,
+        "y": 334
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 2,
+      "seed_id": 3
+    },
+    {
+      "position": {
+        "x": 3473,
+        "y": 333
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 2,
+      "seed_id": 4
+    },
+    {
+      "position": {
+        "x": 3454,
+        "y": 336
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 3,
+      "seed_id": 5
+    },
+    {
+      "position": {
+        "x": 3457,
+        "y": 335
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 3,
+      "seed_id": 6
+    },
+    {
+      "position": {
+        "x": 3468,
+        "y": 336
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 4,
+      "seed_id": 7
+    },
+    {
+      "position": {
+        "x": 3466,
+        "y": 336
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 4,
+      "seed_id": 8
+    },
+    {
+      "position": {
+        "x": 3658,
+        "y": 338
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 5,
+      "seed_id": 9
+    },
+    {
+      "position": {
+        "x": 3654,
+        "y": 342
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 6,
+      "seed_id": 10
+    },
+    {
+      "position": {
+        "x": 3484,
+        "y": 353
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 7,
+      "seed_id": 11
+    },
+    {
+      "position": {
+        "x": 3489,
+        "y": 349
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 7,
+      "seed_id": 12
+    },
+    {
+      "position": {
+        "x": 3814,
+        "y": 349
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 8,
+      "seed_id": 13
+    },
+    {
+      "position": {
+        "x": 3505,
+        "y": 352
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 9,
+      "seed_id": 14
+    },
+    {
+      "position": {
+        "x": 3503,
+        "y": 353
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 9,
+      "seed_id": 15
+    },
+    {
+      "position": {
+        "x": 3664,
+        "y": 357
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 10,
+      "seed_id": 16
+    },
+    {
+      "position": {
+        "x": 3483,
+        "y": 367
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 11,
+      "seed_id": 17
+    },
+    {
+      "position": {
+        "x": 3483,
+        "y": 360
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 11,
+      "seed_id": 18
+    },
+    {
+      "position": {
+        "x": 3426,
+        "y": 366
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 12,
+      "seed_id": 19
+    },
+    {
+      "position": {
+        "x": 3421,
+        "y": 369
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 12,
+      "seed_id": 20
+    },
+    {
+      "position": {
+        "x": 3502,
+        "y": 366
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 13,
+      "seed_id": 21
+    },
+    {
+      "position": {
+        "x": 3505,
+        "y": 368
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 13,
+      "seed_id": 22
+    },
+    {
+      "position": {
+        "x": 2958,
+        "y": 369
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 14,
+      "seed_id": 23
+    },
+    {
+      "position": {
+        "x": 3496,
+        "y": 371
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 15,
+      "seed_id": 24
+    },
+    {
+      "position": {
+        "x": 3509,
+        "y": 371
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 16,
+      "seed_id": 25
+    },
+    {
+      "position": {
+        "x": 3617,
+        "y": 372
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 17,
+      "seed_id": 26
+    },
+    {
+      "position": {
+        "x": 3655,
+        "y": 371
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 18,
+      "seed_id": 27
+    },
+    {
+      "position": {
+        "x": 3651,
+        "y": 385
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 18,
+      "seed_id": 28
+    },
+    {
+      "position": {
+        "x": 3655,
+        "y": 373
+      },
+      "type": "curvature",
+      "curvature_degrees": 45.00000000000001,
+      "path_id": 0,
+      "component_id": 18,
+      "seed_id": 29
+    },
+    {
+      "position": {
+        "x": 3653,
+        "y": 376
+      },
+      "type": "curvature",
+      "curvature_degrees": 45.00000000000001,
+      "path_id": 0,
+      "component_id": 18,
+      "seed_id": 30
+    },
+    {
+      "position": {
+        "x": 3517,
+        "y": 373
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 19,
+      "seed_id": 31
+    },
+    {
+      "position": {
+        "x": 3521,
+        "y": 371
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 19,
+      "seed_id": 32
+    },
+    {
+      "position": {
+        "x": 3482,
+        "y": 373
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 20,
+      "seed_id": 33
+    },
+    {
+      "position": {
+        "x": 3487,
+        "y": 376
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 20,
+      "seed_id": 34
+    },
+    {
+      "position": {
+        "x": 3417,
+        "y": 377
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 21,
+      "seed_id": 35
+    },
+    {
+      "position": {
+        "x": 3415,
+        "y": 376
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 21,
+      "seed_id": 36
+    },
+    {
+      "position": {
+        "x": 3501,
+        "y": 378
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 22,
+      "seed_id": 37
+    },
+    {
+      "position": {
+        "x": 3506,
+        "y": 379
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 22,
+      "seed_id": 38
+    },
+    {
+      "position": {
+        "x": 3424,
+        "y": 382
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 23,
+      "seed_id": 39
+    },
+    {
+      "position": {
+        "x": 3421,
+        "y": 379
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 23,
+      "seed_id": 40
+    },
+    {
+      "position": {
+        "x": 3510,
+        "y": 383
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 24,
+      "seed_id": 41
+    },
+    {
+      "position": {
+        "x": 3488,
+        "y": 387
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 25,
+      "seed_id": 42
+    },
+    {
+      "position": {
+        "x": 3606,
+        "y": 387
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 26,
+      "seed_id": 43
+    },
+    {
+      "position": {
+        "x": 3516,
+        "y": 390
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 27,
+      "seed_id": 44
+    },
+    {
+      "position": {
+        "x": 3520,
+        "y": 394
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 27,
+      "seed_id": 45
+    },
+    {
+      "position": {
+        "x": 3624,
+        "y": 389
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 28,
+      "seed_id": 46
+    },
+    {
+      "position": {
+        "x": 3600,
+        "y": 390
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 29,
+      "seed_id": 47
+    },
+    {
+      "position": {
+        "x": 3619,
+        "y": 394
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 30,
+      "seed_id": 48
+    },
+    {
+      "position": {
+        "x": 3620,
+        "y": 392
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 30,
+      "seed_id": 49
+    },
+    {
+      "position": {
+        "x": 3650,
+        "y": 395
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 31,
+      "seed_id": 50
+    },
+    {
+      "position": {
+        "x": 3651,
+        "y": 393
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 31,
+      "seed_id": 51
+    },
+    {
+      "position": {
+        "x": 3490,
+        "y": 394
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 32,
+      "seed_id": 52
+    },
+    {
+      "position": {
+        "x": 3490,
+        "y": 397
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 32,
+      "seed_id": 53
+    },
+    {
+      "position": {
+        "x": 3617,
+        "y": 397
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 33,
+      "seed_id": 54
+    },
+    {
+      "position": {
+        "x": 3618,
+        "y": 400
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 33,
+      "seed_id": 55
+    },
+    {
+      "position": {
+        "x": 3435,
+        "y": 398
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 34,
+      "seed_id": 56
+    },
+    {
+      "position": {
+        "x": 3437,
+        "y": 402
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 34,
+      "seed_id": 57
+    },
+    {
+      "position": {
+        "x": 3654,
+        "y": 407
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 35,
+      "seed_id": 58
+    },
+    {
+      "position": {
+        "x": 3651,
+        "y": 399
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 35,
+      "seed_id": 59
+    },
+    {
+      "position": {
+        "x": 3519,
+        "y": 403
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 36,
+      "seed_id": 60
+    },
+    {
+      "position": {
+        "x": 3520,
+        "y": 400
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 36,
+      "seed_id": 61
+    },
+    {
+      "position": {
+        "x": 3488,
+        "y": 403
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 37,
+      "seed_id": 62
+    },
+    {
+      "position": {
+        "x": 3620,
+        "y": 404
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 38,
+      "seed_id": 63
+    },
+    {
+      "position": {
+        "x": 3624,
+        "y": 412
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 38,
+      "seed_id": 64
+    },
+    {
+      "position": {
+        "x": 3522,
+        "y": 416
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 39,
+      "seed_id": 65
+    },
+    {
+      "position": {
+        "x": 3522,
+        "y": 411
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 39,
+      "seed_id": 66
+    },
+    {
+      "position": {
+        "x": 3663,
+        "y": 419
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 40,
+      "seed_id": 67
+    },
+    {
+      "position": {
+        "x": 3657,
+        "y": 411
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 40,
+      "seed_id": 68
+    },
+    {
+      "position": {
+        "x": 3662,
+        "y": 420
+      },
+      "type": "curvature",
+      "curvature_degrees": 108.43494882292201,
+      "path_id": 0,
+      "component_id": 40,
+      "seed_id": 69
+    },
+    {
+      "position": {
+        "x": 3661,
+        "y": 419
+      },
+      "type": "curvature",
+      "curvature_degrees": 63.43494882292201,
+      "path_id": 0,
+      "component_id": 40,
+      "seed_id": 70
+    },
+    {
+      "position": {
+        "x": 3660,
+        "y": 417
+      },
+      "type": "curvature",
+      "curvature_degrees": 45.00000000000001,
+      "path_id": 0,
+      "component_id": 40,
+      "seed_id": 71
+    },
+    {
+      "position": {
+        "x": 3658,
+        "y": 413
+      },
+      "type": "curvature",
+      "curvature_degrees": 45.00000000000001,
+      "path_id": 0,
+      "component_id": 40,
+      "seed_id": 72
+    },
+    {
+      "position": {
+        "x": 3439,
+        "y": 414
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 41,
+      "seed_id": 73
+    },
+    {
+      "position": {
+        "x": 3438,
+        "y": 412
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 41,
+      "seed_id": 74
+    },
+    {
+      "position": {
+        "x": 3631,
+        "y": 415
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 42,
+      "seed_id": 75
+    },
+    {
+      "position": {
+        "x": 3638,
+        "y": 417
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 42,
+      "seed_id": 76
+    },
+    {
+      "position": {
+        "x": 3493,
+        "y": 418
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 43,
+      "seed_id": 77
+    },
+    {
+      "position": {
+        "x": 3455,
+        "y": 421
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 44,
+      "seed_id": 78
+    },
+    {
+      "position": {
+        "x": 3455,
+        "y": 423
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 44,
+      "seed_id": 79
+    },
+    {
+      "position": {
+        "x": 3524,
+        "y": 421
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 45,
+      "seed_id": 80
+    },
+    {
+      "position": {
+        "x": 3527,
+        "y": 426
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 45,
+      "seed_id": 81
+    },
+    {
+      "position": {
+        "x": 3642,
+        "y": 430
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 46,
+      "seed_id": 82
+    },
+    {
+      "position": {
+        "x": 3640,
+        "y": 426
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 46,
+      "seed_id": 83
+    },
+    {
+      "position": {
+        "x": 3530,
+        "y": 429
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 47,
+      "seed_id": 84
+    },
+    {
+      "position": {
+        "x": 2224,
+        "y": 433
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 48,
+      "seed_id": 85
+    },
+    {
+      "position": {
+        "x": 3527,
+        "y": 433
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 49,
+      "seed_id": 86
+    },
+    {
+      "position": {
+        "x": 3532,
+        "y": 435
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 49,
+      "seed_id": 87
+    },
+    {
+      "position": {
+        "x": 3642,
+        "y": 435
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 50,
+      "seed_id": 88
+    },
+    {
+      "position": {
+        "x": 3641,
+        "y": 439
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 50,
+      "seed_id": 89
+    },
+    {
+      "position": {
+        "x": 3637,
+        "y": 447
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 51,
+      "seed_id": 90
+    },
+    {
+      "position": {
+        "x": 2252,
+        "y": 449
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 52,
+      "seed_id": 91
+    },
+    {
+      "position": {
+        "x": 2250,
+        "y": 447
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 52,
+      "seed_id": 92
+    },
+    {
+      "position": {
+        "x": 1918,
+        "y": 448
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 53,
+      "seed_id": 93
+    },
+    {
+      "position": {
+        "x": 1918,
+        "y": 451
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 53,
+      "seed_id": 94
+    },
+    {
+      "position": {
+        "x": 1920,
+        "y": 454
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 54,
+      "seed_id": 95
+    },
+    {
+      "position": {
+        "x": 1921,
+        "y": 451
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 54,
+      "seed_id": 96
+    },
+    {
+      "position": {
+        "x": 1945,
+        "y": 461
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 55,
+      "seed_id": 97
+    },
+    {
+      "position": {
+        "x": 1943,
+        "y": 460
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 55,
+      "seed_id": 98
+    },
+    {
+      "position": {
+        "x": 4006,
+        "y": 464
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 56,
+      "seed_id": 99
+    },
+    {
+      "position": {
+        "x": 4005,
+        "y": 462
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 56,
+      "seed_id": 100
+    },
+    {
+      "position": {
+        "x": 2193,
+        "y": 466
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 57,
+      "seed_id": 101
+    },
+    {
+      "position": {
+        "x": 1913,
+        "y": 466
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 58,
+      "seed_id": 102
+    },
+    {
+      "position": {
+        "x": 1880,
+        "y": 469
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 59,
+      "seed_id": 103
+    },
+    {
+      "position": {
+        "x": 1879,
+        "y": 467
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 59,
+      "seed_id": 104
+    },
+    {
+      "position": {
+        "x": 3028,
+        "y": 471
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 60,
+      "seed_id": 105
+    },
+    {
+      "position": {
+        "x": 3034,
+        "y": 469
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 60,
+      "seed_id": 106
+    },
+    {
+      "position": {
+        "x": 1912,
+        "y": 471
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 61,
+      "seed_id": 107
+    },
+    {
+      "position": {
+        "x": 1882,
+        "y": 472
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 62,
+      "seed_id": 108
+    },
+    {
+      "position": {
+        "x": 1884,
+        "y": 475
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 62,
+      "seed_id": 109
+    },
+    {
+      "position": {
+        "x": 1814,
+        "y": 478
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 63,
+      "seed_id": 110
+    },
+    {
+      "position": {
+        "x": 1817,
+        "y": 478
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 63,
+      "seed_id": 111
+    },
+    {
+      "position": {
+        "x": 1902,
+        "y": 478
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 64,
+      "seed_id": 112
+    },
+    {
+      "position": {
+        "x": 1904,
+        "y": 477
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 64,
+      "seed_id": 113
+    },
+    {
+      "position": {
+        "x": 3970,
+        "y": 478
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 65,
+      "seed_id": 114
+    },
+    {
+      "position": {
+        "x": 1807,
+        "y": 481
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 66,
+      "seed_id": 115
+    },
+    {
+      "position": {
+        "x": 1808,
+        "y": 479
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 66,
+      "seed_id": 116
+    },
+    {
+      "position": {
+        "x": 3994,
+        "y": 480
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 67,
+      "seed_id": 117
+    },
+    {
+      "position": {
+        "x": 3989,
+        "y": 483
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 67,
+      "seed_id": 118
+    },
+    {
+      "position": {
+        "x": 4014,
+        "y": 480
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 68,
+      "seed_id": 119
+    },
+    {
+      "position": {
+        "x": 1915,
+        "y": 481
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 69,
+      "seed_id": 120
+    },
+    {
+      "position": {
+        "x": 1917,
+        "y": 481
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 69,
+      "seed_id": 121
+    },
+    {
+      "position": {
+        "x": 2891,
+        "y": 481
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 70,
+      "seed_id": 122
+    },
+    {
+      "position": {
+        "x": 2892,
+        "y": 483
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 70,
+      "seed_id": 123
+    },
+    {
+      "position": {
+        "x": 2956,
+        "y": 484
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 71,
+      "seed_id": 124
+    },
+    {
+      "position": {
+        "x": 2951,
+        "y": 484
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 71,
+      "seed_id": 125
+    },
+    {
+      "position": {
+        "x": 3015,
+        "y": 482
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 72,
+      "seed_id": 126
+    },
+    {
+      "position": {
+        "x": 3013,
+        "y": 483
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 72,
+      "seed_id": 127
+    },
+    {
+      "position": {
+        "x": 1890,
+        "y": 484
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 73,
+      "seed_id": 128
+    },
+    {
+      "position": {
+        "x": 1888,
+        "y": 483
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 73,
+      "seed_id": 129
+    },
+    {
+      "position": {
+        "x": 1773,
+        "y": 484
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 74,
+      "seed_id": 130
+    },
+    {
+      "position": {
+        "x": 1773,
+        "y": 488
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 74,
+      "seed_id": 131
+    },
+    {
+      "position": {
+        "x": 1894,
+        "y": 488
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 75,
+      "seed_id": 132
+    },
+    {
+      "position": {
+        "x": 1896,
+        "y": 485
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 75,
+      "seed_id": 133
+    },
+    {
+      "position": {
+        "x": 1797,
+        "y": 487
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 76,
+      "seed_id": 134
+    },
+    {
+      "position": {
+        "x": 2933,
+        "y": 486
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 77,
+      "seed_id": 135
+    },
+    {
+      "position": {
+        "x": 2929,
+        "y": 486
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 77,
+      "seed_id": 136
+    },
+    {
+      "position": {
+        "x": 1911,
+        "y": 492
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 78,
+      "seed_id": 137
+    },
+    {
+      "position": {
+        "x": 1892,
+        "y": 494
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 79,
+      "seed_id": 138
+    },
+    {
+      "position": {
+        "x": 1888,
+        "y": 504
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 79,
+      "seed_id": 139
+    },
+    {
+      "position": {
+        "x": 1892,
+        "y": 495
+      },
+      "type": "curvature",
+      "curvature_degrees": 63.43494882292201,
+      "path_id": 0,
+      "component_id": 79,
+      "seed_id": 140
+    },
+    {
+      "position": {
+        "x": 1891,
+        "y": 496
+      },
+      "type": "curvature",
+      "curvature_degrees": 36.86989764584404,
+      "path_id": 0,
+      "component_id": 79,
+      "seed_id": 141
+    },
+    {
+      "position": {
+        "x": 1888,
+        "y": 498
+      },
+      "type": "curvature",
+      "curvature_degrees": 45.00000000000001,
+      "path_id": 0,
+      "component_id": 79,
+      "seed_id": 142
+    },
+    {
+      "position": {
+        "x": 1887,
+        "y": 501
+      },
+      "type": "curvature",
+      "curvature_degrees": 45.00000000000001,
+      "path_id": 0,
+      "component_id": 79,
+      "seed_id": 143
+    },
+    {
+      "position": {
+        "x": 1772,
+        "y": 496
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 80,
+      "seed_id": 144
+    },
+    {
+      "position": {
+        "x": 1773,
+        "y": 494
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 80,
+      "seed_id": 145
+    },
+    {
+      "position": {
+        "x": 1903,
+        "y": 503
+      },
+      "type": "branchpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 81,
+      "seed_id": 146
+    },
+    {
+      "position": {
+        "x": 1904,
+        "y": 504
+      },
+      "type": "branchpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 81,
+      "seed_id": 147
+    },
+    {
+      "position": {
+        "x": 1904,
+        "y": 502
+      },
+      "type": "branchpoint",
+      "curvature_degrees": null,
+      "path_id": 2,
+      "component_id": 81,
+      "seed_id": 148
+    },
+    {
+      "position": {
+        "x": 1781,
+        "y": 502
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 82,
+      "seed_id": 149
+    },
+    {
+      "position": {
+        "x": 1773,
+        "y": 503
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 83,
+      "seed_id": 150
+    },
+    {
+      "position": {
+        "x": 1782,
+        "y": 513
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 84,
+      "seed_id": 151
+    },
+    {
+      "position": {
+        "x": 1786,
+        "y": 506
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 84,
+      "seed_id": 152
+    },
+    {
+      "position": {
+        "x": 1746,
+        "y": 510
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 85,
+      "seed_id": 153
+    },
+    {
+      "position": {
+        "x": 2207,
+        "y": 510
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 86,
+      "seed_id": 154
+    },
+    {
+      "position": {
+        "x": 2209,
+        "y": 510
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 86,
+      "seed_id": 155
+    },
+    {
+      "position": {
+        "x": 1885,
+        "y": 512
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 87,
+      "seed_id": 156
+    },
+    {
+      "position": {
+        "x": 1775,
+        "y": 518
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 88,
+      "seed_id": 157
+    },
+    {
+      "position": {
+        "x": 1773,
+        "y": 514
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 88,
+      "seed_id": 158
+    },
+    {
+      "position": {
+        "x": 1845,
+        "y": 514
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 89,
+      "seed_id": 159
+    },
+    {
+      "position": {
+        "x": 1852,
+        "y": 514
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 89,
+      "seed_id": 160
+    },
+    {
+      "position": {
+        "x": 1845,
+        "y": 516
+      },
+      "type": "curvature",
+      "curvature_degrees": 63.43494882292201,
+      "path_id": 0,
+      "component_id": 89,
+      "seed_id": 161
+    },
+    {
+      "position": {
+        "x": 1846,
+        "y": 518
+      },
+      "type": "curvature",
+      "curvature_degrees": 90.0,
+      "path_id": 0,
+      "component_id": 89,
+      "seed_id": 162
+    },
+    {
+      "position": {
+        "x": 1847,
+        "y": 518
+      },
+      "type": "curvature",
+      "curvature_degrees": 53.13010235415599,
+      "path_id": 0,
+      "component_id": 89,
+      "seed_id": 163
+    },
+    {
+      "position": {
+        "x": 1849,
+        "y": 517
+      },
+      "type": "curvature",
+      "curvature_degrees": 45.00000000000001,
+      "path_id": 0,
+      "component_id": 89,
+      "seed_id": 164
+    },
+    {
+      "position": {
+        "x": 1851,
+        "y": 516
+      },
+      "type": "curvature",
+      "curvature_degrees": 36.86989764584404,
+      "path_id": 0,
+      "component_id": 89,
+      "seed_id": 165
+    },
+    {
+      "position": {
+        "x": 1852,
+        "y": 515
+      },
+      "type": "curvature",
+      "curvature_degrees": 45.00000000000001,
+      "path_id": 0,
+      "component_id": 89,
+      "seed_id": 166
+    },
+    {
+      "position": {
+        "x": 4246,
+        "y": 517
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 90,
+      "seed_id": 167
+    },
+    {
+      "position": {
+        "x": 4246,
+        "y": 515
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 90,
+      "seed_id": 168
+    },
+    {
+      "position": {
+        "x": 4239,
+        "y": 517
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 91,
+      "seed_id": 169
+    },
+    {
+      "position": {
+        "x": 1786,
+        "y": 517
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 92,
+      "seed_id": 170
+    },
+    {
+      "position": {
+        "x": 1792,
+        "y": 520
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 92,
+      "seed_id": 171
+    },
+    {
+      "position": {
+        "x": 4258,
+        "y": 520
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 93,
+      "seed_id": 172
+    },
+    {
+      "position": {
+        "x": 4257,
+        "y": 522
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 93,
+      "seed_id": 173
+    },
+    {
+      "position": {
+        "x": 1776,
+        "y": 523
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 94,
+      "seed_id": 174
+    },
+    {
+      "position": {
+        "x": 1958,
+        "y": 524
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 95,
+      "seed_id": 175
+    },
+    {
+      "position": {
+        "x": 1977,
+        "y": 531
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 95,
+      "seed_id": 176
+    },
+    {
+      "position": {
+        "x": 1963,
+        "y": 527
+      },
+      "type": "regular",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 95,
+      "seed_id": 177
+    },
+    {
+      "position": {
+        "x": 1972,
+        "y": 530
+      },
+      "type": "curvature",
+      "curvature_degrees": 45.00000000000001,
+      "path_id": 0,
+      "component_id": 95,
+      "seed_id": 178
+    },
+    {
+      "position": {
+        "x": 2053,
+        "y": 528
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 96,
+      "seed_id": 179
+    },
+    {
+      "position": {
+        "x": 2060,
+        "y": 536
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 96,
+      "seed_id": 180
+    },
+    {
+      "position": {
+        "x": 2056,
+        "y": 533
+      },
+      "type": "regular",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 96,
+      "seed_id": 181
+    },
+    {
+      "position": {
+        "x": 2036,
+        "y": 530
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 97,
+      "seed_id": 182
+    },
+    {
+      "position": {
+        "x": 2034,
+        "y": 531
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 97,
+      "seed_id": 183
+    },
+    {
+      "position": {
+        "x": 1456,
+        "y": 531
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 98,
+      "seed_id": 184
+    },
+    {
+      "position": {
+        "x": 1466,
+        "y": 535
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 98,
+      "seed_id": 185
+    },
+    {
+      "position": {
+        "x": 1457,
+        "y": 532
+      },
+      "type": "curvature",
+      "curvature_degrees": 45.00000000000001,
+      "path_id": 0,
+      "component_id": 98,
+      "seed_id": 186
+    },
+    {
+      "position": {
+        "x": 1458,
+        "y": 532
+      },
+      "type": "curvature",
+      "curvature_degrees": 45.00000000000001,
+      "path_id": 0,
+      "component_id": 98,
+      "seed_id": 187
+    },
+    {
+      "position": {
+        "x": 1460,
+        "y": 533
+      },
+      "type": "curvature",
+      "curvature_degrees": 45.00000000000001,
+      "path_id": 0,
+      "component_id": 98,
+      "seed_id": 188
+    },
+    {
+      "position": {
+        "x": 1905,
+        "y": 537
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 99,
+      "seed_id": 189
+    },
+    {
+      "position": {
+        "x": 1905,
+        "y": 533
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 99,
+      "seed_id": 190
+    },
+    {
+      "position": {
+        "x": 1471,
+        "y": 534
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 100,
+      "seed_id": 191
+    },
+    {
+      "position": {
+        "x": 1986,
+        "y": 536
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 101,
+      "seed_id": 192
+    },
+    {
+      "position": {
+        "x": 1981,
+        "y": 533
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 101,
+      "seed_id": 193
+    },
+    {
+      "position": {
+        "x": 2034,
+        "y": 534
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 102,
+      "seed_id": 194
+    },
+    {
+      "position": {
+        "x": 2029,
+        "y": 538
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 102,
+      "seed_id": 195
+    },
+    {
+      "position": {
+        "x": 2000,
+        "y": 537
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 103,
+      "seed_id": 196
+    },
+    {
+      "position": {
+        "x": 1992,
+        "y": 541
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 104,
+      "seed_id": 197
+    },
+    {
+      "position": {
+        "x": 1990,
+        "y": 540
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 104,
+      "seed_id": 198
+    },
+    {
+      "position": {
+        "x": 2006,
+        "y": 539
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 105,
+      "seed_id": 199
+    },
+    {
+      "position": {
+        "x": 2067,
+        "y": 541
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 106,
+      "seed_id": 200
+    },
+    {
+      "position": {
+        "x": 2065,
+        "y": 540
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 106,
+      "seed_id": 201
+    },
+    {
+      "position": {
+        "x": 4330,
+        "y": 539
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 107,
+      "seed_id": 202
+    },
+    {
+      "position": {
+        "x": 1899,
+        "y": 543
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 108,
+      "seed_id": 203
+    },
+    {
+      "position": {
+        "x": 1902,
+        "y": 540
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 108,
+      "seed_id": 204
+    },
+    {
+      "position": {
+        "x": 2020,
+        "y": 545
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 109,
+      "seed_id": 205
+    },
+    {
+      "position": {
+        "x": 2026,
+        "y": 540
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 109,
+      "seed_id": 206
+    },
+    {
+      "position": {
+        "x": 1476,
+        "y": 544
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 110,
+      "seed_id": 207
+    },
+    {
+      "position": {
+        "x": 1474,
+        "y": 543
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 110,
+      "seed_id": 208
+    },
+    {
+      "position": {
+        "x": 1994,
+        "y": 545
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 111,
+      "seed_id": 209
+    },
+    {
+      "position": {
+        "x": 1995,
+        "y": 547
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 111,
+      "seed_id": 210
+    },
+    {
+      "position": {
+        "x": 1476,
+        "y": 551
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 112,
+      "seed_id": 211
+    },
+    {
+      "position": {
+        "x": 1474,
+        "y": 551
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 112,
+      "seed_id": 212
+    },
+    {
+      "position": {
+        "x": 1995,
+        "y": 551
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 113,
+      "seed_id": 213
+    },
+    {
+      "position": {
+        "x": 1994,
+        "y": 553
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 113,
+      "seed_id": 214
+    },
+    {
+      "position": {
+        "x": 1977,
+        "y": 557
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 114,
+      "seed_id": 215
+    },
+    {
+      "position": {
+        "x": 1980,
+        "y": 556
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 114,
+      "seed_id": 216
+    },
+    {
+      "position": {
+        "x": 1984,
+        "y": 562
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 115,
+      "seed_id": 217
+    },
+    {
+      "position": {
+        "x": 1986,
+        "y": 556
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 115,
+      "seed_id": 218
+    },
+    {
+      "position": {
+        "x": 1985,
+        "y": 563
+      },
+      "type": "curvature",
+      "curvature_degrees": 71.56505117707799,
+      "path_id": 0,
+      "component_id": 115,
+      "seed_id": 219
+    },
+    {
+      "position": {
+        "x": 1986,
+        "y": 563
+      },
+      "type": "curvature",
+      "curvature_degrees": 71.56505117707799,
+      "path_id": 0,
+      "component_id": 115,
+      "seed_id": 220
+    },
+    {
+      "position": {
+        "x": 1987,
+        "y": 562
+      },
+      "type": "curvature",
+      "curvature_degrees": 36.86989764584404,
+      "path_id": 0,
+      "component_id": 115,
+      "seed_id": 221
+    },
+    {
+      "position": {
+        "x": 1988,
+        "y": 561
+      },
+      "type": "curvature",
+      "curvature_degrees": 71.56505117707799,
+      "path_id": 0,
+      "component_id": 115,
+      "seed_id": 222
+    },
+    {
+      "position": {
+        "x": 1988,
+        "y": 560
+      },
+      "type": "curvature",
+      "curvature_degrees": 71.56505117707799,
+      "path_id": 0,
+      "component_id": 115,
+      "seed_id": 223
+    },
+    {
+      "position": {
+        "x": 1987,
+        "y": 559
+      },
+      "type": "curvature",
+      "curvature_degrees": 45.00000000000001,
+      "path_id": 0,
+      "component_id": 115,
+      "seed_id": 224
+    },
+    {
+      "position": {
+        "x": 2000,
+        "y": 559
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 116,
+      "seed_id": 225
+    },
+    {
+      "position": {
+        "x": 1466,
+        "y": 560
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 117,
+      "seed_id": 226
+    },
+    {
+      "position": {
+        "x": 4355,
+        "y": 563
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 118,
+      "seed_id": 227
+    },
+    {
+      "position": {
+        "x": 4355,
+        "y": 561
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 118,
+      "seed_id": 228
+    },
+    {
+      "position": {
+        "x": 1975,
+        "y": 569
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 119,
+      "seed_id": 229
+    },
+    {
+      "position": {
+        "x": 1978,
+        "y": 563
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 119,
+      "seed_id": 230
+    },
+    {
+      "position": {
+        "x": 1461,
+        "y": 568
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 120,
+      "seed_id": 231
+    },
+    {
+      "position": {
+        "x": 1464,
+        "y": 574
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 121,
+      "seed_id": 232
+    },
+    {
+      "position": {
+        "x": 1465,
+        "y": 579
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 121,
+      "seed_id": 233
+    },
+    {
+      "position": {
+        "x": 4355,
+        "y": 574
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 122,
+      "seed_id": 234
+    },
+    {
+      "position": {
+        "x": 4356,
+        "y": 572
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 122,
+      "seed_id": 235
+    },
+    {
+      "position": {
+        "x": 1976,
+        "y": 576
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 123,
+      "seed_id": 236
+    },
+    {
+      "position": {
+        "x": 1976,
+        "y": 574
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 123,
+      "seed_id": 237
+    },
+    {
+      "position": {
+        "x": 1471,
+        "y": 582
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 124,
+      "seed_id": 238
+    },
+    {
+      "position": {
+        "x": 1469,
+        "y": 597
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 124,
+      "seed_id": 239
+    },
+    {
+      "position": {
+        "x": 1471,
+        "y": 583
+      },
+      "type": "curvature",
+      "curvature_degrees": 63.43494882292201,
+      "path_id": 0,
+      "component_id": 124,
+      "seed_id": 240
+    },
+    {
+      "position": {
+        "x": 1470,
+        "y": 584
+      },
+      "type": "curvature",
+      "curvature_degrees": 36.86989764584404,
+      "path_id": 0,
+      "component_id": 124,
+      "seed_id": 241
+    },
+    {
+      "position": {
+        "x": 1469,
+        "y": 584
+      },
+      "type": "curvature",
+      "curvature_degrees": 36.86989764584404,
+      "path_id": 0,
+      "component_id": 124,
+      "seed_id": 242
+    },
+    {
+      "position": {
+        "x": 1468,
+        "y": 585
+      },
+      "type": "curvature",
+      "curvature_degrees": 63.43494882292201,
+      "path_id": 0,
+      "component_id": 124,
+      "seed_id": 243
+    },
+    {
+      "position": {
+        "x": 1468,
+        "y": 587
+      },
+      "type": "curvature",
+      "curvature_degrees": 53.13010235415599,
+      "path_id": 0,
+      "component_id": 124,
+      "seed_id": 244
+    },
+    {
+      "position": {
+        "x": 1468,
+        "y": 592
+      },
+      "type": "curvature",
+      "curvature_degrees": 53.13010235415599,
+      "path_id": 0,
+      "component_id": 124,
+      "seed_id": 245
+    },
+    {
+      "position": {
+        "x": 1466,
+        "y": 596
+      },
+      "type": "curvature",
+      "curvature_degrees": 90.0,
+      "path_id": 0,
+      "component_id": 124,
+      "seed_id": 246
+    },
+    {
+      "position": {
+        "x": 1467,
+        "y": 597
+      },
+      "type": "curvature",
+      "curvature_degrees": 63.43494882292201,
+      "path_id": 0,
+      "component_id": 124,
+      "seed_id": 247
+    },
+    {
+      "position": {
+        "x": 4353,
+        "y": 583
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 125,
+      "seed_id": 248
+    },
+    {
+      "position": {
+        "x": 4351,
+        "y": 585
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 125,
+      "seed_id": 249
+    },
+    {
+      "position": {
+        "x": 4360,
+        "y": 583
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 126,
+      "seed_id": 250
+    },
+    {
+      "position": {
+        "x": 4358,
+        "y": 584
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 126,
+      "seed_id": 251
+    },
+    {
+      "position": {
+        "x": 1974,
+        "y": 586
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 127,
+      "seed_id": 252
+    },
+    {
+      "position": {
+        "x": 1440,
+        "y": 588
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 128,
+      "seed_id": 253
+    },
+    {
+      "position": {
+        "x": 1442,
+        "y": 590
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 128,
+      "seed_id": 254
+    },
+    {
+      "position": {
+        "x": 4343,
+        "y": 589
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 129,
+      "seed_id": 255
+    },
+    {
+      "position": {
+        "x": 4349,
+        "y": 591
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 130,
+      "seed_id": 256
+    },
+    {
+      "position": {
+        "x": 4347,
+        "y": 592
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 130,
+      "seed_id": 257
+    },
+    {
+      "position": {
+        "x": 1975,
+        "y": 598
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 131,
+      "seed_id": 258
+    },
+    {
+      "position": {
+        "x": 1972,
+        "y": 594
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 131,
+      "seed_id": 259
+    },
+    {
+      "position": {
+        "x": 2091,
+        "y": 593
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 132,
+      "seed_id": 260
+    },
+    {
+      "position": {
+        "x": 2090,
+        "y": 595
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 132,
+      "seed_id": 261
+    },
+    {
+      "position": {
+        "x": 4305,
+        "y": 597
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 133,
+      "seed_id": 262
+    },
+    {
+      "position": {
+        "x": 4304,
+        "y": 594
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 133,
+      "seed_id": 263
+    },
+    {
+      "position": {
+        "x": 1422,
+        "y": 598
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 134,
+      "seed_id": 264
+    },
+    {
+      "position": {
+        "x": 1428,
+        "y": 595
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 134,
+      "seed_id": 265
+    },
+    {
+      "position": {
+        "x": 1449,
+        "y": 597
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 135,
+      "seed_id": 266
+    },
+    {
+      "position": {
+        "x": 1471,
+        "y": 602
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 136,
+      "seed_id": 267
+    },
+    {
+      "position": {
+        "x": 1470,
+        "y": 617
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 136,
+      "seed_id": 268
+    },
+    {
+      "position": {
+        "x": 1472,
+        "y": 603
+      },
+      "type": "curvature",
+      "curvature_degrees": 45.00000000000001,
+      "path_id": 0,
+      "component_id": 136,
+      "seed_id": 269
+    },
+    {
+      "position": {
+        "x": 1473,
+        "y": 608
+      },
+      "type": "curvature",
+      "curvature_degrees": 45.00000000000001,
+      "path_id": 0,
+      "component_id": 136,
+      "seed_id": 270
+    },
+    {
+      "position": {
+        "x": 1045,
+        "y": 630
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 137,
+      "seed_id": 271
+    },
+    {
+      "position": {
+        "x": 1051,
+        "y": 631
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 138,
+      "seed_id": 272
+    },
+    {
+      "position": {
+        "x": 1051,
+        "y": 636
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 138,
+      "seed_id": 273
+    },
+    {
+      "position": {
+        "x": 1066,
+        "y": 642
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 139,
+      "seed_id": 274
+    },
+    {
+      "position": {
+        "x": 1068,
+        "y": 641
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 139,
+      "seed_id": 275
+    },
+    {
+      "position": {
+        "x": 1185,
+        "y": 652
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 140,
+      "seed_id": 276
+    },
+    {
+      "position": {
+        "x": 922,
+        "y": 677
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 141,
+      "seed_id": 277
+    },
+    {
+      "position": {
+        "x": 921,
+        "y": 673
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 141,
+      "seed_id": 278
+    },
+    {
+      "position": {
+        "x": 752,
+        "y": 680
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 142,
+      "seed_id": 279
+    },
+    {
+      "position": {
+        "x": 753,
+        "y": 678
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 142,
+      "seed_id": 280
+    },
+    {
+      "position": {
+        "x": 725,
+        "y": 697
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 143,
+      "seed_id": 281
+    },
+    {
+      "position": {
+        "x": 717,
+        "y": 703
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 144,
+      "seed_id": 282
+    },
+    {
+      "position": {
+        "x": 722,
+        "y": 700
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 144,
+      "seed_id": 283
+    },
+    {
+      "position": {
+        "x": 712,
+        "y": 708
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 145,
+      "seed_id": 284
+    },
+    {
+      "position": {
+        "x": 715,
+        "y": 715
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 146,
+      "seed_id": 285
+    },
+    {
+      "position": {
+        "x": 716,
+        "y": 713
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 146,
+      "seed_id": 286
+    },
+    {
+      "position": {
+        "x": 962,
+        "y": 719
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 147,
+      "seed_id": 287
+    },
+    {
+      "position": {
+        "x": 964,
+        "y": 719
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 147,
+      "seed_id": 288
+    },
+    {
+      "position": {
+        "x": 727,
+        "y": 718
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 148,
+      "seed_id": 289
+    },
+    {
+      "position": {
+        "x": 723,
+        "y": 722
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 149,
+      "seed_id": 290
+    },
+    {
+      "position": {
+        "x": 723,
+        "y": 726
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 149,
+      "seed_id": 291
+    },
+    {
+      "position": {
+        "x": 1058,
+        "y": 723
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 150,
+      "seed_id": 292
+    },
+    {
+      "position": {
+        "x": 1059,
+        "y": 730
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 151,
+      "seed_id": 293
+    },
+    {
+      "position": {
+        "x": 1059,
+        "y": 732
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 151,
+      "seed_id": 294
+    },
+    {
+      "position": {
+        "x": 1120,
+        "y": 742
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 152,
+      "seed_id": 295
+    },
+    {
+      "position": {
+        "x": 1118,
+        "y": 743
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 152,
+      "seed_id": 296
+    },
+    {
+      "position": {
+        "x": 724,
+        "y": 746
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 153,
+      "seed_id": 297
+    },
+    {
+      "position": {
+        "x": 725,
+        "y": 744
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 153,
+      "seed_id": 298
+    },
+    {
+      "position": {
+        "x": 1058,
+        "y": 745
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 154,
+      "seed_id": 299
+    },
+    {
+      "position": {
+        "x": 1099,
+        "y": 744
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 155,
+      "seed_id": 300
+    },
+    {
+      "position": {
+        "x": 1084,
+        "y": 752
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 155,
+      "seed_id": 301
+    },
+    {
+      "position": {
+        "x": 1098,
+        "y": 745
+      },
+      "type": "curvature",
+      "curvature_degrees": 45.00000000000001,
+      "path_id": 0,
+      "component_id": 155,
+      "seed_id": 302
+    },
+    {
+      "position": {
+        "x": 1093,
+        "y": 746
+      },
+      "type": "regular",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 155,
+      "seed_id": 303
+    },
+    {
+      "position": {
+        "x": 1058,
+        "y": 753
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 156,
+      "seed_id": 304
+    },
+    {
+      "position": {
+        "x": 1060,
+        "y": 752
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 156,
+      "seed_id": 305
+    },
+    {
+      "position": {
+        "x": 743,
+        "y": 756
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 157,
+      "seed_id": 306
+    },
+    {
+      "position": {
+        "x": 743,
+        "y": 754
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 157,
+      "seed_id": 307
+    },
+    {
+      "position": {
+        "x": 727,
+        "y": 758
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 158,
+      "seed_id": 308
+    },
+    {
+      "position": {
+        "x": 739,
+        "y": 760
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 159,
+      "seed_id": 309
+    },
+    {
+      "position": {
+        "x": 733,
+        "y": 764
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 159,
+      "seed_id": 310
+    },
+    {
+      "position": {
+        "x": 727,
+        "y": 763
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 160,
+      "seed_id": 311
+    },
+    {
+      "position": {
+        "x": 729,
+        "y": 763
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 160,
+      "seed_id": 312
+    },
+    {
+      "position": {
+        "x": 1070,
+        "y": 763
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 161,
+      "seed_id": 313
+    },
+    {
+      "position": {
+        "x": 1068,
+        "y": 764
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 161,
+      "seed_id": 314
+    },
+    {
+      "position": {
+        "x": 1077,
+        "y": 763
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 162,
+      "seed_id": 315
+    },
+    {
+      "position": {
+        "x": 1075,
+        "y": 764
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 162,
+      "seed_id": 316
+    },
+    {
+      "position": {
+        "x": 722,
+        "y": 774
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 163,
+      "seed_id": 317
+    },
+    {
+      "position": {
+        "x": 721,
+        "y": 765
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 163,
+      "seed_id": 318
+    },
+    {
+      "position": {
+        "x": 1063,
+        "y": 769
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 164,
+      "seed_id": 319
+    },
+    {
+      "position": {
+        "x": 1064,
+        "y": 767
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 164,
+      "seed_id": 320
+    },
+    {
+      "position": {
+        "x": 715,
+        "y": 774
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 165,
+      "seed_id": 321
+    },
+    {
+      "position": {
+        "x": 705,
+        "y": 782
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 166,
+      "seed_id": 322
+    },
+    {
+      "position": {
+        "x": 710,
+        "y": 776
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 166,
+      "seed_id": 323
+    },
+    {
+      "position": {
+        "x": 439,
+        "y": 779
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 167,
+      "seed_id": 324
+    },
+    {
+      "position": {
+        "x": 705,
+        "y": 786
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 168,
+      "seed_id": 325
+    },
+    {
+      "position": {
+        "x": 699,
+        "y": 787
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 168,
+      "seed_id": 326
+    },
+    {
+      "position": {
+        "x": 521,
+        "y": 789
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 169,
+      "seed_id": 327
+    },
+    {
+      "position": {
+        "x": 520,
+        "y": 791
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 169,
+      "seed_id": 328
+    },
+    {
+      "position": {
+        "x": 698,
+        "y": 794
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 170,
+      "seed_id": 329
+    },
+    {
+      "position": {
+        "x": 698,
+        "y": 792
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 170,
+      "seed_id": 330
+    },
+    {
+      "position": {
+        "x": 693,
+        "y": 793
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 171,
+      "seed_id": 331
+    },
+    {
+      "position": {
+        "x": 683,
+        "y": 792
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 171,
+      "seed_id": 332
+    },
+    {
+      "position": {
+        "x": 689,
+        "y": 794
+      },
+      "type": "curvature",
+      "curvature_degrees": 53.13010235415599,
+      "path_id": 0,
+      "component_id": 171,
+      "seed_id": 333
+    },
+    {
+      "position": {
+        "x": 684,
+        "y": 795
+      },
+      "type": "curvature",
+      "curvature_degrees": 90.0,
+      "path_id": 0,
+      "component_id": 171,
+      "seed_id": 334
+    },
+    {
+      "position": {
+        "x": 683,
+        "y": 794
+      },
+      "type": "curvature",
+      "curvature_degrees": 63.43494882292201,
+      "path_id": 0,
+      "component_id": 171,
+      "seed_id": 335
+    },
+    {
+      "position": {
+        "x": 684,
+        "y": 802
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 172,
+      "seed_id": 336
+    },
+    {
+      "position": {
+        "x": 386,
+        "y": 808
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 173,
+      "seed_id": 337
+    },
+    {
+      "position": {
+        "x": 389,
+        "y": 808
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 173,
+      "seed_id": 338
+    },
+    {
+      "position": {
+        "x": 685,
+        "y": 808
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 174,
+      "seed_id": 339
+    },
+    {
+      "position": {
+        "x": 681,
+        "y": 813
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 174,
+      "seed_id": 340
+    },
+    {
+      "position": {
+        "x": 407,
+        "y": 814
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 175,
+      "seed_id": 341
+    },
+    {
+      "position": {
+        "x": 411,
+        "y": 809
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 175,
+      "seed_id": 342
+    },
+    {
+      "position": {
+        "x": 438,
+        "y": 810
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 176,
+      "seed_id": 343
+    },
+    {
+      "position": {
+        "x": 440,
+        "y": 810
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 176,
+      "seed_id": 344
+    },
+    {
+      "position": {
+        "x": 416,
+        "y": 811
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 177,
+      "seed_id": 345
+    },
+    {
+      "position": {
+        "x": 418,
+        "y": 810
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 177,
+      "seed_id": 346
+    },
+    {
+      "position": {
+        "x": 432,
+        "y": 811
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 178,
+      "seed_id": 347
+    },
+    {
+      "position": {
+        "x": 430,
+        "y": 811
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 178,
+      "seed_id": 348
+    },
+    {
+      "position": {
+        "x": 531,
+        "y": 815
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 179,
+      "seed_id": 349
+    },
+    {
+      "position": {
+        "x": 530,
+        "y": 813
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 179,
+      "seed_id": 350
+    },
+    {
+      "position": {
+        "x": 899,
+        "y": 816
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 180,
+      "seed_id": 351
+    },
+    {
+      "position": {
+        "x": 900,
+        "y": 814
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 180,
+      "seed_id": 352
+    },
+    {
+      "position": {
+        "x": 451,
+        "y": 815
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 181,
+      "seed_id": 353
+    },
+    {
+      "position": {
+        "x": 453,
+        "y": 815
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 181,
+      "seed_id": 354
+    },
+    {
+      "position": {
+        "x": 681,
+        "y": 824
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 182,
+      "seed_id": 355
+    },
+    {
+      "position": {
+        "x": 682,
+        "y": 816
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 182,
+      "seed_id": 356
+    },
+    {
+      "position": {
+        "x": 659,
+        "y": 854
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 183,
+      "seed_id": 357
+    },
+    {
+      "position": {
+        "x": 658,
+        "y": 852
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 183,
+      "seed_id": 358
+    },
+    {
+      "position": {
+        "x": 512,
+        "y": 856
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 184,
+      "seed_id": 359
+    },
+    {
+      "position": {
+        "x": 507,
+        "y": 854
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 184,
+      "seed_id": 360
+    },
+    {
+      "position": {
+        "x": 523,
+        "y": 856
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 185,
+      "seed_id": 361
+    },
+    {
+      "position": {
+        "x": 520,
+        "y": 854
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 185,
+      "seed_id": 362
+    },
+    {
+      "position": {
+        "x": 550,
+        "y": 862
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 186,
+      "seed_id": 363
+    },
+    {
+      "position": {
+        "x": 540,
+        "y": 871
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 187,
+      "seed_id": 364
+    },
+    {
+      "position": {
+        "x": 533,
+        "y": 867
+      },
+      "type": "endpoint",
+      "curvature_degrees": null,
+      "path_id": 0,
+      "component_id": 187,
+      "seed_id": 365
+    },
+    {
+      "position": {
+        "x": 596,
+        "y": 879
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 188,
+      "seed_id": 366
+    },
+    {
+      "position": {
+        "x": 581,
+        "y": 880
+      },
+      "type": "centroid",
+      "curvature_degrees": null,
+      "path_id": null,
+      "component_id": 189,
+      "seed_id": 367
+    }
+  ],
+  "statistics": {
+    "seeds_by_type": {
+      "endpoint": 266,
+      "centroid": 55,
+      "curvature": 40,
+      "branchpoint": 3,
+      "regular": 3
+    },
+    "avg_seeds_per_component": 1.9417989417989419
+  }
+}
