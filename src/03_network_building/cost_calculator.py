@@ -24,9 +24,9 @@ class CostCalculator:
     def __init__(
         self,
         pathfinder: 'ImagePathfinder',
-        alpha: float = 0.3,
-        beta: float = 0.5,
-        gamma: float = 0.2,
+        alpha: float = 0.05,
+        beta: float = 0.9,
+        gamma: float = 0.05,
         verbose: bool = False
     ):
         """

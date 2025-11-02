@@ -90,9 +90,13 @@ class ImagePathfinder:
             visited.add(current)
             
             # 提前終止: 距離起點太遠
-            if g_score[current] > max_distance:  # 成本閾值
+            # if g_score[current] > max_distance:  # 成本閾值
+            #     continue
+                
+            distance_from_start = self._euclidean_distance(start, current)
+            if distance_from_start > 30:
                 continue
-            
+
             # 探索8-連通鄰居
             for neighbor in self._get_neighbors(current):
                 if neighbor in visited:
@@ -161,9 +165,9 @@ class ImagePathfinder:
         
         # 目標位置的成本
         pixel_cost = self.cost_map[pos2[0], pos2[1]]
-        
-        return distance * pixel_cost
-    
+
+        return (distance * (pixel_cost**2)) / (255*255)  # 成本平方根加權
+
     def _get_neighbors(self, pos: Tuple[int, int]) -> List[Tuple[int, int]]:
         """
         獲取8-連通鄰居
