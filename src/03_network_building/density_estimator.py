@@ -50,6 +50,7 @@ class DensityEstimator:
             - 30 ≤ density < 70px → radius = 50px  (適中區)
             - density ≥ 70px → radius = 80px  (稀疏區)
         """
+        
         if local_density < 30:
             return 30
         elif local_density < 70:
