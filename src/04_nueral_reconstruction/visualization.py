@@ -32,6 +32,7 @@ class MSTVisualizer:
         """
         self.green_channel = green_channel
         self.seed_map = {}  # seed_id -> seed dict
+        self.boundary_detector = None  # 界線檢測器
 
     def set_seeds(self, seeds: List[dict]):
         """
@@ -45,6 +46,33 @@ class MSTVisualizer:
             seed_id = seed['id']
             self.seed_map[seed_id] = seed
             self.seed_map[str(seed_id)] = seed  # 也用字串作為 key
+
+    def set_boundary_detector(self, boundary_detector):
+        """
+        設定界線檢測器
+
+        Args:
+            boundary_detector: BoundaryDetector 實例
+        """
+        self.boundary_detector = boundary_detector
+
+    def _draw_boundary_line(self, ax):
+        """
+        繪製表皮-真皮界線
+
+        Args:
+            ax: matplotlib axes
+        """
+        if self.boundary_detector is None:
+            return
+
+        import matplotlib.pyplot as plt
+        boundary_coords = self.boundary_detector.boundary_coords
+        if boundary_coords:
+            ys = [coord[0] for coord in boundary_coords]
+            xs = [coord[1] for coord in boundary_coords]
+            ax.plot(xs, ys, color='yellow', linewidth=2, linestyle='--',
+                   alpha=0.9, zorder=15, label='Epidermis-Dermis Boundary')
 
     def visualize_mst_forest(
         self,
@@ -71,8 +99,14 @@ class MSTVisualizer:
         # 創建圖表
         fig, ax = plt.subplots(figsize=(20, 15), dpi=150)
 
-        # 1. 繪製背景
-        ax.imshow(self.green_channel, cmap='gray', alpha=0.7)
+        # 1. 繪製背景（使用 Viridis 色彩映射）
+        im = ax.imshow(self.green_channel, cmap='viridis', alpha=0.6)
+
+        # 1.1. 添加 colorbar
+        cbar = plt.colorbar(im, ax=ax, label='Green Channel Intensity', pad=0.02, shrink=0.8)
+
+        # 1.2. 繪製表皮-真皮界線
+        self._draw_boundary_line(ax)
 
         # 2. 獲取連通分量
         components = list(nx.connected_components(forest))
@@ -215,8 +249,21 @@ class MSTVisualizer:
             y_max = min(self.green_channel.shape[0], int(y_max))
 
             cropped = self.green_channel[y_min:y_max, x_min:x_max]
-            ax.imshow(cropped, cmap='gray', alpha=0.7,
+            ax.imshow(cropped, cmap='viridis', alpha=0.6,
                      extent=[x_min, x_max, y_max, y_min])
+
+            # 繪製界線（如果在範圍內）
+            if self.boundary_detector is not None:
+                boundary_coords = self.boundary_detector.boundary_coords
+                if boundary_coords:
+                    # 篩選在當前範圍內的界線點
+                    boundary_in_range = [(y, x) for y, x in boundary_coords
+                                        if x_min <= x <= x_max and y_min <= y <= y_max]
+                    if boundary_in_range:
+                        ys = [coord[0] for coord in boundary_in_range]
+                        xs = [coord[1] for coord in boundary_in_range]
+                        ax.plot(xs, ys, color='yellow', linewidth=1.5, linestyle='--',
+                               alpha=0.9, zorder=15)
 
             # 繪製邊
             for u, v, data in subgraph.edges(data=True):
@@ -279,8 +326,11 @@ class MSTVisualizer:
         # 創建圖表
         fig, ax = plt.subplots(figsize=(20, 15), dpi=150)
 
-        # 繪製背景
-        ax.imshow(self.green_channel, cmap='gray', alpha=0.7)
+        # 繪製背景（使用 Viridis 色彩映射）
+        im_bg = ax.imshow(self.green_channel, cmap='viridis', alpha=0.6)
+
+        # 繪製表皮-真皮界線
+        self._draw_boundary_line(ax)
 
         # 計算每條邊的質量（路徑平均強度）
         edge_qualities = []

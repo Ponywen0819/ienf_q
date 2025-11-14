@@ -1,0 +1,17 @@
+{
+  "green_intensity_mean": 56.037593984962406,
+  "green_intensity_std": 9.137550398974465,
+  "green_intensity_median": 58.0,
+  "green_intensity_25p": 52.0,
+  "green_intensity_75p": 61.0,
+  "green_intensity_min": 35.0,
+  "green_intensity_max": 73.0,
+  "width_mean": 17.789473684210527,
+  "width_std": 0.8931875130777442,
+  "width_median": 18.0,
+  "curvature_mean": 11.9637542647565,
+  "curvature_std": 14.40518904946862,
+  "curvature_90p": 26.565051177077994,
+  "segment_length_mean": 1.1780391627744005,
+  "segment_length_std": 0.20505680279692823
+}

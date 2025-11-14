@@ -57,6 +57,12 @@ def main():
 
     # 可選參數
     parser.add_argument(
+        '--mask',
+        default=None,
+        help='表皮標注 mask 路徑（可選，用於繪製表皮-真皮界線）'
+    )
+
+    parser.add_argument(
         '--output',
         default='output/reconstruction',
         help='輸出目錄（預設: output/reconstruction）'
@@ -120,7 +126,8 @@ def main():
             graph_path=args.graph,
             seeds_path=args.seeds,
             green_channel_path=args.image,
-            output_dir=args.output
+            output_dir=args.output,
+            mask_path=args.mask
         )
 
         print(f"\n✓ 重建完成！輸出目錄: {args.output}")

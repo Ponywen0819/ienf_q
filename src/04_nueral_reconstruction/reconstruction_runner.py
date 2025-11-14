@@ -51,7 +51,8 @@ class ReconstructionRunner:
         graph_path: str,
         seeds_path: str,
         green_channel_path: str,
-        output_dir: str
+        output_dir: str,
+        mask_path: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         執行完整重建流程
@@ -61,6 +62,7 @@ class ReconstructionRunner:
             seeds_path: 種子檔案路徑 (seeds.json)
             green_channel_path: 綠色通道影像路徑
             output_dir: 輸出目錄
+            mask_path: 可選，表皮標注 mask 路徑（用於繪製表皮-真皮界線）
 
         Returns:
             results: 包含所有統計和驗證結果的字典
@@ -82,6 +84,12 @@ class ReconstructionRunner:
             print(f"  ✓ 圖: {G.number_of_nodes()} 節點, {G.number_of_edges()} 邊")
             print(f"  ✓ 種子: {len(seeds)} 個")
             print(f"  ✓ 影像: {green_channel.shape}")
+
+            # 載入 mask（可選）
+            epidermis_mask = None
+            if mask_path:
+                epidermis_mask = self._load_image(mask_path)
+                print(f"  ✓ 表皮 mask: {epidermis_mask.shape}")
         except Exception as e:
             print(f"  ✗ 載入失敗: {e}")
             raise
@@ -114,6 +122,31 @@ class ReconstructionRunner:
             # 初始化視覺化器
             visualizer = MSTVisualizer(green_channel)
             visualizer.set_seeds(seeds)
+
+            # 設定界線檢測器（如果有 mask）
+            if epidermis_mask is not None:
+                try:
+                    import sys
+                    sys.path.append(str(Path(__file__).parent.parent / 'boundary_crossing'))
+                    from boundary_detector import BoundaryDetector
+
+                    # BoundaryDetector 需要 config 參數
+                    boundary_config = {
+                        'boundary_smoothing': True,
+                        'smoothing_window': 5
+                    }
+                    boundary_detector = BoundaryDetector(boundary_config)
+                    boundary_detector.detect_boundary(epidermis_mask)
+
+                    # 生成 boundary_coords 供視覺化使用
+                    boundary_detector.boundary_coords = [
+                        (y, x) for x, y in boundary_detector.boundary.items()
+                    ]
+
+                    visualizer.set_boundary_detector(boundary_detector)
+                    print("  ✓ 界線檢測器已設定")
+                except Exception as e:
+                    print(f"  ⚠️  界線檢測器設定失敗: {e}")
 
             self._save_outputs(
                 forest=forest,
