@@ -1,0 +1,47 @@
+
+======================================================================
+IENF 神經纖維重建 Pipeline
+======================================================================
+開始時間: 2025-11-14 15:45:41
+原始影像: ./split/S163-2_a_epidermis_correct_12.png
+手動標註: ./data/Label/S163-2_a.tif
+輸出目錄: ./pipeline_res
+中間產物: 不保存（使用臨時目錄）
+
+步驟 1/6: 影像前處理（提取綠色通道）
+----------------------------------------------------------------------
+✓ 提取綠色通道: (1028, 4713)
+
+步驟 2/6: 標註處理（連通元件分析）
+----------------------------------------------------------------------
+✓ 找到 266 個連通元件
+
+步驟 3/6: 骨架化處理
+----------------------------------------------------------------------
+✓ 骨架化完成
+
+步驟 4/6: 種子提取
+----------------------------------------------------------------------
+✓ 提取 506 個種子點
+
+步驟 5/6: 網路建構
+----------------------------------------------------------------------
+
+✗ Pipeline 執行失敗: No module named 'seed_loader'
+Traceback (most recent call last):
+  File "/Users/ponywen/projects/ienf_q/./run_pipeline.py", line 510, in run
+    network_dir = self._build_network(seeds_dir, green_channel_path, working_dir)
+  File "/Users/ponywen/projects/ienf_q/./run_pipeline.py", line 352, in _build_network
+    network_module = _import_module_from_path(
+        "network_builder",
+        project_root / "src" / "03_network_building" / "network_builder.py"
+    )
+  File "/Users/ponywen/projects/ienf_q/./run_pipeline.py", line 56, in _import_module_from_path
+    spec.loader.exec_module(module)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "<frozen importlib._bootstrap_external>", line 1026, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/ponywen/projects/ienf_q/src/03_network_building/network_builder.py", line 12, in <module>
+    from seed_loader import SeedLoader
+ModuleNotFoundError: No module named 'seed_loader'
+✓ 載入配置: config/fast.yaml

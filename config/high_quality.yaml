@@ -1,0 +1,96 @@
+# IENF Quantification Pipeline Configuration - High Quality Profile
+#
+# This profile prioritizes reconstruction quality over processing speed.
+# Use this for final analysis and publication-quality results.
+
+# =============================================================================
+# Stage 02: Seed Extraction - High Quality
+# =============================================================================
+seed_extraction:
+  # Smaller window for more precise curvature detection
+  window_size: 7
+
+  # Shorter segments for more granular seed placement
+  base_segment_length: 8.0
+  max_segment_length: 15.0
+
+  # More sensitive curvature detection
+  curvature_threshold: 25.0
+
+  # Larger skip range to avoid artifacts near branch points
+  skip_branchpoint_range: 7
+
+  min_path_points: 10
+
+# =============================================================================
+# Stage 03: Network Building - High Quality
+# =============================================================================
+network_building:
+  network:
+    # More neighbors for better density estimation
+    k_neighbors: 15
+
+    # Higher threshold to be more permissive initially
+    max_edge_cost: 180.0
+
+    verbose: false
+
+  cost_weights:
+    # Slightly reduced geometric weight for more flexible paths
+    alpha: 0.03
+
+    # Increased image weight for better adherence to actual fibers
+    beta: 0.92
+
+    # Slightly increased curvature penalty
+    gamma: 0.05
+
+  density:
+    # Tighter density thresholds for better local adaptation
+    dense_threshold: 25
+    moderate_threshold: 60
+    dense_radius: 25
+    moderate_radius: 45
+    sparse_radius: 75
+
+  pathfinding:
+    # Allow longer search distances for better path finding
+    max_distance_multiplier: 250
+
+    # Smaller cutoff for more thorough exploration
+    distance_from_start_cutoff: 25
+
+# =============================================================================
+# Stage 04: Neural Reconstruction - High Quality
+# =============================================================================
+reconstruction:
+  # Stricter threshold for final MST selection
+  max_edge_cost: 150
+
+  # Stricter validation
+  min_branch_angle: 35
+  min_quality_threshold: 85
+
+  verbose: true
+
+# =============================================================================
+# Pipeline Configuration
+# =============================================================================
+pipeline:
+  paths:
+    data_dir: "data"
+    output_dir: "output"
+
+  stages:
+    run_seed_extraction: true
+    run_network_building: true
+    run_reconstruction: true
+
+  intermediates:
+    # Save intermediates for high quality analysis
+    save: true
+
+  logging:
+    level: "DEBUG"
+    log_to_file: true
+    log_file: "output/pipeline_high_quality.log"

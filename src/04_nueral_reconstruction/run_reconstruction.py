@@ -7,7 +7,7 @@ python run_reconstruction.py \
     --seeds output/seeds/seeds.json \
     --image test/green_channel.png \
     --output output/reconstruction \
-    --max-cost 150
+    --config config/default.yaml
 """
 
 import argparse
@@ -16,6 +16,10 @@ from pathlib import Path
 
 from reconstruction_runner import ReconstructionRunner, ReconstructionConfig
 
+# Import configuration loader
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from config_loader import load_config, ReconstructionConfig as PydanticReconstructionConfig
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -23,6 +27,15 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 範例:
+  # 使用 YAML 配置文件（推薦）
+  python run_reconstruction.py \\
+      --graph output/network/network.graphml \\
+      --seeds output/seeds/seeds.json \\
+      --image test/green_channel.png \\
+      --output output/reconstruction \\
+      --config config/default.yaml
+
+  # 使用預設參數
   python run_reconstruction.py \\
       --graph output/network/network.graphml \\
       --seeds output/seeds/seeds.json \\
@@ -34,6 +47,14 @@ def main():
   - 種子檔案應來自階段二的輸出
   - 影像應為綠色通道影像
         """
+    )
+
+    # Configuration file
+    parser.add_argument(
+        '--config',
+        type=str,
+        default=None,
+        help='YAML 配置文件路徑（可選，CLI 參數會覆蓋配置文件）'
     )
 
     # 必要參數
@@ -71,22 +92,22 @@ def main():
     parser.add_argument(
         '--max-cost',
         type=float,
-        default=150,
-        help='最大邊成本閾值（預設: 150）'
+        default=None,
+        help='最大邊成本閾值'
     )
 
     parser.add_argument(
         '--min-branch-angle',
         type=float,
-        default=30,
-        help='銳角分支閾值，度數（預設: 30）'
+        default=None,
+        help='銳角分支閾值（度數）'
     )
 
     parser.add_argument(
         '--min-quality',
         type=float,
-        default=80,
-        help='最小路徑質量閾值（預設: 80）'
+        default=None,
+        help='最小路徑質量閾值'
     )
 
     parser.add_argument(
@@ -97,31 +118,51 @@ def main():
 
     args = parser.parse_args()
 
-    # 驗證輸入檔案
-    if not Path(args.graph).exists():
-        print(f"錯誤: 圖檔案不存在: {args.graph}")
-        sys.exit(1)
-
-    if not Path(args.seeds).exists():
-        print(f"錯誤: 種子檔案不存在: {args.seeds}")
-        sys.exit(1)
-
-    if not Path(args.image).exists():
-        print(f"錯誤: 影像檔案不存在: {args.image}")
-        sys.exit(1)
-
-    # 創建配置
-    config = ReconstructionConfig(
-        max_edge_cost=args.max_cost,
-        min_branch_angle=args.min_branch_angle,
-        min_quality_threshold=args.min_quality,
-        verbose=not args.quiet
-    )
-
-    # 創建並執行重建流程
-    runner = ReconstructionRunner(config)
-
     try:
+        # Load configuration from YAML (if provided) or use defaults
+        if args.config:
+            full_config = load_config(args.config)
+            pydantic_config = full_config.reconstruction
+            if not args.quiet:
+                print(f"✓ 載入配置文件: {args.config}")
+        else:
+            # Use default configuration
+            pydantic_config = PydanticReconstructionConfig()
+
+        # Apply CLI overrides (CLI takes precedence over YAML)
+        if args.max_cost is not None:
+            pydantic_config.max_edge_cost = args.max_cost
+        if args.min_branch_angle is not None:
+            pydantic_config.min_branch_angle = args.min_branch_angle
+        if args.min_quality is not None:
+            pydantic_config.min_quality_threshold = args.min_quality
+        if args.quiet:
+            pydantic_config.verbose = False
+
+        # 驗證輸入檔案
+        if not Path(args.graph).exists():
+            print(f"錯誤: 圖檔案不存在: {args.graph}")
+            sys.exit(1)
+
+        if not Path(args.seeds).exists():
+            print(f"錯誤: 種子檔案不存在: {args.seeds}")
+            sys.exit(1)
+
+        if not Path(args.image).exists():
+            print(f"錯誤: 影像檔案不存在: {args.image}")
+            sys.exit(1)
+
+        # Convert pydantic config to dataclass config for ReconstructionRunner
+        config = ReconstructionConfig(
+            max_edge_cost=pydantic_config.max_edge_cost,
+            min_branch_angle=pydantic_config.min_branch_angle,
+            min_quality_threshold=pydantic_config.min_quality_threshold,
+            verbose=pydantic_config.verbose
+        )
+
+        # 創建並執行重建流程
+        runner = ReconstructionRunner(config)
+
         results = runner.run(
             graph_path=args.graph,
             seeds_path=args.seeds,

@@ -27,6 +27,10 @@ from matplotlib.patches import Circle, Rectangle
 from matplotlib.lines import Line2D
 from skimage.color import label2rgb
 
+# Import configuration loader
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from config_loader import load_config, SeedExtractionConfig
+
 
 class PathDecomposer:
     """骨架路徑分解器 - 使用圖論方法將骨架分解為獨立路徑"""
@@ -1117,14 +1121,17 @@ def parse_arguments():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 使用範例:
+  # 使用 YAML 配置文件（推薦）
+  python %(prog)s -i output/skeletons -o output/seeds --config config/default.yaml
+
   # 基本使用（預設參數）
   python %(prog)s -i output/skeletons -o output/seeds
 
   # 完整參數 + 所有視覺化
   python %(prog)s -i output/skeletons -o output/seeds -v --verbose
 
-  # 調整參數
-  python %(prog)s -i output/skeletons --curvature-threshold 25.0 --base-length 15
+  # 調整參數（CLI 覆蓋 YAML）
+  python %(prog)s -i output/skeletons --config config/default.yaml --curvature-threshold 25.0
 
   # 僅生成曲率熱力圖
   python %(prog)s -i output/skeletons --viz-curvature
@@ -1154,6 +1161,14 @@ def parse_arguments():
         """
     )
 
+    # Configuration file
+    parser.add_argument(
+        '--config',
+        type=str,
+        default=None,
+        help='YAML 配置文件路徑（可選，CLI 參數會覆蓋配置文件）'
+    )
+
     # 必填參數
     parser.add_argument(
         '-i', '--input-skeletons',
@@ -1166,46 +1181,46 @@ def parse_arguments():
     parser.add_argument(
         '-o', '--output-dir',
         type=str,
-        default='./output/seeds',
+        default=None,
         help='輸出目錄（預設: ./output/seeds）'
     )
 
     parser.add_argument(
         '--window-size',
         type=int,
-        default=5,
-        help='曲率計算窗口大小（骨架點數，必須是奇數，預設: 5）'
+        default=None,
+        help='曲率計算窗口大小（骨架點數，必須是奇數）'
     )
 
     parser.add_argument(
         '--base-length',
         type=float,
-        default=10.0,
+        default=None,
         metavar='PIXELS',
-        help='基礎分段長度（像素，預設: 10.0）'
+        help='基礎分段長度（像素）'
     )
 
     parser.add_argument(
         '--max-length',
         type=float,
-        default=20.0,
+        default=None,
         metavar='PIXELS',
-        help='防呆最大長度（像素，預設: 20.0）'
+        help='防呆最大長度（像素）'
     )
 
     parser.add_argument(
         '--curvature-threshold',
         type=float,
-        default=30.0,
+        default=None,
         metavar='DEGREES',
-        help='曲率閾值（度數，預設: 30.0）'
+        help='曲率閾值（度數）'
     )
 
     parser.add_argument(
         '--skip-branchpoint',
         type=int,
-        default=5,
-        help='分支點附近跳過範圍（骨架點數，預設: 5）'
+        default=None,
+        help='分支點附近跳過範圍（骨架點數）'
     )
 
     # 視覺化選項
@@ -1244,39 +1259,69 @@ def main():
     """主程式進入點"""
     args = parse_arguments()
 
-    # 參數驗證
-    if args.window_size % 2 == 0:
-        print(f"錯誤: window_size 必須是奇數，但收到 {args.window_size}", file=sys.stderr)
-        return 1
-
-    if args.base_length <= 0 or args.max_length <= 0:
-        print(f"錯誤: base_length 和 max_length 必須大於 0", file=sys.stderr)
-        return 1
-
-    if args.base_length > args.max_length:
-        print(f"警告: base_length ({args.base_length}) > max_length ({args.max_length})")
-
-    # 決定視覺化選項
-    visualize_seeds = args.visualize or args.viz_seeds
-    visualize_overlay = args.visualize or args.viz_overlay
-    visualize_curvature = args.visualize or args.viz_curvature
-
     try:
+        # Load configuration from YAML (if provided) or use defaults
+        if args.config:
+            full_config = load_config(args.config)
+            config = full_config.seed_extraction
+            if args.verbose:
+                print(f"✓ 載入配置文件: {args.config}")
+        else:
+            # Use default configuration
+            config = SeedExtractionConfig()
+
+        # Apply CLI overrides (CLI takes precedence over YAML)
+        overrides = {}
+        if args.window_size is not None:
+            overrides['window_size'] = args.window_size
+        if args.base_length is not None:
+            overrides['base_segment_length'] = args.base_length
+        if args.max_length is not None:
+            overrides['max_segment_length'] = args.max_length
+        if args.curvature_threshold is not None:
+            overrides['curvature_threshold'] = args.curvature_threshold
+        if args.skip_branchpoint is not None:
+            overrides['skip_branchpoint_range'] = args.skip_branchpoint
+
+        # Apply overrides to config
+        for key, value in overrides.items():
+            setattr(config, key, value)
+
+        # Determine output directory
+        output_dir = args.output_dir if args.output_dir else './output/seeds'
+
+        # Validate parameters
+        if config.window_size % 2 == 0:
+            print(f"錯誤: window_size 必須是奇數，但收到 {config.window_size}", file=sys.stderr)
+            return 1
+
+        if config.base_segment_length <= 0 or config.max_segment_length <= 0:
+            print(f"錯誤: base_segment_length 和 max_segment_length 必須大於 0", file=sys.stderr)
+            return 1
+
+        if config.base_segment_length > config.max_segment_length:
+            print(f"警告: base_segment_length ({config.base_segment_length}) > max_segment_length ({config.max_segment_length})")
+
+        # 決定視覺化選項
+        visualize_seeds = args.visualize or args.viz_seeds
+        visualize_overlay = args.visualize or args.viz_overlay
+        visualize_curvature = args.visualize or args.viz_curvature
+
         # 建立種子提取流程
         pipeline = SeedExtractionPipeline(
-            window_size=args.window_size,
-            base_segment_length=args.base_length,
-            max_segment_length=args.max_length,
-            curvature_threshold=args.curvature_threshold,
-            skip_branchpoint_range=args.skip_branchpoint,
-            min_path_points=10,
+            window_size=config.window_size,
+            base_segment_length=config.base_segment_length,
+            max_segment_length=config.max_segment_length,
+            curvature_threshold=config.curvature_threshold,
+            skip_branchpoint_range=config.skip_branchpoint_range,
+            min_path_points=config.min_path_points,
             verbose=args.verbose
         )
 
         # 執行種子提取
         pipeline.process(
             input_dir=args.input_skeletons,
-            output_dir=args.output_dir,
+            output_dir=output_dir,
             visualize_seeds=visualize_seeds,
             visualize_overlay=visualize_overlay,
             visualize_curvature=visualize_curvature

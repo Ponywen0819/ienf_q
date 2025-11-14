@@ -14,7 +14,7 @@ from density_estimator import DensityEstimator
 from cost_calculator import CostCalculator
 from seed_pairing import SeedPairer
 from graph_builder import GraphBuilder
-from visualization import NetworkVisualizer
+from netowk_visualization import NetworkVisualizer
 from pathfinding import ImagePathfinder
 
 
@@ -24,6 +24,19 @@ class NetworkConfig:
     k_neighbors: int = 10
     max_edge_cost: float = 150.0
     verbose: bool = False
+    # Cost weights
+    alpha: float = 0.05
+    beta: float = 0.9
+    gamma: float = 0.05
+    # Density parameters
+    dense_threshold: int = 30
+    moderate_threshold: int = 70
+    dense_radius: int = 30
+    moderate_radius: int = 50
+    sparse_radius: int = 80
+    # Pathfinding parameters
+    max_distance_multiplier: int = 200
+    distance_from_start_cutoff: int = 40
 
 
 class NetworkBuilder:
@@ -41,13 +54,20 @@ class NetworkBuilder:
     
     def __init__(self, config: NetworkConfig):
         self.config = config
-        
+
         # 初始化所有模組 (CostCalculator 將在 build_network 中動態建立)
         self.seed_loader = SeedLoader(verbose=config.verbose)
         self.density_estimator = DensityEstimator(k=config.k_neighbors)
         self.seed_pairer = SeedPairer(verbose=config.verbose)
         self.graph_builder = GraphBuilder(max_edge_cost=config.max_edge_cost)
         self.visualizer = NetworkVisualizer()
+
+        # 設定密度參數
+        self.density_estimator.dense_threshold = config.dense_threshold
+        self.density_estimator.moderate_threshold = config.moderate_threshold
+        self.density_estimator.dense_radius = config.dense_radius
+        self.density_estimator.moderate_radius = config.moderate_radius
+        self.density_estimator.sparse_radius = config.sparse_radius
     
     def build_network(
         self,
@@ -83,7 +103,16 @@ class NetworkBuilder:
 
         # --- 動態建立依賴影像的模組 ---
         pathfinder = ImagePathfinder(green_channel, verbose=self.config.verbose)
-        cost_calculator = CostCalculator(pathfinder, verbose=self.config.verbose)
+        pathfinder.max_distance_multiplier = self.config.max_distance_multiplier
+        pathfinder.distance_from_start_cutoff = self.config.distance_from_start_cutoff
+
+        cost_calculator = CostCalculator(
+            pathfinder,
+            alpha=self.config.alpha,
+            beta=self.config.beta,
+            gamma=self.config.gamma,
+            verbose=self.config.verbose
+        )
         
         # ========== 階段 2: 計算局部密度 ==========
         print("\n[2/6] 計算局部密度...")

@@ -395,43 +395,7 @@ def parse_arguments():
     """解析命令列參數"""
     parser = argparse.ArgumentParser(
         description='神經纖維影像標準化工具 (百分位數標準化)',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-使用範例:
-  # 基本使用 (1%-99% 百分位數標準化)
-  python %(prog)s -i enhanced.png -o normalized.png
-
-  # 自訂百分位數範圍
-  python %(prog)s -i enhanced.png -l 0.5 -u 99.5
-
-  # 顯示視覺化對比
-  python %(prog)s -i enhanced.png -v
-
-  # 完整參數
-  python %(prog)s -i data/green_enhanced.png -o data/green_normalized.png -l 1.0 -u 99.0 -v --save-histogram
-
-參數說明:
-  百分位數範圍:
-    - lower-percentile (下界): 通常設為 0.5-2.0，用於去除過暗區域
-    - upper-percentile (上界): 通常設為 98.0-99.5，用於去除過亮區域
-    - 較寬的範圍 (如 0.1%-99.9%) 保留更多細節但可能包含雜訊
-    - 較窄的範圍 (如 2%-98%) 更激進地去除極端值
-
-  輸出範圍:
-    - 預設映射到 [0, 255] (標準 8-bit 灰階)
-    - 可根據後續處理需求調整
-
-處理流程:
-  1. 計算指定百分位數 → 確定有效動態範圍
-  2. 裁剪極端值 → 去除異常像素
-  3. 線性映射 → 統一到目標範圍
-
-注意事項:
-  - 輸入影像必須是單通道灰階影像
-  - 建議在 CLAHE 增強後使用
-  - 標準化後的影像可直接用於種子點提取
-        """
-    )
+        formatter_class=argparse.RawDescriptionHelpFormatter,)
 
     # 必填參數
     parser.add_argument(
