@@ -332,16 +332,18 @@ wheels = [
 [[package]]
 name = "ienf-q"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "flask" },
     { name = "flask-cors" },
     { name = "huggingface-hub" },
     { name = "matplotlib" },
+    { name = "networkx" },
     { name = "numpy" },
     { name = "opencv-python" },
     { name = "pandas" },
     { name = "pillow" },
+    { name = "pyyaml" },
     { name = "scikit-image" },
     { name = "scikit-learn" },
     { name = "scipy" },
@@ -354,10 +356,12 @@ requires-dist = [
     { name = "flask-cors", specifier = ">=6.0.1" },
     { name = "huggingface-hub", specifier = ">=0.34.4" },
     { name = "matplotlib", specifier = ">=3.10.6" },
+    { name = "networkx", specifier = ">=3.0" },
     { name = "numpy", specifier = ">=2.3.2" },
     { name = "opencv-python", specifier = ">=4.11.0.86" },
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "pillow", specifier = ">=11.3.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "scikit-image", specifier = ">=0.25.2" },
     { name = "scikit-learn", specifier = ">=1.7.1" },
     { name = "scipy", specifier = ">=1.16.1" },

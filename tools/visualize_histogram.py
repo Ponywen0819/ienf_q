@@ -481,45 +481,7 @@ def main():
     parser = argparse.ArgumentParser(
         description='視覺化影像強度直方圖',
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-範例:
-  # 基本直方圖
-  python visualize_histogram.py \\
-      --input image.tif \\
-      --output histogram.png
-
-  # 詳細直方圖分析
-  python visualize_histogram.py \\
-      --input image.tif \\
-      --output-dir output/histogram/ \\
-      --detailed
-
-  # 影像與直方圖並排
-  python visualize_histogram.py \\
-      --input image.tif \\
-      --output histogram_with_image.png \\
-      --with-image
-
-  # 完整分析（所有視覺化 + 統計報告）
-  python visualize_histogram.py \\
-      --input image.tif \\
-      --output-dir output/histogram/ \\
-      --detailed \\
-      --with-image \\
-      --statistics
-
-  # 自訂 bins 數量
-  python visualize_histogram.py \\
-      --input image.tif \\
-      --output histogram.png \\
-      --bins 128
-
-  # 排除黑色像素 (強度值為 0)
-  python visualize_histogram.py \\
-      --input image.tif \\
-      --output histogram.png \\
-      --exclude-zero
-        """
+       
     )
 
     # 必要參數

@@ -1,20 +1,23 @@
 """
-Boundary Crossing Analysis Module
+Boundary Crossing Module - Epidermis-Dermis Neural Connection
 
-This module provides functionality to detect and analyze nerve fibers
-crossing the epidermis-dermis boundary.
+This module connects epidermis and dermis nerve reconstructions by:
+1. Identifying boundary-proximal nodes in each component
+2. Computing optimal connections using A* pathfinding
+3. Matching epidermis components to dermis components
+4. Merging MST forests with crossing edges
 """
 
-from .config import CROSSING_CONFIG
-from .statistics_builder import EpidermisStatisticsBuilder
+from .boundary_connector import BoundaryConnector
 from .boundary_detector import BoundaryDetector
-from .crossing_analyzer import CrossingAnalyzer
-from .visualizer import CrossingVisualizer
+from .component_analyzer import ComponentAnalyzer
+from .connection_optimizer import ConnectionOptimizer
+from .forest_merger import ForestMerger
 
 __all__ = [
-    'CROSSING_CONFIG',
-    'EpidermisStatisticsBuilder',
+    'BoundaryConnector',
     'BoundaryDetector',
-    'CrossingAnalyzer',
-    'CrossingVisualizer',
+    'ComponentAnalyzer',
+    'ConnectionOptimizer',
+    'ForestMerger',
 ]

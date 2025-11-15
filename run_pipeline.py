@@ -31,7 +31,6 @@ import sys
 import logging
 import shutil
 import tempfile
-import importlib.util
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any
@@ -47,39 +46,16 @@ if str(project_root) not in sys.path:
 # Import configuration loader
 from src.config_loader import load_config, IENFConfig
 
+# Import pipeline modules
+from src.seed_extraction.skeletonization import SkeletonAnalyzer
+from src.seed_extraction.seed_extraction import SeedExtractionPipeline
+from src.network_building.network_builder import NetworkBuilder, NetworkConfig
+from src.nueral_reconstruction.reconstruction_runner import (
+    ReconstructionRunner,
+    ReconstructionConfig
+)
 
-def _import_module_from_path(module_name: str, file_path: Path):
-    """動態導入模組（支援數字開頭的目錄名）"""
-    # 將模組所在目錄添加到 sys.path 最前面，以支援相對導入
-    # 並確保優先於其他已添加的目錄
-    module_dir = str(file_path.parent)
 
-    # 如果已經在 sys.path 中，先移除
-    if module_dir in sys.path:
-        sys.path.remove(module_dir)
-
-    # 添加到最前面
-    sys.path.insert(0, module_dir)
-
-    # 清除可能已緩存的相關模組（避免模組名稱衝突）
-    modules_to_clear = []
-    for key in sys.modules:
-        # 不清除主模組本身和標準庫模組
-        if key == module_name or key.startswith('_') or '.' not in key:
-            continue
-        # 清除可能衝突的模組（如 visualization, mst_builder 等）
-        if key in ['visualization', 'mst_builder', 'seed_loader', 'cost_calculator',
-                   'density_estimator', 'pathfinding', 'seed_pairing', 'graph_builder']:
-            modules_to_clear.append(key)
-
-    for key in modules_to_clear:
-        del sys.modules[key]
-
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 class IENFPipeline:
@@ -275,13 +251,6 @@ class IENFPipeline:
         self.logger.info("步驟 3/6: 骨架化處理")
         self.logger.info("-" * 70)
 
-        # 動態導入 skeletonization 模組
-        skeleton_module = _import_module_from_path(
-            "skeletonization",
-            project_root / "src" / "02_seed_extraction" / "skeletonization.py"
-        )
-        SkeletonAnalyzer = skeleton_module.SkeletonAnalyzer
-
         skeletons_dir = working_dir / "skeletons"
         skeletons_dir.mkdir(exist_ok=True)
 
@@ -321,13 +290,6 @@ class IENFPipeline:
         """
         self.logger.info("步驟 4/6: 種子提取")
         self.logger.info("-" * 70)
-
-        # 動態導入 seed_extraction 模組
-        seed_module = _import_module_from_path(
-            "seed_extraction",
-            project_root / "src" / "02_seed_extraction" / "seed_extraction.py"
-        )
-        SeedExtractionPipeline = seed_module.SeedExtractionPipeline
 
         seeds_dir = working_dir / "seeds"
 
@@ -372,14 +334,6 @@ class IENFPipeline:
         """
         self.logger.info("步驟 5/6: 網路建構")
         self.logger.info("-" * 70)
-
-        # 動態導入 network_building 模組
-        network_module = _import_module_from_path(
-            "network_builder",
-            project_root / "src" / "03_network_building" / "network_builder.py"
-        )
-        NetworkBuilder = network_module.NetworkBuilder
-        NetworkConfig = network_module.NetworkConfig
 
         network_dir = working_dir / "network"
         seeds_json = seeds_dir / "seeds.json"
@@ -438,14 +392,6 @@ class IENFPipeline:
         """
         self.logger.info("步驟 6/6: 神經重建")
         self.logger.info("-" * 70)
-
-        # 動態導入 reconstruction 模組
-        recon_module = _import_module_from_path(
-            "reconstruction_runner",
-            project_root / "src" / "04_nueral_reconstruction" / "reconstruction_runner.py"
-        )
-        ReconstructionRunner = recon_module.ReconstructionRunner
-        ReconstructionConfig = recon_module.ReconstructionConfig
 
         network_graphml = network_dir / "network.graphml"
         seeds_json = seeds_dir / "seeds.json"
@@ -576,43 +522,7 @@ def main():
     """主程式入口"""
     parser = argparse.ArgumentParser(
         description='IENF 神經纖維重建完整流程',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-使用範例:
-  # 基本使用
-  python run_pipeline.py \\
-      --image data/original_image.png \\
-      --annotation data/manual_annotation.png \\
-      --output output/reconstruction
-
-  # 使用高品質配置
-  python run_pipeline.py \\
-      --image data/original_image.png \\
-      --annotation data/manual_annotation.png \\
-      --output output/reconstruction \\
-      --config config/high_quality.yaml
-
-  # 保存中間產物（用於除錯）
-  python run_pipeline.py \\
-      --image data/original_image.png \\
-      --annotation data/manual_annotation.png \\
-      --output output/reconstruction \\
-      --save-intermediates
-
-  # 覆蓋配置參數
-  python run_pipeline.py \\
-      --image data/original_image.png \\
-      --annotation data/manual_annotation.png \\
-      --output output/reconstruction \\
-      --config config/default.yaml \\
-      --curvature-threshold 28
-
-說明:
-  - 輸入：原始影像（RGB/灰階）+ 手動標註影像（二值化）
-  - 自動執行：前處理 → 連通元件 → 骨架化 → 種子提取 → 網路建構 → 重建
-  - 輸出：只包含最終的重建結果（MST 森林、視覺化）
-  - 中間產物：預設不保存，使用臨時目錄自動清理
-        """
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
     # 必要參數

@@ -52,11 +52,11 @@ network_building:
   # Density-based adaptive pairing radius
   density:
     # Local density thresholds and corresponding radii (pixels)
-    dense_threshold: 30      # density < 30px → radius = 30px
-    moderate_threshold: 70   # 30px ≤ density < 70px → radius = 50px
+    dense_threshold: 30 # density < 30px → radius = 30px
+    moderate_threshold: 70 # 30px ≤ density < 70px → radius = 50px
     dense_radius: 30
     moderate_radius: 50
-    sparse_radius: 80        # density ≥ 70px → radius = 80px
+    sparse_radius: 80 # density ≥ 70px → radius = 80px
 
   # A* pathfinding parameters
   pathfinding:
@@ -83,6 +83,27 @@ reconstruction:
   verbose: true
 
 # =============================================================================
+# Stage 05: Boundary Crossing (Epidermis-Dermis Connection)
+# =============================================================================
+boundary_crossing:
+  # Boundary detection parameters
+  boundary_tolerance: 10  # Distance tolerance for boundary proximity (pixels)
+
+  # Connection parameters
+  max_crossing_distance: 100  # Maximum distance for boundary crossing (pixels)
+
+  # Cost calculation (uses image cost only via A* pathfinding)
+  use_image_cost_only: true
+
+  # Output options
+  save_merged_forest: true
+  save_crossing_details: true
+  generate_visualizations: false  # Set to true to generate plots
+
+  # Display detailed progress during processing
+  verbose: true
+
+# =============================================================================
 # Pipeline Configuration
 # =============================================================================
 pipeline:
@@ -96,15 +117,16 @@ pipeline:
     run_seed_extraction: true
     run_network_building: true
     run_reconstruction: true
+    run_boundary_crossing: false  # Epidermis-dermis connection (requires separate runs)
 
   # Intermediate files management
   intermediates:
     # Whether to save intermediate outputs (seeds, network)
     # If false, uses temporary directory and cleans up after completion
-    save: false
+    save: true
 
   # Logging configuration
   logging:
-    level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+    level: "INFO" # DEBUG, INFO, WARNING, ERROR
     log_to_file: true
     log_file: "output/pipeline.log"

@@ -1,0 +1,30 @@
+============================================================
+EPIDERMIS-DERMIS CONNECTION STATISTICS
+============================================================
+
+Generated: 2025-11-15 14:20:56
+
+MATCHING RESULTS
+------------------------------------------------------------
+Total connections:        31
+Unique dermis components: 13
+Dermis with multiple:     8
+
+COST STATISTICS
+------------------------------------------------------------
+Average cost:  19.51
+Median cost:   12.20
+Std deviation: 16.68
+Min cost:      3.37
+Max cost:      62.23
+
+DERMIS COMPONENTS WITH MULTIPLE EPIDERMIS CONNECTIONS
+------------------------------------------------------------
+Dermis 75: 6 epidermis components [239, 241, 243, 247, 252, 254]
+Dermis 53: 5 epidermis components [167, 168, 173, 174, 175]
+Dermis 2: 4 epidermis components [64, 65, 67, 69]
+Dermis 68: 3 epidermis components [222, 223, 227]
+Dermis 10: 2 epidermis components [72, 74]
+Dermis 27: 2 epidermis components [122, 125]
+Dermis 57: 2 epidermis components [180, 181]
+Dermis 87: 2 epidermis components [232, 251]

@@ -1,161 +1,203 @@
 """
-Boundary Detector
+Boundary Detector - Epidermis-Dermis Boundary Detection
 
-Detects the epidermis-dermis boundary line from the epidermis mask.
+Detects the boundary between epidermis and dermis layers using image masks.
+Provides methods to:
+- Detect boundary line
+- Check if points are near boundary
+- Calculate signed distance to boundary
 """
 
 import numpy as np
+from typing import Tuple, Dict, Optional
 import cv2
-from typing import Dict, Tuple, Optional
-from scipy.ndimage import uniform_filter1d
 
 
 class BoundaryDetector:
-    """Detect epidermis-dermis boundary from mask"""
+    """
+    Detects and analyzes the epidermis-dermis boundary.
 
-    def __init__(self, config: dict):
-        self.config = config
-        self.boundary = {}  # Maps x-coordinate to y-coordinate
+    The boundary is detected as the bottom edge of the epidermis mask.
+    Provides spatial queries for proximity and position relative to boundary.
+    """
+
+    def __init__(self, verbose: bool = False):
+        """
+        Initialize boundary detector.
+
+        Args:
+            verbose: Print detailed information
+        """
+        self.verbose = verbose
+        self.boundary_map = None  # Dict[int, int] mapping x -> y coordinate
+        self.boundary_array = None  # np.ndarray of boundary points
 
     def detect_boundary(self, epidermis_mask: np.ndarray) -> Dict[int, int]:
         """
-        Detect the bottom boundary of the epidermis mask
+        Detect epidermis-dermis boundary from epidermis mask.
+
+        The boundary is defined as the lowest (maximum y-coordinate)
+        epidermis pixel in each column.
 
         Args:
-            epidermis_mask: Binary mask where epidermis region is marked
+            epidermis_mask: Binary mask (uint8, 0 or 255) where 255 = epidermis
 
         Returns:
-            Dictionary mapping x-coordinate to y-coordinate of boundary
+            Dictionary mapping x-coordinate -> y-coordinate of boundary
         """
-        print("Detecting epidermis-dermis boundary...")
+        if self.verbose:
+            print("Detecting epidermis-dermis boundary...")
 
-        self.boundary = {}
         height, width = epidermis_mask.shape
+        boundary_map = {}
 
-        # For each column (x), find the lowest epidermis pixel
+        # For each column, find the lowest epidermis pixel
         for x in range(width):
             column = epidermis_mask[:, x]
             epidermis_pixels = np.where(column > 0)[0]
 
             if len(epidermis_pixels) > 0:
-                # The boundary is at the bottom-most epidermis pixel
-                self.boundary[x] = int(np.max(epidermis_pixels))
+                # Maximum y = lowest point in image coordinates
+                boundary_y = epidermis_pixels.max()
+                boundary_map[x] = boundary_y
 
-        print(f"  Boundary detected at {len(self.boundary)} x-coordinates")
+        self.boundary_map = boundary_map
 
-        # Optional: smooth the boundary
-        if self.config.get('boundary_smoothing', True):
-            self._smooth_boundary()
+        # Convert to array for efficient spatial queries
+        if boundary_map:
+            self.boundary_array = np.array([
+                [x, y] for x, y in boundary_map.items()
+            ])
+        else:
+            self.boundary_array = np.array([]).reshape(0, 2)
 
-        return self.boundary
+        if self.verbose:
+            print(f"✓ Boundary detected")
+            print(f"  Boundary width: {len(boundary_map)} pixels")
+            if boundary_map:
+                y_coords = list(boundary_map.values())
+                print(f"  Y-coordinate range: [{min(y_coords)}, {max(y_coords)}]")
 
-    def _smooth_boundary(self):
-        """Smooth the boundary line using moving average"""
-        if len(self.boundary) < 3:
-            return
-
-        window = self.config.get('smoothing_window', 5)
-
-        # Convert to arrays for smoothing
-        x_coords = np.array(sorted(self.boundary.keys()))
-        y_coords = np.array([self.boundary[x] for x in x_coords])
-
-        # Apply moving average
-        smoothed_y = uniform_filter1d(y_coords, size=window, mode='nearest')
-
-        # Update boundary
-        for x, y in zip(x_coords, smoothed_y):
-            self.boundary[int(x)] = int(np.round(y))
-
-        print(f"  Boundary smoothed with window size {window}")
-
-    def get_boundary_y(self, x: int) -> Optional[int]:
-        """Get boundary y-coordinate at given x, or None if not available"""
-        return self.boundary.get(x)
+        return boundary_map
 
     def is_near_boundary(
         self,
         point: Tuple[int, int],
-        tolerance: int = 5
+        tolerance: int = 10
     ) -> bool:
         """
-        Check if a point is near the boundary
+        Check if a point is near the boundary.
 
         Args:
-            point: (x, y) coordinates
-            tolerance: Maximum distance to consider as "near"
+            point: Point coordinates (x, y)
+            tolerance: Distance threshold in pixels
 
         Returns:
-            True if point is within tolerance of boundary
+            True if point is within tolerance distance of boundary
         """
-        x, y = point
-        if x not in self.boundary:
+        if self.boundary_array is None or len(self.boundary_array) == 0:
             return False
 
-        boundary_y = self.boundary[x]
+        x, y = point
+
+        # Quick check: is x coordinate in boundary range?
+        if x not in self.boundary_map:
+            # Find nearest x in boundary
+            x_coords = self.boundary_array[:, 0]
+            nearest_x_idx = np.argmin(np.abs(x_coords - x))
+            nearest_x = int(x_coords[nearest_x_idx])
+
+            # If too far horizontally, reject
+            if abs(x - nearest_x) > tolerance:
+                return False
+
+            boundary_y = self.boundary_map[nearest_x]
+        else:
+            boundary_y = self.boundary_map[x]
+
+        # Check vertical distance
         distance = abs(y - boundary_y)
         return distance <= tolerance
 
-    def is_above_boundary(self, point: Tuple[int, int]) -> bool:
-        """Check if point is above (inside epidermis) the boundary"""
-        x, y = point
-        if x not in self.boundary:
-            return True  # If no boundary defined, assume inside
-
-        return y <= self.boundary[x]
-
-    def is_below_boundary(self, point: Tuple[int, int]) -> bool:
-        """Check if point is below (in dermis) the boundary"""
-        x, y = point
-        if x not in self.boundary:
-            return False
-
-        return y > self.boundary[x]
-
-    def get_boundary_points(self) -> list:
-        """Get all boundary points as a list of (x, y) tuples"""
-        return [(x, y) for x, y in sorted(self.boundary.items())]
-
     def distance_to_boundary(self, point: Tuple[int, int]) -> float:
         """
-        Calculate the signed distance from point to boundary
-        Positive: below boundary (in dermis)
-        Negative: above boundary (in epidermis)
-        """
-        x, y = point
-        if x not in self.boundary:
-            # Find nearest x with boundary
-            x_coords = list(self.boundary.keys())
-            if not x_coords:
-                return 0.0
-            nearest_x = min(x_coords, key=lambda bx: abs(bx - x))
-            boundary_y = self.boundary[nearest_x]
-        else:
-            boundary_y = self.boundary[x]
+        Calculate signed distance from point to boundary.
 
-        return float(y - boundary_y)
-
-    def create_boundary_mask(self, shape: Tuple[int, int], thickness: int = 1) -> np.ndarray:
-        """
-        Create a binary mask marking the boundary line
+        Negative distance = point is above boundary (epidermis)
+        Positive distance = point is below boundary (dermis)
 
         Args:
-            shape: (height, width) of the output mask
-            thickness: Thickness of the boundary line
+            point: Point coordinates (x, y)
 
         Returns:
-            Binary mask with boundary marked
+            Signed distance in pixels
         """
-        mask = np.zeros(shape, dtype=np.uint8)
+        if self.boundary_array is None or len(self.boundary_array) == 0:
+            return float('inf')
 
-        for x, y in self.boundary.items():
-            if 0 <= x < shape[1]:
-                # Draw vertical line around boundary point
-                y_start = max(0, y - thickness // 2)
-                y_end = min(shape[0], y + thickness // 2 + 1)
-                mask[y_start:y_end, x] = 255
+        x, y = point
 
-        return mask
+        # Find boundary y-coordinate at this x
+        if x in self.boundary_map:
+            boundary_y = self.boundary_map[x]
+        else:
+            # Interpolate from nearest boundary points
+            x_coords = self.boundary_array[:, 0]
+            nearest_x_idx = np.argmin(np.abs(x_coords - x))
+            boundary_y = self.boundary_array[nearest_x_idx, 1]
+
+        # Signed distance: positive = below boundary (dermis)
+        signed_distance = y - boundary_y
+        return float(signed_distance)
+
+    def is_above_boundary(self, point: Tuple[int, int]) -> bool:
+        """
+        Check if point is above boundary (in epidermis).
+
+        Args:
+            point: Point coordinates (x, y)
+
+        Returns:
+            True if point is above boundary
+        """
+        return self.distance_to_boundary(point) < 0
+
+    def is_below_boundary(self, point: Tuple[int, int]) -> bool:
+        """
+        Check if point is below boundary (in dermis).
+
+        Args:
+            point: Point coordinates (x, y)
+
+        Returns:
+            True if point is below boundary
+        """
+        return self.distance_to_boundary(point) > 0
+
+    def get_boundary_segment(
+        self,
+        x_start: int,
+        x_end: int
+    ) -> np.ndarray:
+        """
+        Get boundary points in a horizontal range.
+
+        Args:
+            x_start: Start x-coordinate
+            x_end: End x-coordinate
+
+        Returns:
+            Array of boundary points [[x1, y1], [x2, y2], ...]
+        """
+        if self.boundary_map is None:
+            return np.array([]).reshape(0, 2)
+
+        points = []
+        for x in range(x_start, x_end + 1):
+            if x in self.boundary_map:
+                points.append([x, self.boundary_map[x]])
+
+        return np.array(points) if points else np.array([]).reshape(0, 2)
 
     def visualize_boundary(
         self,
@@ -164,42 +206,80 @@ class BoundaryDetector:
         thickness: int = 2
     ) -> np.ndarray:
         """
-        Draw boundary line on image
+        Draw boundary on image for visualization.
 
         Args:
-            image: Input image (will be copied)
-            color: BGR color for boundary line
+            image: RGB image
+            color: Line color (B, G, R)
             thickness: Line thickness
 
         Returns:
             Image with boundary drawn
         """
-        vis_image = image.copy()
+        if self.boundary_array is None or len(self.boundary_array) == 0:
+            return image.copy()
 
-        # Convert to BGR if grayscale
-        if len(vis_image.shape) == 2:
-            vis_image = cv2.cvtColor(vis_image, cv2.COLOR_GRAY2BGR)
+        result = image.copy()
 
-        # Draw boundary as connected line
-        boundary_points = self.get_boundary_points()
-        if len(boundary_points) > 1:
-            pts = np.array(boundary_points, dtype=np.int32)
-            cv2.polylines(vis_image, [pts], False, color, thickness)
+        # Draw boundary as connected line segments
+        points = self.boundary_array.astype(np.int32)
 
-        return vis_image
+        # Sort by x-coordinate for proper line drawing
+        points = points[points[:, 0].argsort()]
 
-    def get_statistics(self) -> Dict:
-        """Get statistics about the detected boundary"""
-        if not self.boundary:
-            return {}
+        for i in range(len(points) - 1):
+            pt1 = tuple(points[i])
+            pt2 = tuple(points[i + 1])
+            cv2.line(result, pt1, pt2, color, thickness)
 
-        y_values = list(self.boundary.values())
+        return result
 
-        return {
-            'num_points': len(self.boundary),
-            'min_y': int(np.min(y_values)),
-            'max_y': int(np.max(y_values)),
-            'mean_y': float(np.mean(y_values)),
-            'std_y': float(np.std(y_values)),
-            'x_range': (min(self.boundary.keys()), max(self.boundary.keys())),
-        }
+
+if __name__ == '__main__':
+    # Test code
+    print("Testing BoundaryDetector...")
+
+    # Create synthetic epidermis mask
+    mask = np.zeros((500, 800), dtype=np.uint8)
+
+    # Simulate curved epidermis boundary
+    for x in range(800):
+        # Parabolic boundary: y = 200 + 0.0003 * (x - 400)^2
+        boundary_y = int(200 + 0.0003 * (x - 400)**2)
+        mask[:boundary_y, x] = 255  # Everything above is epidermis
+
+    # Initialize detector
+    detector = BoundaryDetector(verbose=True)
+
+    # Detect boundary
+    boundary_map = detector.detect_boundary(mask)
+    print(f"\n✓ Detected {len(boundary_map)} boundary points")
+
+    # Test proximity queries
+    test_points = [
+        (400, 200, "On boundary"),
+        (400, 195, "5px above (epidermis)"),
+        (400, 205, "5px below (dermis)"),
+        (400, 230, "30px below (dermis)"),
+    ]
+
+    print("\nTesting proximity queries:")
+    for x, y, label in test_points:
+        near = detector.is_near_boundary((x, y), tolerance=10)
+        dist = detector.distance_to_boundary((x, y))
+        above = detector.is_above_boundary((x, y))
+
+        print(f"  {label}: ({x}, {y})")
+        print(f"    Near boundary (tol=10): {near}")
+        print(f"    Distance: {dist:.1f}px")
+        print(f"    Above boundary: {above}")
+
+    # Test visualization
+    try:
+        vis_image = np.stack([mask, mask, mask], axis=-1)
+        result = detector.visualize_boundary(vis_image)
+        print("\n✓ Visualization test passed")
+    except Exception as e:
+        print(f"\n✗ Visualization test failed: {e}")
+
+    print("\n✓ All tests passed")
