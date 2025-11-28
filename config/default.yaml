@@ -1,132 +1,29 @@
 # IENF Quantification Pipeline Configuration
-# This file contains all hyperparameters for stages 02, 03, and 04
+# This file contains configuration for currently implemented pipeline stages
+
+# =============================================================================
+# Stage 01: Connected Components Analysis
+# =============================================================================
+connected_components:
+  # Connectivity type for component detection
+  connectivity: 4 # 4 or 8
+
+  # Minimum component area filter (pixels)
+  min_area: 0
 
 # =============================================================================
 # Stage 02: Seed Extraction
 # =============================================================================
 seed_extraction:
-  # Curvature calculation window size (skeleton points, must be odd)
-  window_size: 5
-
-  # Base segmentation length (pixels)
-  base_segment_length: 10.0
-
-  # Failsafe maximum segment length (pixels)
-  max_segment_length: 20.0
-
-  # Curvature threshold (degrees) - triggers seed placement at bends
-  curvature_threshold: 30.0
-
-  # Skip range around branch points (skeleton points)
-  skip_branchpoint_range: 5
-
-  # Minimum path points for processing
-  min_path_points: 10
+  # Base segmentation length for uniform seed placement (pixels)
+  base_segment_length: 5
 
 # =============================================================================
-# Stage 03: Network Building
+# Stage 03: Component Pairing Analysis
 # =============================================================================
-network_building:
-  # General network configuration
-  network:
-    # Number of neighbors for local density estimation
-    k_neighbors: 10
+component_pairing:
+  # Maximum distance threshold (pixels) - component pairs beyond this distance are skipped
+  max_distance_threshold: 50
 
-    # Maximum edge cost threshold (edges above this are rejected)
-    max_edge_cost: 150.0
-
-    # Display detailed information during processing
-    verbose: false
-
-  # Cost calculation weights (must sum to ~1.0)
-  cost_weights:
-    # Geometric cost weight (Euclidean distance)
-    alpha: 0.05
-
-    # Image cost weight (A* pathfinding on green channel)
-    beta: 0.9
-
-    # Curvature cost weight (tortuosity penalty)
-    gamma: 0.05
-
-  # Density-based adaptive pairing radius
-  density:
-    # Local density thresholds and corresponding radii (pixels)
-    dense_threshold: 30 # density < 30px → radius = 30px
-    moderate_threshold: 70 # 30px ≤ density < 70px → radius = 50px
-    dense_radius: 30
-    moderate_radius: 50
-    sparse_radius: 80 # density ≥ 70px → radius = 80px
-
-  # A* pathfinding parameters
-  pathfinding:
-    # Maximum search distance multiplier (relative to straight-line distance)
-    max_distance_multiplier: 200
-
-    # Early termination distance from start (pixels)
-    distance_from_start_cutoff: 30
-
-# =============================================================================
-# Stage 04: Neural Reconstruction
-# =============================================================================
-reconstruction:
-  # MST edge cost threshold (reject edges above this)
-  max_edge_cost: 150
-
-  # Sharp branch angle threshold for validation (degrees)
-  min_branch_angle: 30
-
-  # Minimum path quality threshold for validation
-  min_quality_threshold: 80
-
-  # Display detailed progress during processing
-  verbose: true
-
-# =============================================================================
-# Stage 05: Boundary Crossing (Epidermis-Dermis Connection)
-# =============================================================================
-boundary_crossing:
-  # Boundary detection parameters
-  boundary_tolerance: 10  # Distance tolerance for boundary proximity (pixels)
-
-  # Connection parameters
-  max_crossing_distance: 100  # Maximum distance for boundary crossing (pixels)
-
-  # Cost calculation (uses image cost only via A* pathfinding)
-  use_image_cost_only: true
-
-  # Output options
-  save_merged_forest: true
-  save_crossing_details: true
-  generate_visualizations: false  # Set to true to generate plots
-
-  # Display detailed progress during processing
-  verbose: true
-
-# =============================================================================
-# Pipeline Configuration
-# =============================================================================
-pipeline:
-  # Input/output paths (can use environment variables: ${VAR_NAME})
-  paths:
-    data_dir: "data"
-    output_dir: "output"
-
-  # Stages to run (set to false to skip)
-  stages:
-    run_seed_extraction: true
-    run_network_building: true
-    run_reconstruction: true
-    run_boundary_crossing: false  # Epidermis-dermis connection (requires separate runs)
-
-  # Intermediate files management
-  intermediates:
-    # Whether to save intermediate outputs (seeds, network)
-    # If false, uses temporary directory and cleans up after completion
-    save: true
-
-  # Logging configuration
-  logging:
-    level: "INFO" # DEBUG, INFO, WARNING, ERROR
-    log_to_file: true
-    log_file: "output/pipeline.log"
+  # Maximum path cost threshold - connections exceeding this cost are rejected
+  max_cost_threshold: 190

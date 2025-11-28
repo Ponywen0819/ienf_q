@@ -1,13 +1,47 @@
 """
-階段四：MST 神經纖維重建
+神經重建模組 (Neural Reconstruction Module)
 
-從階段三建構的連接圖中提取最優神經網絡拓撲
+提供神經纖維重建的各種功能模組
 """
 
+from .connected_components import ConnectedComponentsAnalyzer
+from .skeletonization import SkeletonAnalyzer
+from .seed_extraction import SkeletonTopologyBuilder, EdgeSeedExtractor
+from .component_pairing import ComponentPairAnalyzer
+from .graph_builder import ComponentGraphBuilder
 from .mst_builder import MSTBuilder
-from .reconstruction_runner import ReconstructionRunner
+from .pipeline import NeuralReconstructionPipeline
+from .config_loader import (
+    load_config,
+    IENFConfig,
+    NeuralReconstructionConfig,
+    ConnectedComponentsConfig,
+    SeedExtractionConfig,
+    ComponentPairingConfig,
+    NetworkBuildingConfig,
+    MSTReconstructionConfig,
+)
 
 __all__ = [
+    # Core pipeline
+    'NeuralReconstructionPipeline',
+
+    # Individual modules
+    'ConnectedComponentsAnalyzer',
+    'SkeletonAnalyzer',
+    'SkeletonTopologyBuilder',
+    'EdgeSeedExtractor',
+    'ComponentPairAnalyzer',
+    'ComponentGraphBuilder',
     'MSTBuilder',
-    'ReconstructionRunner',
+
+    # Configuration
+    'load_config',
+    'IENFConfig',
+    'NeuralReconstructionConfig',
+    'ConnectedComponentsConfig',
+    'SeedExtractionConfig',
+    'ComponentPairingConfig',
+    'NetworkBuildingConfig',
+    'MSTReconstructionConfig',
 ]
