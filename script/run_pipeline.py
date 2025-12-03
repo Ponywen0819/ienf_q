@@ -6,11 +6,11 @@ from nueral_reconstruction.config_loader import load_config, IENFConfig
 import logging
 logging.basicConfig(level=logging.INFO)
 import os
-import parse
+import argparse
 
 if __name__ == "__main__":
     # Example usage
-    parse = parse.ArgumentParser(description="Run Skin Analysis and Neural Reconstruction Pipeline")
+    parse = argparse.ArgumentParser(description="Run Skin Analysis and Neural Reconstruction Pipeline")
     parse.add_argument('--label_image', type=str, required=True, help='Path to the label image')
     parse.add_argument('--epidermis_mask', type=str, required=True, help='Path to the epidermis mask image')
     parse.add_argument('--original_image', type=str, required=True, help='Path to the original image')
@@ -22,7 +22,8 @@ if __name__ == "__main__":
     # Load example images (replace with actual paths)
     label_image = cv2.imread(args.label_image, cv2.IMREAD_GRAYSCALE)
     epidermis_mask = cv2.imread(args.epidermis_mask, cv2.IMREAD_GRAYSCALE)
-    original_image = cv2.imread(args.original_image, cv2.IMREAD_GRAYSCALE)
+    original_image = cv2.imread(args.original_image, cv2.IMREAD_UNCHANGED)
+    original_green_image = original_image[:, :, 1]
     
     config = {
         'morphology': {'closing_kernel': 3, 'opening_kernel': 3},
@@ -39,7 +40,7 @@ if __name__ == "__main__":
 
     # Initialize and run pipeline
     pipeline = SkinAnalysisPipeline(config=config)
-    final_label, roi_image = pipeline.run(label_image, epidermis_mask, original_image)
+    final_label, roi_image = pipeline.run(label_image, epidermis_mask, original_green_image)
 
     # Initialize and run neural reconstruction pipeline
     neural_pipeline = NeuralReconstructionPipeline(config=reconstruct_config)
@@ -72,4 +73,4 @@ if __name__ == "__main__":
                 f.write(f"{edge['path']}\n")
 
 
-    
+# ./script/run_pipeline.py --label_image /Users/ponywen/projects/ienf_q/data/Label/S163-2_a.tif --epidermis_mask /Users/ponywen/projects/ienf_q/data/Mask/S163-2_a.tif --original_image /Users/ponywen/projects/ienf_q/data/Original/S163-2_a.tif --output_dir ./exe_test
