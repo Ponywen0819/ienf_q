@@ -224,7 +224,7 @@ class ComponentPairAnalyzer:
 
         max_cost = self.pathfinder._cost_function(255) * distance
         # ========== 步驟 5: 根據成本閾值判斷是否連接 ==========
-        should_connect = cost <= (max_cost * 0.98)
+        should_connect = cost <= (max_cost * self.max_cost_threshold)
 
         
 
