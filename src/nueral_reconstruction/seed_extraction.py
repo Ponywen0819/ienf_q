@@ -129,7 +129,7 @@ class SkeletonTopologyBuilder:
                 })
 
         logger.info(f"邊總數: {len(edges)}")
-
+        
         topology = {
             'nodes': nodes,
             'edges': edges

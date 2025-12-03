@@ -169,7 +169,8 @@ class NeuralReconstructionPipeline:
         input_image_path: str,
         green_channel_path: str,
         output_dir: Optional[str] = None,
-        save_intermediates: bool = True
+        save_intermediates: bool = True,
+        stop_step: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         執行完整的神經重建流程
@@ -229,6 +230,10 @@ class NeuralReconstructionPipeline:
 
         logger.info(f"\n✓ 階段 1 完成: 提取了 {len(regions)} 個連通元件")
 
+        if stop_step == 'connected_components':
+            logger.info("流程在階段 1 停止")
+            return results
+
         # ========== 階段 2: 骨架化 ==========
         logger.info("\n" + "=" * 70)
         logger.info("階段 2: 骨架化分析")
@@ -249,6 +254,9 @@ class NeuralReconstructionPipeline:
         logger.info(f"  總端點數: {total_endpoints}")
         logger.info(f"  總分支點數: {total_branchpoints}")
 
+        if stop_step == 'skeletonization':
+            logger.info("流程在階段 2 停止")
+            return results
         # ========== 階段 3: 骨架拓樸建構與種子萃取 ==========
         logger.info("\n" + "=" * 70)
         logger.info("階段 3: 骨架拓樸建構與種子萃取")
@@ -303,6 +311,15 @@ class NeuralReconstructionPipeline:
                 topology,
                 segment_length=self.config.seed_extraction.base_segment_length
             )
+            
+            # 沒有種子就使用值心填充
+            if len(seeds) ==0:
+                seeds.append({
+                    'position': (region.bbox[0] + (region.bbox[2] - region.bbox[0]) // 2,
+                                 region.bbox[1] + (region.bbox[3] - region.bbox[1]) // 2),
+                    'type': 'centroid',
+                    'component_id': component_id,
+                })
 
             # 添加節點作為種子（端點和分支點）
             for node in topology['nodes']:
@@ -311,11 +328,13 @@ class NeuralReconstructionPipeline:
                     'type': node['type'],
                     'component_id': component_id
                 })
+            
 
             # 記錄元件 ID
             for seed in seeds:
                 if 'component_id' not in seed:
                     seed['component_id'] = component_id
+
 
             all_topologies.append({
                 'component_id': component_id,
@@ -341,6 +360,10 @@ class NeuralReconstructionPipeline:
         logger.info(f"  總邊數: {total_edges}")
         logger.info(f"  總種子數: {len(all_seeds)}")
 
+        if stop_step == 'topology_and_seeds':
+            logger.info("流程在階段 3 停止")
+            return results
+        
         # ========== 階段 4: 元件配對與連接拓樸建構 ==========
         logger.info("\n" + "=" * 70)
         logger.info("階段 4: 元件配對與連接拓樸建構")
@@ -352,6 +375,7 @@ class NeuralReconstructionPipeline:
             component_id = topo_data['component_id']
             # 找出屬於這個元件的所有種子
             component_seeds = [s for s in all_seeds if s['component_id'] == component_id]
+            
             components_data.append({
                 'component_id': component_id,
                 'seeds': component_seeds

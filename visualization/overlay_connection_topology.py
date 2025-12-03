@@ -725,8 +725,8 @@ def main():
 使用範例:
   # 基本使用（執行 pipeline 並視覺化）
   python -m visualization.overlay_connection_topology \\
-      --annotation data/Label/dermis_annotation.png \\
-      --green-channel data/Original/dermis_green_channel.png \\
+      --annotation output/preprocessing/final_label.png \\
+      --green-channel output/preprocessing/roi_image.png \\
       --output-dir output/visualization
   
   # 自訂視覺化選項
@@ -851,7 +851,6 @@ def main():
         show_components=not args.no_components,
         connection_color=args.color_mode,
         generate_stats=args.with_stats,
-        dpi=args.dpi
     )
 
 

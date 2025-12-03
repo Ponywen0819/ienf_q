@@ -26,4 +26,4 @@ component_pairing:
   max_distance_threshold: 50
 
   # Maximum path cost threshold - connections exceeding this cost are rejected
-  max_cost_threshold: 190
+  max_cost_threshold: 180

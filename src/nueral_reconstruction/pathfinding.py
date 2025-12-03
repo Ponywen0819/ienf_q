@@ -145,7 +145,9 @@ class AStarPathfinder:
         # 目標位置成本
         pixel_cost = self.cost_map[pos2[0], pos2[1]]
 
-        normoalized_pixel_cost = (pixel_cost / 255.0)*(4)
+
+
+        normoalized_pixel_cost = ((pixel_cost / 255.0)** 2)*(4)
         return (distance * normoalized_pixel_cost)
 
     def _get_neighbors(self, pos: Tuple[int, int]) -> List[Tuple[int, int]]:

@@ -34,6 +34,7 @@ from nueral_reconstruction.connected_components import ConnectedComponentsAnalyz
 from nueral_reconstruction.skeletonization import SkeletonAnalyzer
 from nueral_reconstruction.seed_extraction import SkeletonTopologyBuilder, EdgeSeedExtractor
 from nueral_reconstruction.config_loader import load_config, IENFConfig
+from nueral_reconstruction import NeuralReconstructionPipeline
 
 # Configure logging
 logging.basicConfig(
@@ -101,76 +102,11 @@ def visualize_seeds(
     else:
         green_channel = None
 
-    # Stage 1: Extract connected components
-    logger.info("\n=== Stage 1: Connected Components Analysis ===")
-    cc_analyzer = ConnectedComponentsAnalyzer(
-        connectivity=config.connected_components.connectivity,
-        min_area=config.connected_components.min_area
-    )
-    regions = cc_analyzer.process(annotation_path)
-    logger.info(f"Found {len(regions)} components")
-
-    # Stage 2: Skeletonization
-    logger.info("\n=== Stage 2: Skeletonization ===")
-    skel_analyzer = SkeletonAnalyzer()
-    skeleton_results = skel_analyzer.batch_process(regions)
-    logger.info(f"Processed {len(skeleton_results)} skeletons")
-
-    # Stage 3: Topology Building
-    logger.info("\n=== Stage 3: Topology Building ===")
-    topology_builder = SkeletonTopologyBuilder()
-    all_topologies = []
-
-    for skel_info in skeleton_results:
-        region = skel_info['region']
-        skeleton = skel_info['skeleton']
-        endpoints = [(ep['y'], ep['x']) for ep in skel_info['endpoints']]
-        branchpoints = [(bp['y'], bp['x']) for bp in skel_info['branchpoints']]
-
-        logger.info(f"Building topology for component {region.label}...")
-        topology = topology_builder.build_topology(skeleton, endpoints, branchpoints)
-
-        # Convert positions to global coordinates
-        minr, minc, maxr, maxc = region.bbox
-        for node in topology['nodes']:
-            y, x = node['position']
-            node['position'] = (y + minr, x + minc)
-
-        for edge in topology['edges']:
-            global_path = []
-            for y, x in edge['path']:
-                global_path.append((y + minr, x + minc))
-            edge['path'] = global_path
-
-        all_topologies.append({
-            'component_id': region.label,
-            'topology': topology
-        })
-
-    # Stage 4: Seed Extraction
-    logger.info("\n=== Stage 4: Seed Extraction ===")
-    seed_extractor = EdgeSeedExtractor(
-        min_edge_length=config.seed_extraction.base_segment_length
-    )
-
-    all_seeds = []
-    for topo_info in all_topologies:
-        component_id = topo_info['component_id']
-        topology = topo_info['topology']
-
-        logger.info(f"Extracting seeds for component {component_id}...")
-        seeds = seed_extractor.extract_seeds_from_topology(
-            topology,
-            segment_length=config.seed_extraction.base_segment_length
-        )
-
-        all_seeds.extend([{
-            'position': seed['position'],
-            'component_id': component_id,
-            'edge_id': seed['edge_id']
-        } for seed in seeds])
-
-    logger.info(f"Total seeds extracted: {len(all_seeds)}")
+    pipeline = NeuralReconstructionPipeline()
+    res = pipeline.run(annotation_path, green_channel_path, stop_step='topology_and_seeds')
+    all_topologies = res['stages']['topology_and_seeds']['topologies']
+    all_seeds = res['stages']['topology_and_seeds']['seeds']
+    skeleton_results = res['stages']['skeletonization']['skeleton_data']
 
     # Create visualization
     logger.info("\n=== Creating Visualization ===")
@@ -468,7 +404,6 @@ def _save_seed_info(
         info['seeds'].append({
             'position': {'y': seed['position'][0], 'x': seed['position'][1]},
             'component_id': seed['component_id'],
-            'edge_id': seed['edge_id']
         })
 
     # Save to JSON
@@ -481,8 +416,8 @@ def _save_seed_info(
 
 if __name__ == "__main__":
     # Example usage
-    annotation_path = "closing_3.png"
-    green_channel_path = "split/S163-2_a_epidermis_correct_12.png"
+    annotation_path = "/Users/ponywen/projects/ienf_q/output/preprocessing/final_label.png"
+    green_channel_path = "/Users/ponywen/projects/ienf_q/output/preprocessing/roi_image.png"
     output_dir = "output/seeds"
 
     visualize_seeds(
