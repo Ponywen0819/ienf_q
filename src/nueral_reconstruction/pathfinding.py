@@ -144,11 +144,15 @@ class AStarPathfinder:
 
         # 目標位置成本
         pixel_cost = self.cost_map[pos2[0], pos2[1]]
-
-
-
-        normoalized_pixel_cost = ((pixel_cost / 255.0)** 2)*(4)
+        
+        normoalized_pixel_cost = self._cost_function(pixel_cost)
         return (distance * normoalized_pixel_cost)
+
+    
+    def _cost_function(self, original_cost: float) -> float:
+        """成本函數：將像素值轉換為成本"""
+        normalized_cost = original_cost / 255.0
+        return (normalized_cost ** 2) * 4  # 調整成本範圍
 
     def _get_neighbors(self, pos: Tuple[int, int]) -> List[Tuple[int, int]]:
         """獲取 8-鄰域鄰居"""

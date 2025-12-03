@@ -221,8 +221,12 @@ class ComponentPairAnalyzer:
         cost = self.pathfinder.calculate_path_cost(path)
         results['cost'] = cost
 
+
+        max_cost = self.pathfinder._cost_function(255) * distance
         # ========== 步驟 5: 根據成本閾值判斷是否連接 ==========
-        should_connect = cost <= self.max_cost_threshold
+        should_connect = cost <= (max_cost * 0.98)
+
+        
 
         logger.info(f"\n  配對分析結果:")
         logger.info(f"    路徑長度: {len(path)} 像素")
@@ -234,8 +238,8 @@ class ComponentPairAnalyzer:
         else:
             logger.info(f"  ✗ 判定: 不應連接（成本超過閾值）")
 
-        results['should_connect'] = should_connect
         results['skipped_reason'] = None if should_connect else 'cost_exceeds_threshold'
+        results['should_connect'] = should_connect
         return results
 
     def batch_analyze_components(
