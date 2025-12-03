@@ -102,8 +102,10 @@ def visualize_seeds(
     else:
         green_channel = None
 
+
+
     pipeline = NeuralReconstructionPipeline()
-    res = pipeline.run(annotation_path, green_channel_path, stop_step='topology_and_seeds')
+    res = pipeline.run(annotation, green_channel, stop_step='topology_and_seeds')
     all_topologies = res['stages']['topology_and_seeds']['topologies']
     all_seeds = res['stages']['topology_and_seeds']['seeds']
     skeleton_results = res['stages']['skeletonization']['skeleton_data']
@@ -426,8 +428,8 @@ if __name__ == "__main__":
         green_channel_path=green_channel_path,
         show_skeleton=True,
         show_nodes=True,
-        show_edges=False,
+        show_edges=True,
         show_seeds=True,
-        show_statistics=True,
+        show_statistics=False,
         alpha=0.7
     )

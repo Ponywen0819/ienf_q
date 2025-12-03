@@ -182,7 +182,7 @@ class ConnectedComponentsAnalyzer:
 
     def process(
         self,
-        image_path: str
+        image: np.ndarray
     ) -> List[Dict]:
         """
         完整的連通元件分析流程

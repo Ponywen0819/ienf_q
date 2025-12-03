@@ -166,8 +166,8 @@ class NeuralReconstructionPipeline:
 
     def run(
         self,
-        input_image_path: str,
-        green_channel_path: str,
+        input_image: np.ndarray,
+        green_image: np.ndarray,
         output_dir: Optional[str] = None,
         save_intermediates: bool = True,
         stop_step: Optional[str] = None
@@ -187,18 +187,10 @@ class NeuralReconstructionPipeline:
         logger.info("\n" + "=" * 70)
         logger.info("開始神經重建流程")
         logger.info("=" * 70)
-        logger.info(f"輸入影像: {input_image_path}")
-        logger.info(f"綠色通道: {green_channel_path}")
-
-        # 載入綠色通道影像
-        green_channel = cv2.imread(green_channel_path, cv2.IMREAD_GRAYSCALE)
-        if green_channel is None:
-            raise FileNotFoundError(f"無法載入綠色通道影像: {green_channel_path}")
-        logger.info(f"綠色通道影像大小: {green_channel.shape}")
-
+        
         # 初始化元件配對分析器
         self.component_pair_analyzer = ComponentPairAnalyzer(
-            green_channel=green_channel,
+            green_channel=green_image,
             max_distance_threshold=self.config.component_pairing.max_distance_threshold,
             max_cost_threshold=self.config.component_pairing.max_cost_threshold
         )
@@ -210,8 +202,6 @@ class NeuralReconstructionPipeline:
             logger.info(f"輸出目錄: {output_dir}")
 
         results = {
-            'input_path': input_image_path,
-            'green_channel_path': green_channel_path,
             'output_dir': output_dir,
             'stages': {}
         }
@@ -221,7 +211,7 @@ class NeuralReconstructionPipeline:
         logger.info("階段 1: 連通元件提取")
         logger.info("=" * 70)
 
-        regions = self.cc_analyzer.process(input_image_path)
+        regions = self.cc_analyzer.analyze(input_image)
 
         results['stages']['connected_components'] = {
             'num_components': len(regions),
