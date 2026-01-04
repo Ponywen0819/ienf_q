@@ -11,6 +11,7 @@ Main Features:
 4. Visualization of rejected connections with reasons (colored dashed lines)
 5. Statistical charts and analysis
 6. Component color-coding for easy identification
+7. Specific component visualization - focus on a single component and its connections
 
 Usage:
     # Basic usage - only annotation and green channel required
@@ -24,12 +25,24 @@ Usage:
         --green-channel split/S163-2_a_epidermis_correct_12.png \\
         --config config/high_quality.yaml
 
+    # Visualize specific component connections
+    python visualization/visualize_specific_component.py \\
+        --annotation closing_3.png \\
+        --green-channel split/S163-2_a_epidermis_correct_12.png \\
+        --component-id 0 \\
+        --output output/component_0.png
+
 Outputs:
 - pairing_overview.png: Complete visualization with all connections
 - successful_connections.png: Only successful connections
 - rejected_connections.png: Only rejected connections
 - pairing_statistics.png: Statistical analysis charts
 - pairing_results.json: Detailed pairing data
+- component_X_connections.png: Specific component visualization (when running main script)
+
+Functions:
+- visualize_component_pairing_from_images(): Main function for overall visualization
+- visualize_specific_component_connections(): Focus on a single component's connections
 
 Legacy Mode:
     For backwards compatibility, you can still provide pre-computed JSON files:
@@ -422,6 +435,296 @@ def add_legend_and_stats(
 
 
 # ============================================================================
+# Specific Component Visualization
+# ============================================================================
+
+def visualize_specific_component_connections(
+    pairing_results: Dict,
+    components_data: List[Dict],
+    green_channel: np.ndarray,
+    target_component_id: int,
+    output_path: str,
+    show_components: bool = True,
+    show_seeds: bool = True,
+    show_labels: bool = True,
+    component_alpha: float = 0.3,
+    line_thickness: int = 2,
+    seed_radius: int = 5,
+    crop_size: int = 200,
+    output_size: int = 800
+) -> None:
+    """
+    視覺化特定元件與其相關連接(包括成功和被拒絕的連接)
+    以目標元件為中心進行裁切並放大顯示
+
+    Args:
+        pairing_results: 配對分析結果字典
+        components_data: 組件數據列表
+        green_channel: 綠色通道影像
+        target_component_id: 目標元件 ID
+        output_path: 輸出路徑
+        show_components: 顯示組件顏色
+        show_seeds: 顯示種子點
+        show_labels: 顯示組件標籤
+        component_alpha: 組件疊加透明度
+        line_thickness: 連接線粗細
+        seed_radius: 種子點半徑
+        crop_size: 裁切大小 (預設: 200x200)
+        output_size: 輸出大小 (預設: 800x800)
+    """
+    logger.info(f"Creating visualization for component {target_component_id}...")
+
+    # 找到目標元件的中心位置
+    target_comp = next((c for c in components_data if c['id'] == target_component_id), None)
+    if not target_comp or not target_comp.get('seeds'):
+        raise ValueError(f"Component {target_component_id} not found or has no seeds")
+
+    positions = np.array([s['position'] for s in target_comp['seeds']])
+    centroid = positions.mean(axis=0).astype(int)
+    center_y, center_x = centroid[0], centroid[1]
+
+    logger.info(f"Component {target_component_id} center: ({center_y}, {center_x})")
+
+    # 計算裁切範圍
+    h, w = green_channel.shape[:2]
+    half_crop = crop_size // 2
+
+    # 確保裁切範圍在影像內
+    y1 = max(0, center_y - half_crop)
+    y2 = min(h, center_y + half_crop)
+    x1 = max(0, center_x - half_crop)
+    x2 = min(w, center_x + half_crop)
+
+    # 如果裁切區域碰到邊界，調整另一邊以保持 crop_size
+    if y2 - y1 < crop_size:
+        if y1 == 0:
+            y2 = min(h, y1 + crop_size)
+        else:
+            y1 = max(0, y2 - crop_size)
+
+    if x2 - x1 < crop_size:
+        if x1 == 0:
+            x2 = min(w, x1 + crop_size)
+        else:
+            x1 = max(0, x2 - crop_size)
+
+    crop_region = (y1, y2, x1, x2)
+    logger.info(f"Crop region: y[{y1}:{y2}], x[{x1}:{x2}] (size: {y2-y1}x{x2-x1})")
+
+    # 準備底圖並裁切
+    if len(green_channel.shape) == 2:
+        base_image = cv2.cvtColor(green_channel, cv2.COLOR_GRAY2BGR)
+    else:
+        base_image = green_channel.copy()
+
+    # 裁切影像
+    base_image_cropped = base_image[y1:y2, x1:x2].copy()
+
+    gray = cv2.cvtColor(base_image_cropped, cv2.COLOR_BGR2GRAY) if len(base_image_cropped.shape) == 3 else base_image_cropped
+    colored_bg = cv2.applyColorMap(gray, cv2.COLORMAP_VIRIDIS)
+
+    # 生成組件顏色
+    num_components = pairing_results.get('num_components', len(components_data))
+    component_colors = generate_component_colors(num_components)
+
+    # 計算縮放比例
+    scale = output_size / crop_size
+    logger.info(f"Scale factor: {scale}x (from {crop_size}x{crop_size} to {output_size}x{output_size})")
+
+    # 定義座標轉換函數
+    def transform_coords(coords, crop_region, scale):
+        """將原始座標轉換為裁切並縮放後的座標"""
+        y1, _, x1, _ = crop_region
+        transformed = []
+        for y, x in coords:
+            # 轉換到裁切區域的相對座標
+            new_y = y - y1
+            new_x = x - x1
+            # 應用縮放
+            new_y = int(new_y * scale)
+            new_x = int(new_x * scale)
+            transformed.append((new_y, new_x))
+        return transformed
+
+    # 找出與目標元件相關的所有連接
+    all_results = pairing_results.get('all_pair_results', [])
+    related_connections = {
+        'successful': [],
+        'distance_too_far': [],
+        'cost_exceeds_threshold': [],
+        'no_valid_path': [],
+        'no_seeds': []
+    }
+
+    connected_component_ids = set([target_component_id])
+
+    for result in all_results:
+        comp_a = result['component_a_id']
+        comp_b = result['component_b_id']
+
+        # 檢查是否與目標元件相關
+        if comp_a == target_component_id or comp_b == target_component_id:
+            # 複製結果以避免修改原始數據
+            result_copy = result.copy()
+
+            # 轉換路徑座標
+            if result_copy.get('path'):
+                result_copy['path'] = transform_coords(result_copy['path'], crop_region, scale)
+
+            # 轉換種子點座標
+            if result_copy.get('seed_pair'):
+                seed_a, seed_b = result_copy['seed_pair']
+                if seed_a and seed_a.get('position'):
+                    seed_a_copy = seed_a.copy()
+                    pos = seed_a['position']
+                    transformed = transform_coords([(pos[0], pos[1])], crop_region, scale)
+                    seed_a_copy['position'] = transformed[0]
+                else:
+                    seed_a_copy = seed_a
+
+                if seed_b and seed_b.get('position'):
+                    seed_b_copy = seed_b.copy()
+                    pos = seed_b['position']
+                    transformed = transform_coords([(pos[0], pos[1])], crop_region, scale)
+                    seed_b_copy['position'] = transformed[0]
+                else:
+                    seed_b_copy = seed_b
+
+                result_copy['seed_pair'] = (seed_a_copy, seed_b_copy)
+
+            if result['should_connect']:
+                related_connections['successful'].append(result_copy)
+                connected_component_ids.add(comp_a)
+                connected_component_ids.add(comp_b)
+            else:
+                reason = result.get('skipped_reason')
+                if reason in related_connections:
+                    related_connections[reason].append(result_copy)
+                    connected_component_ids.add(comp_a)
+                    connected_component_ids.add(comp_b)
+
+    # 裁切並轉換組件數據
+    relevant_components = []
+    for c in components_data:
+        if c['id'] in connected_component_ids:
+            comp_copy = c.copy()
+
+            # 裁切並縮放 mask
+            if comp_copy.get('mask') is not None:
+                mask_cropped = comp_copy['mask'][y1:y2, x1:x2]
+                mask_resized = cv2.resize(mask_cropped, (output_size, output_size), interpolation=cv2.INTER_NEAREST)
+                comp_copy['mask'] = mask_resized
+
+            # 轉換種子點座標
+            if comp_copy.get('seeds'):
+                seeds_transformed = []
+                for seed in comp_copy['seeds']:
+                    seed_copy = seed.copy()
+                    if seed_copy.get('position'):
+                        pos = seed_copy['position']
+                        transformed = transform_coords([(pos[0], pos[1])], crop_region, scale)
+                        seed_copy['position'] = transformed[0]
+                    seeds_transformed.append(seed_copy)
+                comp_copy['seeds'] = seeds_transformed
+
+            relevant_components.append(comp_copy)
+
+    # 放大裁切後的底圖
+    colored_bg = cv2.resize(colored_bg, (output_size, output_size), interpolation=cv2.INTER_LINEAR)
+
+    # 繪製組件疊加層(只顯示相關的元件)
+    if show_components:
+        colored_bg = draw_components_overlay(colored_bg, relevant_components, component_colors, component_alpha)
+
+    # 先繪製被拒絕的連接(虛線,在底層)
+    for reason, connections in related_connections.items():
+        if reason != 'successful' and connections:
+            logger.info(f"Drawing {len(connections)} {reason} connections for component {target_component_id}")
+            draw_connections(colored_bg, connections, reason, line_thickness)
+
+    # 再繪製成功的連接(實線,在上層)
+    if related_connections['successful']:
+        logger.info(f"Drawing {len(related_connections['successful'])} successful connections for component {target_component_id}")
+        draw_connections(colored_bg, related_connections['successful'], 'successful', line_thickness)
+
+    # 繪製種子點
+    if show_seeds:
+        seed_pairs = []
+        for connections in related_connections.values():
+            for conn in connections:
+                pair = conn.get('seed_pair')
+                if pair:
+                    seed_pairs.append(pair)
+
+        if seed_pairs:
+            logger.info(f"Drawing {len(seed_pairs)} seed pairs")
+            draw_seeds(colored_bg, seed_pairs, seed_radius)
+
+    # 繪製組件標籤(只標註相關的元件)
+    if show_labels:
+        draw_component_labels(colored_bg, relevant_components, component_colors)
+
+    # 高亮目標元件 - 在元件周圍畫一個大圓圈 (使用轉換後的座標)
+    target_comp_transformed = next((c for c in relevant_components if c['id'] == target_component_id), None)
+    if target_comp_transformed and target_comp_transformed.get('seeds'):
+        positions = np.array([s['position'] for s in target_comp_transformed['seeds']])
+        centroid = positions.mean(axis=0).astype(int)
+
+        # 根據縮放調整圓圈大小和文字位置
+        circle_radius = int(30 * scale)
+        cv2.circle(colored_bg, (centroid[1], centroid[0]), circle_radius, (255, 255, 0), int(2), cv2.LINE_AA)
+
+        # # 調整文字大小和位置
+        # font_scale = 0.6 * scale
+        # text_offset_x = int(35 * scale)
+        # text_offset_y = int(40 * scale)
+        # cv2.putText(colored_bg, "TARGET", (centroid[1] - text_offset_x, centroid[0] - text_offset_y),
+        #            cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 0), max(2, int(2 * scale)), cv2.LINE_AA)
+
+    # 添加統計信息圖例
+    stats = {
+        'num_components': len(connected_component_ids),
+        'num_pairs_analyzed': sum(len(conns) for conns in related_connections.values()),
+        'num_successful': len(related_connections['successful']),
+        'rejected_distance_too_far': len(related_connections['distance_too_far']),
+        'rejected_cost_exceeds_threshold': len(related_connections['cost_exceeds_threshold']),
+        'rejected_no_valid_path': len(related_connections['no_valid_path']),
+        'rejected_no_seeds': len(related_connections['no_seeds']),
+    }
+    # colored_bg = add_legend_and_stats(colored_bg, stats)
+
+    # 添加標題
+    w = colored_bg.shape[1]
+    title = f"Component {target_component_id} Connections"
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 1.0
+    font_thickness = 2
+    (text_w, text_h), baseline = cv2.getTextSize(title, font, font_scale, font_thickness)
+
+    # 繪製標題背景
+    title_bg_pt1 = (w//2 - text_w//2 - 10, 10)
+    title_bg_pt2 = (w//2 + text_w//2 + 10, 10 + text_h + baseline + 10)
+    cv2.rectangle(colored_bg, title_bg_pt1, title_bg_pt2, (255, 255, 255), -1)
+    cv2.rectangle(colored_bg, title_bg_pt1, title_bg_pt2, (0, 0, 0), 2)
+
+    # 繪製標題文字
+    cv2.putText(colored_bg, title, (w//2 - text_w//2, 10 + text_h + 5),
+               font, font_scale, (0, 0, 0), font_thickness, cv2.LINE_AA)
+
+    # 保存影像
+    cv2.imwrite(output_path, colored_bg)
+    logger.info(f"Component {target_component_id} visualization saved to: {output_path}")
+
+    # 返回統計信息供後續使用
+    return {
+        'target_component_id': target_component_id,
+        'connected_components': list(connected_component_ids),
+        'stats': stats,
+        'connections': related_connections
+    }
+
+
+# ============================================================================
 # Main Visualization Function
 # ============================================================================
 
@@ -769,11 +1072,13 @@ def visualize_component_pairing_from_images(
     logger.info("Running Complete Pipeline")
     logger.info("="*70)
 
+    label_image = cv2.imread(annotation_path, cv2.IMREAD_GRAYSCALE)
+    original_image = cv2.imread(green_channel_path, cv2.IMREAD_UNCHANGED)
+    
+    
+
     results = pipeline.run(
-        input_image_path=annotation_path,
-        green_channel_path=green_channel_path,
-        output_dir=None,  # 不保存中間檔案
-        save_intermediates=False
+        label_image, original_image
     )
 
     # 提取配對結果
@@ -950,6 +1255,12 @@ def visualize_component_pairing_from_images(
     logger.info(f"  - pairing_statistics.png")
     logger.info(f"  - pairing_results.json")
 
+    return {
+        'pairing_results': pairing_results,
+        'components_data': components_data,
+        'green_channel': green_channel
+    }
+
 if __name__ == '__main__':
     # Default paths - modify these for your use case
     annotation_path = "/Users/ponywen/projects/ienf_q/output/preprocessing/final_label.png"
@@ -957,7 +1268,7 @@ if __name__ == '__main__':
     output_dir = "output/component_pairing_visualization"
 
     # Run visualization with default settings
-    visualize_component_pairing_from_images(
+    results = visualize_component_pairing_from_images(
         annotation_path=annotation_path,
         green_channel_path=green_channel_path,
         output_dir=output_dir,
@@ -972,3 +1283,39 @@ if __name__ == '__main__':
         line_thickness=1,
         seed_radius=1
     )
+
+    # 範例: 視覺化特定元件的連接
+    # 你可以修改 target_component_ids 來指定要視覺化的元件
+    target_component_ids = [23, 41, 72]  # 修改這裡來指定要視覺化的元件 ID
+
+    logger.info("\n" + "="*70)
+    logger.info("Creating Specific Component Visualizations")
+    logger.info("="*70)
+
+    for comp_id in target_component_ids:
+        try:
+            specific_output_path = f"{output_dir}/component_{comp_id}_connections.png"
+            component_info = visualize_specific_component_connections(
+                pairing_results=results['pairing_results'],
+                components_data=results['components_data'],
+                green_channel=results['green_channel'],
+                target_component_id=comp_id,
+                output_path=specific_output_path,
+                show_components=True,
+                show_seeds=True,
+                show_labels=False,
+                component_alpha=0.3,
+                line_thickness=2,
+                seed_radius=3,
+                crop_size=200,
+                output_size=800
+            )
+
+            # 顯示該元件的連接摘要
+            logger.info(f"\nComponent {comp_id} Summary:")
+            logger.info(f"  Connected to components: {component_info['connected_components']}")
+            logger.info(f"  Successful connections: {component_info['stats']['num_successful']}")
+            logger.info(f"  Rejected connections: {component_info['stats']['num_pairs_analyzed'] - component_info['stats']['num_successful']}")
+
+        except Exception as e:
+            logger.warning(f"Could not visualize component {comp_id}: {e}")

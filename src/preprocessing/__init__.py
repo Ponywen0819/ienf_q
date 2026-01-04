@@ -93,6 +93,7 @@ from .mask_operations import (
 # Pipeline
 from .pipeline import (
     SkinAnalysisPipeline,
+    DebugOutput,
 )
 
 # Utilities
@@ -100,6 +101,7 @@ from .utils import (
     create_kernel,
     ensure_grayscale,
     validate_image,
+    regional_minmax_normalize,
 )
 
 
@@ -127,10 +129,12 @@ __all__ = [
     'combine_masks_or',
     # Pipeline
     'SkinAnalysisPipeline',
+    'DebugOutput',
     # Utilities
     'create_kernel',
     'ensure_grayscale',
     'validate_image',
+    'regional_minmax_normalize',
 ]
 
 __version__ = '1.0.0'

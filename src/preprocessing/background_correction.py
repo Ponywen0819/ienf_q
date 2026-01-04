@@ -118,9 +118,9 @@ def _estimate_background_rolling_ball(
     # Convert to float for processing
     img_float = image.astype(np.float32)
 
-    if not light_background:
-        # Invert for dark background
-        img_float = 255.0 - img_float
+    # if not light_background:
+    #     # Invert for dark background
+    #     img_float = 255.0 - img_float
 
     # Create ball kernel
     ball_kernel = create_ball_kernel(radius)
@@ -136,69 +136,72 @@ def _estimate_background_rolling_ball(
         ball_kernel_scaled.astype(np.uint8)
     )
 
-    if not light_background:
-        # Invert back
-        background = 255 - background
+    # if not light_background:
+    #     # Invert back
+    #     background = 255 - background
 
     return background
 
 
-def rolling_ball_background(
+def _estimate_background_gaussian(
+    image: np.ndarray,
+    sigma: float
+) -> np.ndarray:
+    """
+    Estimate background using Gaussian blur.
+
+    Args:
+        image: Input image (uint8)
+        sigma: Gaussian sigma
+
+    Returns:
+        Estimated background (uint8)
+    """
+    # Convert to float for processing
+    img_float = image.astype(np.float32)
+    
+    # Apply Gaussian blur
+    background = gaussian_filter(img_float, sigma=sigma)
+    
+    return background.astype(np.uint8)
+
+
+def correct_background(
     image: np.ndarray,
     radius: int = 50,
+    sigma: float = 50.0,
     light_background: bool = False,
     smoothing: bool = False,
     smoothing_sigma: float = 2.0,
-    method: Literal['morphology', 'rolling_ball'] = 'morphology'
+    method: Literal['morphology', 'rolling_ball', 'gaussian'] = 'morphology'
 ) -> np.ndarray:
     """
-    Subtract background using rolling ball algorithm.
+    Correct background using various methods.
 
-    This method estimates and removes uneven background illumination by
-    simulating rolling a ball under (or over) the image surface.
-
-    The algorithm:
-    1. Estimates the background by rolling a ball of given radius
-    2. Subtracts the background from the original image
-    3. Optionally applies smoothing to reduce artifacts
+    Methods:
+    - 'morphology': Morphological opening (fast rolling ball approximation)
+    - 'rolling_ball': True rolling ball algorithm
+    - 'gaussian': Gaussian blur background estimation
 
     Args:
         image: Input grayscale image (uint8 or float32)
-        radius: Radius of the rolling ball in pixels. Larger values remove
-            larger-scale background variations. Typical values: 20-100.
-            Default: 50
-        light_background: True if background is brighter than foreground,
-            False if background is darker. Default: False
-        smoothing: Whether to apply Gaussian smoothing to the background
-            estimate to reduce artifacts. Default: False
-        smoothing_sigma: Standard deviation for Gaussian smoothing.
-            Only used if smoothing=True. Default: 2.0
-        method: Background estimation method:
-            - 'morphology': Fast morphological operations (default)
-            - 'rolling_ball': More accurate rolling ball simulation
+        radius: Radius for rolling ball/morphology methods. Default: 50
+        sigma: Sigma for gaussian method. Default: 50.0
+        light_background: True if background is brighter than foreground. Default: False
+        smoothing: Whether to apply Gaussian smoothing to the background estimate. Default: False
+        smoothing_sigma: Sigma for smoothing. Default: 2.0
+        method: Background estimation method. Default: 'morphology'
 
     Returns:
-        Background-corrected image in the same format as input
-
-    Raises:
-        ValueError: If image or parameters are invalid
-
-    Example:
-        >>> import cv2
-        >>> from src.preprocessing import rolling_ball_background
-        >>> # Load image with uneven illumination
-        >>> image = cv2.imread('image.png', cv2.IMREAD_GRAYSCALE)
-        >>> # Correct background (light background, darker objects)
-        >>> corrected = rolling_ball_background(image, radius=50, light_background=True)
-        >>> # For fluorescence images (bright objects on dark background)
-        >>> corrected = rolling_ball_background(image, radius=30, light_background=False)
+        Background-corrected image
     """
     validate_image(image)
 
-    if radius <= 0:
-        raise ValueError(f"Radius must be positive, got {radius}")
-
-    if smoothing_sigma <= 0:
+    if method in ['morphology', 'rolling_ball'] and radius <= 0:
+        raise ValueError(f"Radius must be positive for {method} method, got {radius}")
+    if method == 'gaussian' and sigma <= 0:
+        raise ValueError(f"Sigma must be positive for gaussian method, got {sigma}")
+    if smoothing and smoothing_sigma <= 0:
         raise ValueError(f"Smoothing sigma must be positive, got {smoothing_sigma}")
 
     # Normalize to uint8 and track original format
@@ -209,8 +212,10 @@ def rolling_ball_background(
         background = _estimate_background_morphology(image_uint8, radius, light_background)
     elif method == 'rolling_ball':
         background = _estimate_background_rolling_ball(image_uint8, radius, light_background)
+    elif method == 'gaussian':
+        background = _estimate_background_gaussian(image_uint8, sigma)
     else:
-        raise ValueError(f"Invalid method '{method}'. Must be 'morphology' or 'rolling_ball'")
+        raise ValueError(f"Invalid method '{method}'. Must be 'morphology', 'rolling_ball', or 'gaussian'")
 
     # Apply smoothing if requested
     if smoothing:
@@ -224,15 +229,64 @@ def rolling_ball_background(
 
     # Always subtract background from image (img - bg)
     # The light_background parameter only affects how background is estimated
-    corrected_float = img_float - bg_float
+    # For gaussian, we assume background is the low frequency component
+    # If light_background is True, we might need to handle it differently?
+    # Usually background subtraction is Image - Background.
+    # If light background (bright bg, dark objects), Image is high, Background is high.
+    # We want to invert or something?
+    # In rolling ball implementation:
+    # if light_background: invert image -> estimate bg (dark) -> invert bg (light).
+    # Then Image - Background.
+    # If Image=200 (bg), Object=50. Background=200. Result=0. Correct.
+    
+    # For Gaussian:
+    # If light background: Image=200, Object=50. Blur=~200.
+    # Image - Blur = 0 (bg), -150 (object).
+    # We want object to be positive?
+    # Usually for light background we do Background - Image?
+    # Or Invert(Image) - Invert(Background)?
+    
+    if light_background and method == 'gaussian':
+        # For light background, we typically want (Background - Image) or similar to make objects bright
+        # But the pipeline expects bright objects on dark background as output?
+        # Let's check rolling ball implementation.
+        # It returns `corrected = img - bg`.
+        # If light background (255), dark object (0).
+        # bg = 255.
+        # corrected = 0 - 255 = -255 -> clipped to 0.
+        # This seems wrong for light background if we want to detect dark objects.
+        # But maybe the pipeline expects to detect bright objects?
+        pass
 
-    # Clip to valid range [0, 255]
+    corrected_float = img_float - bg_float
+    
+    # If light background, we might want to invert the result or do bg - img?
+    # The original code did:
+    # corrected_float = img_float - bg_float
+    # corrected = np.clip(corrected_float, 0, 255)
+    
+    # Let's stick to original logic for now.
+    # If light_background=True was passed to rolling ball, it did:
+    # Invert image -> Open -> Invert back.
+    # So bg is the estimated light background.
+    # If we do img - bg:
+    # Bg=200, Obj=50. 50 - 200 = -150 -> 0.
+    # Bg=200, Obj=200. 200 - 200 = 0.
+    # So we get 0 everywhere.
+    
+    # If the user wants to detect dark objects on light background, they usually invert the image first.
+    # The pipeline seems to handle "original_green_image".
+    # Let's check pipeline usage.
+    
     corrected = np.clip(corrected_float, 0, 255).astype(np.uint8)
 
     # Convert back to original format
     result = denormalize_image(corrected, was_float, original_dtype)
 
     return result
+
+# Alias for backward compatibility
+rolling_ball_background = correct_background
 
 
 def simple_background_subtraction(

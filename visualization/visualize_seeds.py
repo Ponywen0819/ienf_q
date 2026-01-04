@@ -112,14 +112,25 @@ def visualize_seeds(
 
     # Create visualization
     logger.info("\n=== Creating Visualization ===")
-    if green_channel is not None:
-        # Use green channel as background
-        vis_image = cv2.cvtColor(green_channel, cv2.COLOR_GRAY2BGR)
-    else:
-        # Create white background
-        vis_image = np.ones((height, width, 3), dtype=np.uint8) * 255
 
-    # Draw skeleton if requested
+    # Layer 1: Create viridis background
+    logger.info("Creating viridis background...")
+    if green_channel is not None:
+        # Apply viridis colormap to green channel
+        normalized = cv2.normalize(green_channel, None, 0, 255, cv2.NORM_MINMAX)
+        vis_image = cv2.applyColorMap(normalized, cv2.COLORMAP_VIRIDIS)
+    else:
+        # Create black background if no green channel
+        vis_image = np.zeros((height, width, 3), dtype=np.uint8)
+
+    # Layer 2: Overlay components (annotation mask) in semi-transparent white
+    logger.info("Overlaying components...")
+    component_mask = annotation > 0
+    component_overlay = vis_image.copy()
+    component_overlay[component_mask] = [0, 0, 255]  # red for components
+    vis_image = cv2.addWeighted(vis_image, 1.0, component_overlay, alpha * 0.8, 0)
+
+    # Layer 3: Draw skeleton if requested
     if show_skeleton:
         logger.info("Drawing skeletons...")
         for skel_info in skeleton_results:
@@ -134,9 +145,9 @@ def visualize_seeds(
                         global_y = local_y + minr
                         global_x = local_x + minc
                         # Yellow color for skeleton
-                        vis_image[global_y, global_x] = (0, 255, 255)
+                        vis_image[global_y, global_x] = (233, 120, 255)
 
-    # Draw topology edges if requested
+    # Layer 4: Draw topology edges if requested
     if show_edges:
         logger.info("Drawing topology edges...")
         for topo_info in all_topologies:
@@ -149,7 +160,7 @@ def visualize_seeds(
                     y2, x2 = path[i + 1]
                     cv2.line(vis_image, (x1, y1), (x2, y2), (255, 255, 0), 1)
 
-    # Draw topology nodes if requested
+    # Layer 5: Draw topology nodes if requested
     if show_nodes:
         logger.info("Drawing topology nodes...")
         for topo_info in all_topologies:
@@ -158,23 +169,21 @@ def visualize_seeds(
                 y, x = node['position']
                 if node['type'] == 'endpoint':
                     # Red circle for endpoints
-                    cv2.circle(vis_image, (x, y), 1, (0, 0, 255), -1)
+                    # cv2.circle(vis_image, (x, y), 1, (0, 0, 255), -1)
+                    vis_image[y, x] = (0, 0, 255)
                 elif node['type'] == 'branchpoint':
                     # Blue square for branchpoints
                     cv2.rectangle(vis_image, (x-1, y-1), (x+1, y+1), (255, 0, 0), -1)
 
-    # Draw seeds if requested
+    # Layer 6: Draw seeds if requested (topmost layer)
     if show_seeds:
         logger.info("Drawing seeds...")
         for seed in all_seeds:
             y, x = seed['position']
             # Green dot for seeds
-            cv2.circle(vis_image, (x, y), 1, (0, 255, 0), -1)
+            # cv2.circle(vis_image, (x, y), 1, (0, 255, 0), -1)
+            vis_image[y, x] = (0, 255, 0)
 
-    # Apply alpha blending if green channel provided
-    if green_channel is not None and alpha < 1.0:
-        background = cv2.cvtColor(green_channel, cv2.COLOR_GRAY2BGR)
-        vis_image = cv2.addWeighted(vis_image, alpha, background, 1-alpha, 0)
 
     # Save main visualization
     output_file = output_path / "seeds_overlay.png"
@@ -427,8 +436,8 @@ if __name__ == "__main__":
         output_dir=output_dir,
         green_channel_path=green_channel_path,
         show_skeleton=True,
-        show_nodes=True,
-        show_edges=True,
+        show_nodes=False,
+        show_edges=False,
         show_seeds=True,
         show_statistics=False,
         alpha=0.7

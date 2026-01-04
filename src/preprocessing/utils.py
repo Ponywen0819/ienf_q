@@ -173,3 +173,55 @@ def clip_image(image: np.ndarray) -> np.ndarray:
         return np.clip(image, info.min, info.max)
     else:
         return image
+
+
+def regional_minmax_normalize(
+    image: np.ndarray,
+    epidermis_mask: np.ndarray,
+    dermis_mask: np.ndarray
+) -> np.ndarray:
+    """
+    對表皮和真皮區域分別進行 Min-Max 正規化到 0-255。
+
+    Args:
+        image: 輸入灰階影像 (uint8 或 float)
+        epidermis_mask: 表皮區域二值遮罩 (0 或 255)
+        dermis_mask: 真皮 ROI 區域二值遮罩 (0 或 255)
+
+    Returns:
+        正規化後的影像，各區域獨立拉伸到 0-255
+
+    Note:
+        - 表皮和真皮區域各自獨立拉伸
+        - 重疊區域以表皮優先
+        - 兩個 mask 之外的區域設為 0
+        - 若區域為常數值，設為中間值 127
+    """
+    validate_image(image)
+
+    image_float = image.astype(np.float32)
+    result = np.zeros_like(image_float)
+
+    epi_bool = epidermis_mask > 0
+    derm_bool = dermis_mask > 0
+
+    # 正規化表皮區域
+    if np.any(epi_bool):
+        epi_pixels = image_float[epi_bool]
+        epi_min, epi_max = epi_pixels.min(), epi_pixels.max()
+        if epi_max > epi_min:
+            result[epi_bool] = (epi_pixels - epi_min) / (epi_max - epi_min) * 255
+        else:
+            result[epi_bool] = 127  # 常數區域設為中間值
+
+    # 正規化真皮區域 (排除表皮重疊)
+    derm_only = derm_bool & (~epi_bool)
+    if np.any(derm_only):
+        derm_pixels = image_float[derm_only]
+        derm_min, derm_max = derm_pixels.min(), derm_pixels.max()
+        if derm_max > derm_min:
+            result[derm_only] = (derm_pixels - derm_min) / (derm_max - derm_min) * 255
+        else:
+            result[derm_only] = 127
+
+    return np.clip(result, 0, 255).astype(np.uint8)
