@@ -47,7 +47,16 @@ import networkx as nx
 # Import pipeline components
 from nueral_reconstruction.pipeline import NeuralReconstructionPipeline
 from nueral_reconstruction.config_loader import load_config
+from preprocessing import SkinAnalysisPipeline
 
+
+# ========================================
+# 影像路徑設定
+# ========================================
+IMAGE_ID = 'S163-2_a'
+LABEL_IMAGE_PATH = f'data/Label/{IMAGE_ID}.tif'
+EPIDERMIS_MASK_PATH = f'data/Mask/{IMAGE_ID}.tif'
+ORIGINAL_IMAGE_PATH = f'data/Original/{IMAGE_ID}.tif'
 # 設置日誌
 logging.basicConfig(
     level=logging.INFO,
@@ -626,9 +635,44 @@ if __name__ == '__main__':
         logger.info("運行神經重構 pipeline...")
         pipeline = NeuralReconstructionPipeline(config=config)
 
+
+        PIPELINE_CONFIG = {
+            'morphology': {
+                'closing_kernel': 3,
+                'opening_kernel': 3
+            },
+            'mask': {
+                'dilate_offset': 100  # 真皮區域向下延伸的像素數
+            },
+            'background': {
+                'method': 'rolling_ball',
+                'radius': 2,
+                'light_background': False
+            },
+            'threshold': {
+                'method': 'binary'
+            },
+            'normalization': {
+                'enabled': True      # 是否啟用區域正規化
+            }
+        }
+
+        label_image = cv2.imread(LABEL_IMAGE_PATH, cv2.IMREAD_GRAYSCALE)
+        epidermis_mask = cv2.imread(EPIDERMIS_MASK_PATH, cv2.IMREAD_GRAYSCALE)
+        original_image = cv2.imread(ORIGINAL_IMAGE_PATH, cv2.IMREAD_UNCHANGED)
+
+        original_green = original_image[:, :, 1]
+
+        preprocessing = SkinAnalysisPipeline(PIPELINE_CONFIG)
+        final_label, roi_image = preprocessing.run(
+            label_image,
+            epidermis_mask,
+            original_green,
+            debug=False
+        )
         results = pipeline.run(
-            input_image_path=annotation_path,
-            green_channel_path=green_channel_path,
+            input_image=final_label,
+            green_image=roi_image,
             output_dir="output/mst_visualization"
         )
 
