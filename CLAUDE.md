@@ -23,6 +23,13 @@ python script/run_pipeline.py \
 python script/run_pipeline.py \
     --label_image ... --epidermis_mask ... --original_image ... \
     --config /path/to/config.yaml --output_dir output/results
+
+# Example with actual data
+python script/run_pipeline.py \
+    --label_image data/Label/S163-2_a.tif \
+    --epidermis_mask data/Mask/S163-2_a.tif \
+    --original_image data/Original/S163-2_a.tif \
+    --output_dir output/results
 ```
 
 ## Architecture
@@ -86,3 +93,10 @@ The `visualization/` folder contains standalone scripts for debugging each pipel
 - `visualize_seeds.py` - seed point distribution
 - `visualize_component_pairing.py` - connection analysis
 - `visualize_mst_reconstruction.py` - final network overlay
+- `visualize_skeletons.py` - skeleton analysis
+- `visualize_component_skeleton.py` - individual component skeletons
+
+The `tools/` folder contains utility scripts for image processing operations:
+- `extract_green_channel.py` - green channel extraction
+- `rolling_ball_background.py` - background correction
+- `binarize_image.py` - image binarization

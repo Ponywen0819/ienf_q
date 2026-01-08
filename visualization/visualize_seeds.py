@@ -113,22 +113,21 @@ def visualize_seeds(
     # Create visualization
     logger.info("\n=== Creating Visualization ===")
 
-    # Layer 1: Create viridis background
-    logger.info("Creating viridis background...")
+    # Layer 1: Create background (Green Channel Grayscale)
+    logger.info("Creating background...")
     if green_channel is not None:
-        # Apply viridis colormap to green channel
-        normalized = cv2.normalize(green_channel, None, 0, 255, cv2.NORM_MINMAX)
-        vis_image = cv2.applyColorMap(normalized, cv2.COLORMAP_VIRIDIS)
+        if len(green_channel.shape) == 2:
+            vis_image = cv2.cvtColor(green_channel, cv2.COLOR_GRAY2BGR)
+        else:
+            vis_image = green_channel.copy()
     else:
         # Create black background if no green channel
         vis_image = np.zeros((height, width, 3), dtype=np.uint8)
 
-    # Layer 2: Overlay components (annotation mask) in semi-transparent white
+    # Layer 2: Overlay components (annotation mask) - Opaque Red
     logger.info("Overlaying components...")
     component_mask = annotation > 0
-    component_overlay = vis_image.copy()
-    component_overlay[component_mask] = [0, 0, 255]  # red for components
-    vis_image = cv2.addWeighted(vis_image, 1.0, component_overlay, alpha * 0.8, 0)
+    vis_image[component_mask] = [0, 0, 255]  # Opaque Red
 
     # Layer 3: Draw skeleton if requested
     if show_skeleton:
@@ -144,8 +143,8 @@ def visualize_seeds(
                     if skeleton[local_y, local_x] > 0:
                         global_y = local_y + minr
                         global_x = local_x + minc
-                        # Yellow color for skeleton
-                        vis_image[global_y, global_x] = (233, 120, 255)
+                        # Yellow color for skeleton (BGR)
+                        vis_image[global_y, global_x] = (0, 255, 255)
 
     # Layer 4: Draw topology edges if requested
     if show_edges:
@@ -174,6 +173,43 @@ def visualize_seeds(
                 elif node['type'] == 'branchpoint':
                     # Blue square for branchpoints
                     cv2.rectangle(vis_image, (x-1, y-1), (x+1, y+1), (255, 0, 0), -1)
+
+    # Generate Cropped Visualization with Matplotlib for Seeds
+    logger.info("Generating cropped visualization...")
+    crop_x, crop_y = 1700, 360
+    crop_w, crop_h = 400, 300
+    
+    # Extract crop from current state (Background + Mask + Skeleton + Nodes/Edges)
+    # Note: vis_image is BGR
+    if height > crop_y + crop_h and width > crop_x + crop_w:
+        crop_img = vis_image[crop_y:crop_y+crop_h, crop_x:crop_x+crop_w].copy()
+        crop_img_rgb = cv2.cvtColor(crop_img, cv2.COLOR_BGR2RGB)
+        
+        plt.figure(figsize=(8, 6))
+        plt.imshow(crop_img_rgb)
+        
+        # Plot seeds using matplotlib
+        if show_seeds:
+            seed_xs = []
+            seed_ys = []
+            for seed in all_seeds:
+                y, x = seed['position']
+                # Check if seed is within crop
+                if crop_y <= y < crop_y + crop_h and crop_x <= x < crop_x + crop_w:
+                    seed_xs.append(x - crop_x)
+                    seed_ys.append(y - crop_y)
+            
+            if seed_xs:
+                plt.scatter(seed_xs, seed_ys, c='lime', s=5, edgecolors='white', linewidth=0.3, label='Seeds')
+        
+        plt.axis('off')
+        plt.tight_layout()
+        crop_output_file = output_path / "seeds_overlay_crop.png"
+        plt.savefig(crop_output_file, dpi=300, bbox_inches='tight', pad_inches=0)
+        plt.close()
+        logger.info(f"Saved cropped visualization: {crop_output_file}")
+    else:
+        logger.warning("Image too small for requested crop region.")
 
     # Layer 6: Draw seeds if requested (topmost layer)
     if show_seeds:
@@ -427,8 +463,8 @@ def _save_seed_info(
 
 if __name__ == "__main__":
     # Example usage
-    annotation_path = "/Users/ponywen/projects/ienf_q/output/preprocessing/final_label.png"
-    green_channel_path = "/Users/ponywen/projects/ienf_q/output/preprocessing/roi_image.png"
+    annotation_path = "output/preprocessing_normalization/final_label.png"
+    green_channel_path = "output/preprocessing_normalization/roi_image.png"
     output_dir = "output/seeds"
 
     visualize_seeds(

@@ -689,7 +689,7 @@ if __name__ == '__main__':
             show_components=True,
             component_alpha=0.3,
             show_seeds=False,
-            show_component_labels=False,
+            show_component_labels=True,
             line_thickness=1,
             seed_radius=1
         )

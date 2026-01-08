@@ -50,11 +50,13 @@ logger = logging.getLogger(__name__)
 def draw_skeleton_overlay(
     base_image: np.ndarray,
     skeleton_results: List[Dict],
+    label_mask: Optional[np.ndarray] = None,
     show_endpoints: bool = True,
     show_branchpoints: bool = True,
     skeleton_color: tuple = (0, 255, 255),  # BGR: 黃色
-    endpoint_color: tuple = (0, 0, 255),     # BGR: 紅色
-    branchpoint_color: tuple = (255, 0, 0),  # BGR: 藍色
+    endpoint_color: tuple = (0, 255, 0),     # BGR: 綠色
+    branchpoint_color: tuple = (0, 255, 0),  # BGR: 綠色
+    label_color: tuple = (0, 0, 255),        # BGR: 紅色 (不透明)
     alpha: float = 0.7
 ) -> np.ndarray:
     """
@@ -63,11 +65,13 @@ def draw_skeleton_overlay(
     Args:
         base_image: 基礎影像 (灰階或 BGR)
         skeleton_results: 骨架分析結果列表
+        label_mask: 原始標註遮罩 (可選)
         show_endpoints: 是否顯示端點
         show_branchpoints: 是否顯示分支點
         skeleton_color: 骨架顏色 (BGR)
         endpoint_color: 端點顏色 (BGR)
         branchpoint_color: 分支點顏色 (BGR)
+        label_color: 標註遮罩顏色 (BGR)
         alpha: 骨架混合不透明度
 
     Returns:
@@ -81,6 +85,11 @@ def draw_skeleton_overlay(
 
     output = output.astype(np.float32)
     h, w = output.shape[:2]
+
+    # 繪製標註遮罩 (如果提供) - 不透明
+    if label_mask is not None:
+        mask_indices = label_mask > 0
+        output[mask_indices] = label_color
 
     # 創建骨架疊加層
     skeleton_overlay = np.zeros((h, w, 3), dtype=np.float32)
@@ -110,7 +119,7 @@ def draw_skeleton_overlay(
 
     output = output.astype(np.uint8)
 
-    # 繪製端點
+    # 繪製端點 (單像素)
     if show_endpoints:
         for skeleton_info in skeleton_results:
             region = skeleton_info['region']
@@ -119,10 +128,10 @@ def draw_skeleton_overlay(
             for endpoint in skeleton_info['endpoints']:
                 global_x = min_col + endpoint['x']
                 global_y = min_row + endpoint['y']
-                cv2.circle(output, (global_x, global_y),
-                          radius=1, color=endpoint_color, thickness=-1)
+                if 0 <= global_y < h and 0 <= global_x < w:
+                    output[global_y, global_x] = endpoint_color
 
-    # 繪製分支點
+    # 繪製分支點 (單像素)
     if show_branchpoints:
         for skeleton_info in skeleton_results:
             region = skeleton_info['region']
@@ -131,10 +140,8 @@ def draw_skeleton_overlay(
             for branchpoint in skeleton_info['branchpoints']:
                 global_x = min_col + branchpoint['x']
                 global_y = min_row + branchpoint['y']
-                cv2.rectangle(output,
-                            (global_x - 1, global_y - 1),
-                            (global_x + 1, global_y + 1),
-                            branchpoint_color, thickness=1)
+                if 0 <= global_y < h and 0 <= global_x < w:
+                    output[global_y, global_x] = branchpoint_color
 
     return output
 
@@ -398,7 +405,7 @@ def visualize_skeletons(
         connectivity=connectivity,
         min_area=min_area
     )
-    regions = cc_analyzer.process(annotation_path)
+    regions = cc_analyzer.analyze(cc_analyzer.load_binary_image(annotation_path))
     logger.info(f"✓ 偵測到 {len(regions)} 個連通元件")
 
     # 2. 執行骨架化分析
@@ -430,9 +437,14 @@ def visualize_skeletons(
 
     # 4. 繪製骨架疊加圖
     logger.info("\n步驟 4: 繪製骨架疊加圖")
+    
+    # 載入標註遮罩以供顯示
+    label_mask_img = cv2.imread(annotation_path, cv2.IMREAD_GRAYSCALE)
+    
     skeleton_overlay = draw_skeleton_overlay(
         base_image=background_image,
         skeleton_results=skeleton_results,
+        label_mask=label_mask_img,
         show_endpoints=show_endpoints,
         show_branchpoints=show_branchpoints,
         alpha=alpha
@@ -455,6 +467,21 @@ def visualize_skeletons(
     main_output_path = output_path / "skeletons_overlay.png"
     cv2.imwrite(str(main_output_path), skeleton_overlay)
     logger.info(f"✓ 主視覺化已儲存: {main_output_path}")
+
+    # 儲存裁切版本 (Focused View)
+    crop_x, crop_y = 1700, 360
+    crop_w, crop_h = 400, 300
+    h, w = skeleton_overlay.shape[:2]
+    
+    # 簡單邊界檢查
+    y2 = min(crop_y + crop_h, h)
+    x2 = min(crop_x + crop_w, w)
+    
+    if crop_y < h and crop_x < w:
+        cropped_overlay = skeleton_overlay[crop_y:y2, crop_x:x2]
+        cropped_output_path = output_path / "skeletons_overlay_cropped.png"
+        cv2.imwrite(str(cropped_output_path), cropped_overlay)
+        logger.info(f"✓ 裁切視覺化已儲存: {cropped_output_path}")
 
     # 7. 生成統計圖表（如果需要）
     if show_statistics:
@@ -498,14 +525,14 @@ if __name__ == "__main__":
     # 範例 1: 使用預設配置
     logger.info("\n範例 1: 使用預設配置視覺化骨架")
     visualize_skeletons(
-        annotation_path='closing_3.png',
+        annotation_path='output/preprocessing_normalization/final_label.png',
         output_dir='output/skeleton_visualization/default',
-        green_channel_path='split/S163-2_a_epidermis_correct_12.png',
+        green_channel_path='output/preprocessing_normalization/roi_image.png',
         show_endpoints=True,
         show_branchpoints=True,
         show_labels=False,
         show_statistics=True,
-        alpha=0.7
+        alpha=1
         # connectivity 和 min_area 從 config/default.yaml 自動讀取
     )
 

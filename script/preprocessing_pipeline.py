@@ -11,13 +11,15 @@ if __name__ == "__main__":
 
     # Define configuration
     config = {
-        'morphology': {'closing_kernel': 3, 'opening_kernel': 3},
+        'morphology': {'closing_kernel': 5, 'opening_kernel': 3},
         'mask': {'dilate_offset': 100},
         'background': {
-            'radius': 12,
+            'method': 'rolling_ball',
+            'radius': 2,
             'light_background': False  # False for bright objects on dark background
         },
-        'threshold': {'method': 'binary'}
+        'threshold': {'method': 'binary'},
+        'normalization': {'enabled': True}
     }
 
     # Initialize and run pipeline
