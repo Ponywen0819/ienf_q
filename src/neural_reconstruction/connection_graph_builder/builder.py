@@ -30,12 +30,16 @@
 """
 
 import logging
-from typing import List, Tuple, Dict, Any, Optional, Set
+from typing import List, Tuple, Dict, Optional, Set
 import numpy as np
 from scipy.spatial import KDTree
+import networkx as nx
 
 from .path_finder import Pathfinder
-from neural_reconstruction.data_types import ComponentAnalysisResult, SeedPoint
+from neural_reconstruction.data_types import (
+    ComponentAnalysisResult,
+    ConnectionGraphBuilderResult,
+)
 
 # 設定 logger
 logger = logging.getLogger(__name__)
@@ -131,7 +135,7 @@ class NetworkBuilder:
 
     def build_graph(
         self, component_results: List[ComponentAnalysisResult]
-    ) -> Dict[str, Any]:
+    ) -> ConnectionGraphBuilderResult:
         """
         建構全局種子連接圖
 
@@ -154,8 +158,12 @@ class NetworkBuilder:
                     'num_components': int
                 }
         """
-        if self.kdtree is None or self.global_seeds is None:
-            raise RuntimeError("請先呼叫 _build_global_index 建構全局索引")
+        if (
+            self.component_ids is None
+            or self.global_seeds is None
+            or self.kdtree is None
+        ):
+            raise RuntimeError("請先建構全局索引")
 
         logger.info("\n" + "=" * 70)
         logger.info("開始建構全局種子連接圖")
@@ -164,14 +172,7 @@ class NetworkBuilder:
         # 步驟 1: 建構全局索引
         self._build_global_index(component_results)
 
-        res = {
-            "nodes": np.array([]),
-            "component_ids": np.array([]),
-            "edges": [],
-            "num_nodes": 0,
-            "num_edges": 0,
-            "num_components": len(component_results),
-        }
+        res = ConnectionGraphBuilderResult()
 
         if self.kdtree is None or len(self.global_seeds) == 0:
             logger.warning("沒有種子點，返回空圖")
@@ -202,11 +203,11 @@ class NetworkBuilder:
         logger.info(f"元件總數: {len(component_results)}")
         logger.info("=" * 70)
 
-        return {
-            "nodes": self.global_seeds,
-            "component_ids": self.component_ids,
-            "edges": edges,
-        }
+        res.nodes = self.global_seeds
+        res.component_ids = self.component_ids
+        res.edges = edges
+        res.graph = self._build_nx_graph(edges)
+        return res
 
     def _compute_edges_from_source(
         self, source_index: int, visited: Set[Tuple[int, int]]
@@ -335,3 +336,28 @@ class NetworkBuilder:
             )
 
         return edges
+
+    def _build_nx_graph(self, edges: List[Dict]) -> nx.Graph:
+        """
+        將邊列表轉換為 NetworkX 無向圖
+
+        Args:
+            edges: 邊列表
+
+        Returns:
+            G: NetworkX 無向圖
+        """
+        G = nx.Graph()
+
+        for edge in edges:
+            node_a = edge["node_a"]
+            node_b = edge["node_b"]
+            G.add_edge(
+                node_a,
+                node_b,
+                distance=edge["distance"],
+                weight=edge["cost"],
+                path=edge["path"],
+            )
+
+        return G

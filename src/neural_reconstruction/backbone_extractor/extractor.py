@@ -6,13 +6,12 @@ Allows multiple independent connected components (forest structure).
 """
 
 import networkx as nx
-from typing import Dict, Any
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-class MSTBuilder:
+class BackboneExtractor:
     """
     MST Forest Builder
 
@@ -21,11 +20,13 @@ class MSTBuilder:
     be connected (after cost filtering in the pairing stage).
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+    ):
         """Initialize MST builder."""
         logger.info("Initialized MSTBuilder")
 
-    def build_mst_forest(self, G: nx.Graph) -> nx.Graph:
+    def extract(self, G: nx.Graph) -> nx.Graph:
         """
         Build MST forest from component connection graph.
 
@@ -45,7 +46,9 @@ class MSTBuilder:
             return nx.Graph()
 
         logger.info("Building MST forest...")
-        logger.info(f"  Input graph: {G.number_of_nodes()} components, {G.number_of_edges()} connections")
+        logger.info(
+            f"  Input graph: {G.number_of_nodes()} components, {G.number_of_edges()} connections"
+        )
 
         # Find all connected components
         components = list(nx.connected_components(G))
@@ -55,27 +58,33 @@ class MSTBuilder:
         forest = nx.Graph()
 
         for i, component_nodes in enumerate(components):
-            # Extract subgraph
-            subgraph = G.subgraph(component_nodes).copy()
+            subtree_backbone = self._extract_subtree(G, component_nodes)
+            forest = nx.compose(forest, subtree_backbone)
 
-            # If only one node, add directly
-            if subgraph.number_of_nodes() == 1:
-                forest.add_nodes_from(subgraph.nodes(data=True))
-                continue
-
-            # Build MST
-            mst = nx.minimum_spanning_tree(subgraph, weight='weight')
-
-            # Add to forest
-            forest.add_nodes_from(mst.nodes(data=True))
-            forest.add_edges_from(mst.edges(data=True))
-
-            if i < 5 or len(components) <= 10:
-                logger.info(f"    Cluster {i+1}: {mst.number_of_nodes()} components, {mst.number_of_edges()} connections")
-
-        if len(components) > 10:
-            logger.info(f"    ... ({len(components) - 5} clusters not shown)")
-
-        logger.info(f"  MST forest complete: {forest.number_of_nodes()} components, {forest.number_of_edges()} connections")
+        logger.info(
+            f"  MST forest complete: {forest.number_of_nodes()} components, {forest.number_of_edges()} connections"
+        )
 
         return forest
+
+    def _extract_subtree(self, G: nx.Graph, nodes: set) -> nx.Graph:
+        """
+        Extract subtree from graph given a set of nodes.
+
+        Args:
+            G: Input graph
+            nodes: Set of nodes to include in the subtree
+        Returns:
+            subtree: Extracted subtree
+        """
+        subgraph = self._extract_subtree(G, nodes)
+
+        # If only one node, add directly
+        if subgraph.number_of_nodes() == 1:
+            # forest.add_nodes_from(subgraph.nodes(data=True))
+            return subgraph
+
+        # Build MST
+        mst = nx.minimum_spanning_tree(subgraph, weight="weight")
+
+        return mst

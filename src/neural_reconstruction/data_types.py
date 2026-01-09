@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import List, Tuple, Optional
 
 import numpy as np
+import networkx as nx
 
 
 @dataclass
@@ -26,6 +27,7 @@ class SeedPoint:
         component_id: 所屬元件 ID
         edge_id: 所屬邊 ID（僅 edge 類型有值）
     """
+
     position: Tuple[int, int]
     seed_type: str
     component_id: int
@@ -42,6 +44,7 @@ class TopologyNode:
         position: (y, x) 座標（局部座標）
         node_type: 節點類型 ('endpoint' or 'branchpoint')
     """
+
     node_id: int
     position: Tuple[int, int]
     node_type: str
@@ -58,6 +61,7 @@ class TopologyEdge:
         path: 路徑座標列表（局部座標）
         length: 路徑長度（考慮對角線距離）
     """
+
     source_id: int
     target_id: int
     path: List[Tuple[int, int]]
@@ -73,6 +77,7 @@ class TopologyResult:
         nodes: 節點列表
         edges: 邊列表
     """
+
     nodes: List[TopologyNode] = field(default_factory=list)
     edges: List[TopologyEdge] = field(default_factory=list)
 
@@ -89,8 +94,35 @@ class ComponentAnalysisResult:
         topology: 拓樸結構（局部座標）
         seeds: 種子點列表（局部座標）
     """
+
     component_id: int
     bbox: Tuple[int, int, int, int]
     skeleton: np.ndarray
     topology: TopologyResult
     seeds: List[SeedPoint] = field(default_factory=list)
+
+
+@dataclass
+class ConnectionGraphBuilderResult:
+    """
+    元件連接圖建構結果
+
+    Attributes:
+        graph: 連接圖 (networkx.Graph)
+        component_id_to_node: 元件 ID 映射到圖節點的字典
+    """
+
+    nodes: np.ndarray = field(
+        default_factory=lambda: np.array([])
+    )  # 全局種子座標 (N, 2)
+    component_ids: np.ndarray = field(
+        default_factory=lambda: np.array([])
+    )  # 對應的元件 ID (N,)
+    edges: List[dict] = field(default_factory=list)  # 邊列表
+
+    graph: nx.Graph = field(default_factory=nx.Graph)
+
+
+@dataclass
+class PathFindingResult:
+    pass
