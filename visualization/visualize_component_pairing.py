@@ -68,8 +68,8 @@ from typing import Dict, List, Tuple, Optional
 import colorsys
 
 # Import pipeline components
-from nueral_reconstruction.pipeline import NeuralReconstructionPipeline
-from nueral_reconstruction.config_loader import load_config
+from neural_reconstruction.pipeline import NeuralReconstructionPipeline
+from neural_reconstruction.config_loader import load_config
 
 # 設置日誌
 logging.basicConfig(

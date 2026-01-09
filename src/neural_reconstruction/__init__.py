@@ -5,8 +5,16 @@
 """
 
 from .connected_components import ConnectedComponentsAnalyzer
-from .skeletonization import SkeletonAnalyzer
-from .seed_extraction import SkeletonTopologyBuilder, EdgeSeedExtractor
+from .data_types import (
+    SeedPoint,
+    TopologyNode,
+    TopologyEdge,
+    TopologyResult,
+    ComponentAnalysisResult,
+)
+from .component_analyzer.topology import KeyPointDetector, TopologyBuilder
+from .component_analyzer.seed_extraction import EdgeSeedExtractor
+from .component_analyzer import ComponentAnalyzer
 from .component_pairing import ComponentPairAnalyzer
 from .graph_builder import ComponentGraphBuilder
 from .mst_builder import MSTBuilder
@@ -26,11 +34,19 @@ __all__ = [
     # Core pipeline
     'NeuralReconstructionPipeline',
 
+    # Data types
+    'SeedPoint',
+    'TopologyNode',
+    'TopologyEdge',
+    'TopologyResult',
+    'ComponentAnalysisResult',
+
     # Individual modules
     'ConnectedComponentsAnalyzer',
-    'SkeletonAnalyzer',
-    'SkeletonTopologyBuilder',
+    'KeyPointDetector',
+    'TopologyBuilder',
     'EdgeSeedExtractor',
+    'ComponentAnalyzer',
     'ComponentPairAnalyzer',
     'ComponentGraphBuilder',
     'MSTBuilder',

@@ -7,7 +7,7 @@ import os
 # Add project root to path to import src
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.nueral_reconstruction.pathfinding import AStarPathfinder
+from src.neural_reconstruction.pathfinding import AStarPathfinder
 
 def create_synthetic_data(width=600, height=400):
     # Create a dark background

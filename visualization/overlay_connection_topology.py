@@ -40,7 +40,7 @@ from matplotlib.collections import LineCollection
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.nueral_reconstruction.pipeline import NeuralReconstructionPipeline
+from src.neural_reconstruction.pipeline import NeuralReconstructionPipeline
 
 # 設定 logger
 logger = logging.getLogger(__name__)

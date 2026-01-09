@@ -179,25 +179,3 @@ class ConnectedComponentsAnalyzer:
             logger.info(f"  最小元件面積: {min(c['area'] for c in components_list)} 像素")
 
         return components_list
-
-    def process(
-        self,
-        image: np.ndarray
-    ) -> List[Dict]:
-        """
-        完整的連通元件分析流程
-
-        Args:
-            image_path: 輸入二值標註影像路徑
-
-        Returns:
-            (標籤影像, 元件列表)
-        """
-
-        # 1. 載入二值影像
-        binary_image = self.load_binary_image(image_path)
-
-        # 2. 執行連通元件分析
-        components = self.analyze(binary_image)
-
-        return components

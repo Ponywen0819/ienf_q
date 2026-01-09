@@ -45,8 +45,8 @@ import colorsys
 import networkx as nx
 
 # Import pipeline components
-from nueral_reconstruction.pipeline import NeuralReconstructionPipeline
-from nueral_reconstruction.config_loader import load_config
+from neural_reconstruction.pipeline import NeuralReconstructionPipeline
+from neural_reconstruction.config_loader import load_config
 from preprocessing import SkinAnalysisPipeline
 
 

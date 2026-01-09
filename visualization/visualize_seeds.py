@@ -30,11 +30,11 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Circle, Rectangle
 
 # Import directly from modules to avoid __init__.py issues
-from nueral_reconstruction.connected_components import ConnectedComponentsAnalyzer
-from nueral_reconstruction.skeletonization import SkeletonAnalyzer
-from nueral_reconstruction.seed_extraction import SkeletonTopologyBuilder, EdgeSeedExtractor
-from nueral_reconstruction.config_loader import load_config, IENFConfig
-from nueral_reconstruction import NeuralReconstructionPipeline
+from neural_reconstruction.connected_components import ConnectedComponentsAnalyzer
+from neural_reconstruction.skeletonization import SkeletonAnalyzer
+from neural_reconstruction.component_analyzer.seed_extraction import SkeletonTopologyBuilder, EdgeSeedExtractor
+from neural_reconstruction.config_loader import load_config, IENFConfig
+from neural_reconstruction import NeuralReconstructionPipeline
 
 # Configure logging
 logging.basicConfig(

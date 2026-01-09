@@ -4,10 +4,9 @@
 
 整合所有模組，執行完整的神經重建流程：
 1. 連通元件提取 (Connected Components Analysis)
-2. 骨架化 (Skeletonization)
-3. 骨架拓樸建構與種子萃取 (Topology Building & Seed Extraction)
-4. 元件配對與連接拓樸建構 (Component Pairing & Connection Topology)
-5. MST 神經重建 (Neural Reconstruction) - TODO
+2. 元件分析 (Component Analysis) - 骨架化、拓樸建構、種子萃取
+3. 元件配對與連接拓樸建構 (Component Pairing & Connection Topology)
+4. MST 神經重建 (Neural Reconstruction)
 
 使用範例:
     from src.nueral_reconstruction.pipeline import NeuralReconstructionPipeline
@@ -23,8 +22,8 @@
     )
 
     results = pipeline.run(
-        input_image_path='path/to/annotation.png',
-        green_channel_path='path/to/green_channel.png',
+        input_image=annotation_image,
+        green_image=green_channel,
         output_dir='output/reconstruction'
     )
 
@@ -34,16 +33,14 @@
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Any
-import json
+from typing import Dict, List, Optional, Any, Tuple
 
-import cv2
 import numpy as np
 import networkx as nx
 
 from .connected_components import ConnectedComponentsAnalyzer
-from .skeletonization import SkeletonAnalyzer
-from .seed_extraction import SkeletonTopologyBuilder, EdgeSeedExtractor
+from .component_analyzer import ComponentAnalyzer
+from .data_types import SeedPoint, ComponentAnalysisResult
 from .component_pairing import ComponentPairAnalyzer
 from .graph_builder import ComponentGraphBuilder
 from .mst_builder import MSTBuilder
@@ -104,11 +101,9 @@ class NeuralReconstructionPipeline:
             min_area=self.config.connected_components.min_area
         )
 
-        self.skeleton_analyzer = SkeletonAnalyzer()
-
-        # 初始化種子提取器
-        self.topology_builder = SkeletonTopologyBuilder()
-        self.seed_extractor = EdgeSeedExtractor(
+        # 初始化元件分析器（整合骨架化、拓樸建構、種子萃取）
+        self.component_analyzer = ComponentAnalyzer(
+            segment_length=self.config.seed_extraction.base_segment_length,
             min_edge_length=self.config.seed_extraction.base_segment_length
         )
 
@@ -122,6 +117,59 @@ class NeuralReconstructionPipeline:
         logger.info("=" * 70)
         logger.info("神經重建流程初始化完成")
         logger.info("=" * 70)
+
+    def _to_global_coords(
+        self,
+        result: ComponentAnalysisResult
+    ) -> Tuple[List[Dict], List[Dict]]:
+        """
+        將元件分析結果從局部座標轉換為全局座標
+
+        Args:
+            result: ComponentAnalysisResult（局部座標）
+
+        Returns:
+            (seeds_global, topology_dict): 全局座標的種子列表和拓樸字典
+        """
+        minr, minc = result.bbox[0], result.bbox[1]
+
+        # 轉換種子座標
+        seeds_global = []
+        for seed in result.seeds:
+            y, x = seed.position
+            seeds_global.append({
+                'position': (y + minr, x + minc),
+                'type': seed.seed_type,
+                'component_id': seed.component_id,
+                'edge_id': seed.edge_id
+            })
+
+        # 轉換拓樸座標
+        nodes_global = []
+        for node in result.topology.nodes:
+            y, x = node.position
+            nodes_global.append({
+                'id': node.node_id,
+                'position': (y + minr, x + minc),
+                'type': node.node_type
+            })
+
+        edges_global = []
+        for edge in result.topology.edges:
+            global_path = [(y + minr, x + minc) for y, x in edge.path]
+            edges_global.append({
+                'source': edge.source_id,
+                'target': edge.target_id,
+                'path': global_path,
+                'length': edge.length
+            })
+
+        topology_dict = {
+            'nodes': nodes_global,
+            'edges': edges_global
+        }
+
+        return seeds_global, topology_dict
 
     def _build_mst_with_paths(
         self,
@@ -176,10 +224,14 @@ class NeuralReconstructionPipeline:
         執行完整的神經重建流程
 
         Args:
-            input_image_path: 輸入二值標註影像路徑
-            green_channel_path: 綠色通道影像路徑（用於路徑規劃）
+            input_image: 輸入二值標註影像
+            green_image: 綠色通道影像（用於路徑規劃）
             output_dir: 輸出目錄（可選）
             save_intermediates: 是否保存中間結果
+            stop_step: 停止步驟（可選）
+                - 'connected_components': 階段 1 後停止
+                - 'component_analysis': 階段 2 後停止
+                - 'component_pairing': 階段 3 後停止
 
         Returns:
             results: 包含所有階段結果的字典
@@ -187,7 +239,7 @@ class NeuralReconstructionPipeline:
         logger.info("\n" + "=" * 70)
         logger.info("開始神經重建流程")
         logger.info("=" * 70)
-        
+
         # 初始化元件配對分析器
         self.component_pair_analyzer = ComponentPairAnalyzer(
             green_channel=green_image,
@@ -213,150 +265,68 @@ class NeuralReconstructionPipeline:
 
         regions = self.cc_analyzer.analyze(input_image)
 
-        results['stages']['connected_components'] = {
-            'num_components': len(regions),
-            'regions': regions
-        }
-
         logger.info(f"\n✓ 階段 1 完成: 提取了 {len(regions)} 個連通元件")
 
         if stop_step == 'connected_components':
             logger.info("流程在階段 1 停止")
             return results
 
-        # ========== 階段 2: 骨架化 ==========
+        # ========== 階段 2: 元件分析（骨架化 + 拓樸建構 + 種子萃取） ==========
         logger.info("\n" + "=" * 70)
-        logger.info("階段 2: 骨架化分析")
+        logger.info("階段 2: 元件分析（骨架化、拓樸建構、種子萃取）")
         logger.info("=" * 70)
 
-        skeleton_results = self.skeleton_analyzer.batch_process(regions)
+        # 批次分析所有元件（局部座標）
+        component_results = self.component_analyzer.batch_analyze(regions)
 
-        results['stages']['skeletonization'] = {
-            'num_skeletons': len(skeleton_results),
-            'skeleton_data': skeleton_results
-        }
-
-        # 統計骨架資訊
-        total_endpoints = sum(s['num_endpoints'] for s in skeleton_results)
-        total_branchpoints = sum(s['num_branchpoints'] for s in skeleton_results)
-
-        logger.info(f"\n✓ 階段 2 完成: 處理了 {len(skeleton_results)} 個骨架")
-        logger.info(f"  總端點數: {total_endpoints}")
-        logger.info(f"  總分支點數: {total_branchpoints}")
-
-        if stop_step == 'skeletonization':
-            logger.info("流程在階段 2 停止")
-            return results
-        # ========== 階段 3: 骨架拓樸建構與種子萃取 ==========
-        logger.info("\n" + "=" * 70)
-        logger.info("階段 3: 骨架拓樸建構與種子萃取")
-        logger.info("=" * 70)
-
+        # 轉換為全局座標並收集結果
         all_topologies = []
         all_seeds = []
         total_nodes = 0
         total_edges = 0
 
-        for skeleton_data in skeleton_results:
-            # 從 region.label 獲取元件 ID
-            component_id = skeleton_data['region'].label
-            skeleton_mask = skeleton_data['skeleton']
-            endpoints = skeleton_data['endpoints']
-            branchpoints = skeleton_data['branchpoints']
-
-            logger.info(f"\n處理元件 {component_id}...")
-
-            # 將 endpoints 和 branchpoints 從字典格式轉換為 tuple 格式
-            # 格式從 {'x': int, 'y': int} 轉換為 (y, x)
-            endpoints_tuples = [(pt['y'], pt['x']) for pt in endpoints]
-            branchpoints_tuples = [(pt['y'], pt['x']) for pt in branchpoints]
-
-            # 建構拓樸
-            topology = self.topology_builder.build_topology(
-                skeleton_mask, endpoints_tuples, branchpoints_tuples
-            )
-
-            # 將座標從局部(相對於組件 bounding box)轉換為全局(相對於完整影像)
-            # 這樣視覺化和配對分析才能正確使用座標
-            region = skeleton_data['region']
-            minr, minc, maxr, maxc = region.bbox
-
-            # 轉換拓樸節點位置到全局座標
-            for node in topology['nodes']:
-                y, x = node['position']
-                node['position'] = (y + minr, x + minc)
-
-            # 轉換拓樸邊路徑到全局座標
-            for edge in topology['edges']:
-                global_path = []
-                for y, x in edge['path']:
-                    global_path.append((y + minr, x + minc))
-                edge['path'] = global_path
-
-            total_nodes += len(topology['nodes'])
-            total_edges += len(topology['edges'])
-
-            # 從拓樸邊抽取種子
-            seeds = self.seed_extractor.extract_seeds_from_topology(
-                topology,
-                segment_length=self.config.seed_extraction.base_segment_length
-            )
-            
-            # 沒有種子就使用值心填充
-            if len(seeds) ==0:
-                seeds.append({
-                    'position': (region.bbox[0] + (region.bbox[2] - region.bbox[0]) // 2,
-                                 region.bbox[1] + (region.bbox[3] - region.bbox[1]) // 2),
-                    'type': 'centroid',
-                    'component_id': component_id,
-                })
-
-            # 添加節點作為種子（端點和分支點）
-            for node in topology['nodes']:
-                seeds.append({
-                    'position': node['position'],
-                    'type': node['type'],
-                    'component_id': component_id
-                })
-            
-
-            # 記錄元件 ID
-            for seed in seeds:
-                if 'component_id' not in seed:
-                    seed['component_id'] = component_id
-
+        for result in component_results:
+            # 轉換為全局座標
+            seeds_global, topology_dict = self._to_global_coords(result)
 
             all_topologies.append({
-                'component_id': component_id,
-                'topology': topology
+                'component_id': result.component_id,
+                'topology': topology_dict
             })
 
-            all_seeds.extend(seeds)
+            all_seeds.extend(seeds_global)
 
-            logger.info(f"  元件 {component_id}: {len(topology['nodes'])} 節點, "
-                       f"{len(topology['edges'])} 邊, {len(seeds)} 種子")
+            total_nodes += len(result.topology.nodes)
+            total_edges += len(result.topology.edges)
 
-        results['stages']['topology_and_seeds'] = {
-            'num_components': len(all_topologies),
+            logger.info(f"  元件 {result.component_id}: "
+                       f"{len(result.topology.nodes)} 節點, "
+                       f"{len(result.topology.edges)} 邊, "
+                       f"{len(result.seeds)} 種子")
+
+        results['stages']['component_analysis'] = {
+            'num_components': len(component_results),
             'total_nodes': total_nodes,
             'total_edges': total_edges,
             'total_seeds': len(all_seeds),
+            'component_results': component_results,
             'topologies': all_topologies,
             'seeds': all_seeds
         }
 
-        logger.info(f"\n✓ 階段 3 完成:")
+        logger.info(f"\n✓ 階段 2 完成:")
+        logger.info(f"  處理元件數: {len(component_results)}")
         logger.info(f"  總節點數: {total_nodes}")
         logger.info(f"  總邊數: {total_edges}")
         logger.info(f"  總種子數: {len(all_seeds)}")
 
-        if stop_step == 'topology_and_seeds':
-            logger.info("流程在階段 3 停止")
+        if stop_step == 'component_analysis':
+            logger.info("流程在階段 2 停止")
             return results
-        
-        # ========== 階段 4: 元件配對與連接拓樸建構 ==========
+
+        # ========== 階段 3: 元件配對與連接拓樸建構 ==========
         logger.info("\n" + "=" * 70)
-        logger.info("階段 4: 元件配對與連接拓樸建構")
+        logger.info("階段 3: 元件配對與連接拓樸建構")
         logger.info("=" * 70)
 
         # 準備元件資料（每個元件的種子列表）
@@ -365,7 +335,7 @@ class NeuralReconstructionPipeline:
             component_id = topo_data['component_id']
             # 找出屬於這個元件的所有種子
             component_seeds = [s for s in all_seeds if s['component_id'] == component_id]
-            
+
             components_data.append({
                 'component_id': component_id,
                 'seeds': component_seeds
@@ -386,14 +356,18 @@ class NeuralReconstructionPipeline:
             'all_pair_results': pairing_results['all_pair_results']
         }
 
-        logger.info(f"\n✓ 階段 4 完成:")
+        logger.info(f"\n✓ 階段 3 完成:")
         logger.info(f"  分析配對數: {pairing_results['num_pairs_analyzed']}")
         logger.info(f"  建議連接數: {pairing_results['num_connections']}")
         logger.info(f"  連接拓樸已建立")
 
-        # ========== 階段 5: MST 重建 ==========
+        if stop_step == 'component_pairing':
+            logger.info("流程在階段 3 停止")
+            return results
+
+        # ========== 階段 4: MST 重建 ==========
         logger.info("\n" + "=" * 70)
-        logger.info("階段 5: MST 神經重建")
+        logger.info("階段 4: MST 神經重建")
         logger.info("=" * 70)
 
         # Step 1: Build component graph from pairing results
@@ -444,7 +418,7 @@ class NeuralReconstructionPipeline:
         logger.info("\n" + "=" * 70)
         logger.info("神經重建流程執行完成")
         logger.info("=" * 70)
-        logger.info(f"✓ 已完成所有階段: 連通元件提取, 骨架化, 拓樸建構與種子萃取, "
+        logger.info(f"✓ 已完成所有階段: 連通元件提取, 元件分析, "
                    f"元件配對與連接拓樸建構, MST 重建")
         logger.info("=" * 70)
 

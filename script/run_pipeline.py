@@ -1,7 +1,7 @@
 import cv2
 from preprocessing import SkinAnalysisPipeline  
-from nueral_reconstruction import NeuralReconstructionPipeline
-from nueral_reconstruction.config_loader import load_config, IENFConfig
+from neural_reconstruction import NeuralReconstructionPipeline
+from neural_reconstruction.config_loader import load_config, IENFConfig
 
 import logging
 logging.basicConfig(level=logging.INFO)

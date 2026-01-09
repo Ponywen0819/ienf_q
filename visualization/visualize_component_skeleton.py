@@ -46,9 +46,9 @@ import numpy as np
 # 添加 src 路徑
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.nueral_reconstruction.connected_components import ConnectedComponentsAnalyzer
-from src.nueral_reconstruction.skeletonization import SkeletonAnalyzer
-from src.nueral_reconstruction.config_loader import load_config, IENFConfig
+from src.neural_reconstruction.connected_components import ConnectedComponentsAnalyzer
+from src.neural_reconstruction.skeletonization import SkeletonAnalyzer
+from src.neural_reconstruction.config_loader import load_config, IENFConfig
 from src.preprocessing.pipeline import SkinAnalysisPipeline
 
 # 設定 logger
