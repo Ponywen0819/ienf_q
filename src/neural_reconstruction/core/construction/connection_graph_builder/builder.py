@@ -185,9 +185,9 @@ class NetworkBuilder:
         # 建立座標轉換映射 (local -> global)
         mapping = {node: (node[0] + minr, node[1] + minc) for node in topology.nodes()}
 
-        # 使用 nx.relabel_nodes 更新圖的節點 ID 到全局座標
-        # copy=False 表示直接修改原圖
-        nx.relabel_nodes(topology, mapping, copy=False)
+        # 使用 nx.relabel_nodes 建立新圖，不修改原圖
+        # copy=True 避免修改輸入的 topology
+        topology = nx.relabel_nodes(topology, mapping, copy=True)
 
         # 更新 Edge 中的 path 資訊 (如果有的話)
         for u, v, data in topology.edges(data=True):
@@ -250,8 +250,11 @@ class NetworkBuilder:
             dtype=np.int32,
         )
 
-        # 建立 KD-Tree
-        self.kdtree = KDTree(self.global_seeds)
+        # 建立 KD-Tree（空陣列時無法建立，需要至少有一個點）
+        if len(self.global_seeds) > 0:
+            self.kdtree = KDTree(self.global_seeds)
+        else:
+            self.kdtree = None
 
         logger.info(f"建構全局索引: {len(self.global_seeds)} 個種子點")
 
@@ -328,7 +331,7 @@ class NetworkBuilder:
     def _resolve_candidate_paths(
         self,
         source_index: int,
-        target_index_list: List[int],
+        target_index_list: List[Tuple[int, int]],
         visited: Set[Tuple[int, int]],
     ) -> List[Dict]:
         if (
@@ -340,8 +343,13 @@ class NetworkBuilder:
 
         # 批次計算從根節點到所有未處理鄰居的路徑
         source_pos = tuple(self.global_seeds[source_index].astype(int))
+
+        # target_index_list 是 tuple pair 列表 [(min_idx, max_idx), ...]
+        # 需要從 pair 中提取實際的 target index
+        target_indices = [pair[1] if pair[0] == source_index else pair[0]
+                         for pair in target_index_list]
         target_position_list = [
-            tuple(self.global_seeds[j].astype(int)) for j in target_index_list
+            tuple(self.global_seeds[j].astype(int)) for j in target_indices
         ]
 
         path_results = self.pathfinder.find_paths_from_source(
@@ -350,10 +358,8 @@ class NetworkBuilder:
 
         edges = []
         # 處理路徑結果
-        for target_index, target_pos in zip(target_index_list, target_position_list):
-            visited.add(
-                (min(source_index, target_index), max(source_index, target_index))
-            )
+        for pair, target_index, target_pos in zip(target_index_list, target_indices, target_position_list):
+            visited.add(pair)
             result = path_results.get(target_pos)
 
             if result is None:
