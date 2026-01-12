@@ -36,7 +36,7 @@ from scipy.spatial import KDTree
 import networkx as nx
 
 from .path_finder import Pathfinder
-from neural_reconstruction.data_types import (
+from neural_reconstruction.common.data_types import (
     ComponentAnalysisResult,
     ConnectionGraphBuilderResult,
 )
@@ -208,6 +208,40 @@ class NetworkBuilder:
         res.edges = edges
         res.graph = self._build_nx_graph(edges)
         return res
+
+    def _build_initial_graph(
+        self, component_results: List[ComponentAnalysisResult]
+    ) -> nx.Graph:
+        """
+        從元件分析結果建構圖
+
+        Args:
+            component_results: 元件分析結果列表
+        Returns:
+            G: NetworkX 無向圖
+        """
+        G = nx.Graph()
+
+        for result in component_results:
+            component_id = result.component_id
+            bbox = result.bbox
+            minr, minc, _, _ = bbox
+
+            # 將每個種子的局部座標轉換為全局座標並加入圖中
+            for seed in result.seeds:
+                local_y, local_x = seed.position
+                global_y = minr + local_y
+                global_x = minc + local_x
+                G.add_node(
+                    (global_y, global_x),
+                    component_id=component_id,
+                    seed_type=seed.seed_type,
+                )
+
+        logger.info(
+            f"初始圖建構完成: {G.number_of_nodes()} 個節點來自 {len(component_results)} 個元件"
+        )
+        return G
 
     def _compute_edges_from_source(
         self, source_index: int, visited: Set[Tuple[int, int]]
