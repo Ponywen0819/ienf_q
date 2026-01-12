@@ -1,4 +1,7 @@
 {
   "python.analysis.typeCheckingMode": "standard",
-  "cSpell.words": ["kdtree"]
+  "cSpell.words": ["kdtree"],
+  "python.testing.pytestArgs": ["test"],
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestEnabled": true
 }
