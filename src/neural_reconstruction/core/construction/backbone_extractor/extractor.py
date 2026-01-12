@@ -77,7 +77,7 @@ class BackboneExtractor:
         Returns:
             subtree: Extracted subtree
         """
-        subgraph = self._extract_subtree(G, nodes)
+        subgraph = G.subgraph(nodes).copy()
 
         # If only one node, add directly
         if subgraph.number_of_nodes() == 1:
