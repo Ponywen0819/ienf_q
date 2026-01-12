@@ -12,14 +12,10 @@ IENF-Q (Intra-Epidermal Nerve Fiber Quantification) is an automated analysis pip
 # Install dependencies (uses uv package manager)
 uv sync
 
-# Run preprocessing pipeline
-python tools/run_preprocessing.py \
-    --label /path/to/label.tif \
-    --mask /path/to/epidermis_mask.tif \
-    --image /path/to/original.tif \
-    --output-dir output/preprocessing
+# Run complete pipeline (preprocessing + reconstruction)
+python test_pipeline.py
 
-# With debug output to save intermediate results
+# Run preprocessing only
 python tools/run_preprocessing.py \
     --label data/Label/S163-2_a.tif \
     --mask data/Mask/S163-2_a.tif \
@@ -27,11 +23,15 @@ python tools/run_preprocessing.py \
     --output-dir output/preprocessing \
     --debug
 
-# Run test script for neural reconstruction
+# Run reconstruction only (legacy)
 python test_main_entry.py
 
 # Run with uv
-uv run python test_main_entry.py
+uv run python test_pipeline.py
+
+# Run tests
+pytest test/
+pytest test/construction/component_analyzer/  # Run specific test module
 ```
 
 ## Architecture
@@ -43,17 +43,28 @@ The codebase is organized into a layered architecture with clear separation of c
 ```
 src/neural_reconstruction/
 ├── common/              # Shared data types and utilities
-│   └── data_types.py   # ComponentAnalysisResult, etc.
+│   └── data_types.py   # ComponentAnalysisResult, ConnectionGraphBuilderResult
 ├── core/               # Core algorithms
 │   ├── preprocessing/  # Image preprocessing pipeline
 │   ├── construction/   # Neural network reconstruction
+│   │   ├── component_analyzer/     # Skeletonization, topology, seed extraction
+│   │   ├── connection_graph_builder/  # A* path finding, graph building
+│   │   ├── backbone_extractor/     # MST extraction
+│   │   └── main.py                 # build_neural_network() entry point
 │   └── crosses_detection/  # Epidermis crossing detection
-└── ui/                 # User interface (currently minimal)
+└── ui/                 # Main pipeline integration
+    └── main_pipeline.py  # NeuralReconstructionPipeline class
 ```
 
-### Main Pipeline: Neural Network Reconstruction
+### Complete Pipeline: Preprocessing + Reconstruction
 
-The reconstruction process is orchestrated by `build_neural_network()` in [src/neural_reconstruction/core/construction/main.py](src/neural_reconstruction/core/construction/main.py). This function provides a clean API that chains together four distinct phases:
+**NEW: Unified Pipeline** - Use `NeuralReconstructionPipeline` in [src/neural_reconstruction/ui/main_pipeline.py](src/neural_reconstruction/ui/main_pipeline.py) for end-to-end processing from raw images to reconstructed network. This integrates preprocessing and reconstruction into a single API.
+
+**Lower-level API** - `build_neural_network()` in [src/neural_reconstruction/core/construction/main.py](src/neural_reconstruction/core/construction/main.py) provides direct access to the reconstruction algorithm, assuming preprocessing is already done.
+
+### Neural Network Reconstruction Process
+
+The reconstruction process chains together four distinct phases:
 
 **Phase 1: Connected Components Analysis**
 - Uses scikit-image's `label()` and `regionprops()`
@@ -96,7 +107,65 @@ The `crosses_detection/` module counts nerve fibers crossing the epidermis bound
 
 ## Key API Entry Points
 
-### Main Reconstruction Function
+### Complete Pipeline (Recommended)
+
+```python
+from neural_reconstruction.ui.main_pipeline import NeuralReconstructionPipeline
+
+# Using default configuration
+pipeline = NeuralReconstructionPipeline()
+
+# From file paths
+result = pipeline.run_from_files(
+    label_path="data/Label/S163-2_a.tif",
+    mask_path="data/Mask/S163-2_a.tif",
+    image_path="data/Original/S163-2_a.tif"
+)
+
+# From NumPy arrays
+result = pipeline.run(
+    label_image=label_array,      # Binary annotation (H, W)
+    mask_image=mask_array,        # Epidermis mask (H, W)
+    original_image=original_array # RGB or grayscale (H, W, 3) or (H, W)
+)
+
+# Access results
+mst_forest = result.mst_forest        # NetworkX Graph
+final_label = result.final_label      # Processed label (H, W)
+roi_image = result.roi_image          # ROI image (H, W)
+print(f"Nodes: {result.num_nodes}, Edges: {result.num_edges}")
+```
+
+### Custom Configuration
+
+```python
+# Custom preprocessing config
+preprocessing_config = {
+    'morphology': {'closing_kernel': 5, 'opening_kernel': 3},
+    'mask': {'dilate_offset': 100},
+    'background': {'method': 'rolling_ball', 'radius': 20, 'light_background': True},
+    'threshold': {'method': 'binary'},
+    'normalization': {'enabled': True}
+}
+
+# Custom reconstruction config
+reconstruction_config = {
+    'connectivity': 4,
+    'min_area': 30,
+    'segment_length': 3.0,
+    'search_radius': 100.0,
+    'max_cost_threshold': 0.95,
+    'intensity_weight': 0.7,
+    'shape_weight': 0.3
+}
+
+pipeline = NeuralReconstructionPipeline(
+    preprocessing_config=preprocessing_config,
+    reconstruction_config=reconstruction_config
+)
+```
+
+### Reconstruction Only (Lower-Level)
 
 ```python
 from neural_reconstruction.core.construction.main import build_neural_network
@@ -144,13 +213,25 @@ final_label, roi_image = pipeline.run(
 
 ## Key Configuration Parameters
 
-### Component Analysis
+### Preprocessing Configuration
+- `morphology.closing_kernel`: Kernel size for morphological closing (default: 3)
+- `morphology.opening_kernel`: Kernel size for morphological opening (default: 3)
+- `mask.dilate_offset`: Vertical dilation offset in pixels (default: 50)
+- `background.method`: 'morphology', 'rolling_ball', or 'gaussian' (default: 'morphology')
+- `background.radius`: Rolling ball radius (default: 12)
+- `background.light_background`: Whether background is light (default: True)
+- `threshold.method`: Threshold type 'binary' or 'binary_inv' (default: 'binary')
+- `normalization.enabled`: Enable regional normalization (default: False)
+
+### Reconstruction Configuration
+
+**Component Analysis:**
 - `connectivity`: 4 or 8 (default: 4) - affects connected component detection
-- `min_area`: Minimum pixels to keep component (default: 0)
+- `min_area`: Minimum pixels to keep component (default: 50)
 - `segment_length`: Seed spacing along skeleton in pixels (default: 5.0)
 - `prune_threshold`: Remove skeleton branches shorter than this (default: 5.0)
 
-### Path Finding
+**Path Finding:**
 - `search_radius`: Max distance to search for connections in pixels (default: 50.0)
 - `max_cost_threshold`: Reject paths with normalized cost > this value (default: 0.98)
 - `intensity_weight`: Weight for image intensity in cost (default: 0.6)
@@ -161,13 +242,15 @@ final_label, roi_image = pipeline.run(
 - **Language**: Python 3.10+, code comments in Traditional Chinese
 - **Module naming**: The package is `neural_reconstruction` (note: some legacy references may say `nueral_reconstruction` - when updating code, use `neural_reconstruction`)
 - **Image format**:
-  - Green channel carries strongest nerve fiber signal
+  - Green channel carries strongest nerve fiber signal (automatically extracted from RGB)
   - Annotations are binary (255=fiber, 0=background)
   - Internal processing uses 0/1 binary after conversion
+  - Original images can be RGB (H, W, 3) or grayscale (H, W) - pipeline handles both
 - **Data structures**:
   - Uses `NetworkX` for graph representations
   - Custom dataclasses defined in `common/data_types.py`
   - NumPy arrays for all image data
+- **Connectivity Parameter**: Note that scikit-image uses 1 for 4-connected and 2 for 8-connected, while our API uses 4 and 8. The conversion is handled internally in `build_neural_network()`
 
 ## Package Management
 
@@ -178,9 +261,14 @@ This project uses **uv** as the package manager:
 
 ## Development Notes
 
-- **No config files**: Despite documentation references, there are no `config/` directory or YAML files in the repo currently. Configuration is passed programmatically or via CLI args.
 - **Entry points**: Main development entry points are:
-  - [test_main_entry.py](test_main_entry.py) - Tests reconstruction pipeline
-  - [tools/run_preprocessing.py](tools/run_preprocessing.py) - CLI for preprocessing
+  - [test_pipeline.py](test_pipeline.py) - Tests complete pipeline (preprocessing + reconstruction)
+  - [examples/pipeline_usage.py](examples/pipeline_usage.py) - Usage examples with different configurations
+  - [test_main_entry.py](test_main_entry.py) - Tests reconstruction only (legacy)
+  - [tools/run_preprocessing.py](tools/run_preprocessing.py) - CLI for preprocessing only
 - **Data directory**: [data/](data/) contains sample images for testing (Original/, Label/, Mask/ subdirectories)
+- **Test structure**: Tests are organized in [test/](test/) directory with pytest
+  - `test/construction/component_analyzer/` - Component analysis tests
+  - `test/construction/connection_graph_builder/` - Path finding and graph building tests
 - **Output**: Pipeline generates NetworkX graphs; visualization is handled externally
+- **Edge case handling**: The pipeline handles graphs with no edges (isolated components) gracefully. This is expected when components are too far apart or cost threshold is too strict.

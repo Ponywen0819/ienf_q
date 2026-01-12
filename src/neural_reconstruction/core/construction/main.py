@@ -110,11 +110,15 @@ def build_neural_network(
     # 二值化處理（確保是 0/1）
     binary_image = (label_image > 0).astype(np.uint8)
 
+    # 轉換 connectivity 參數（4 -> 1, 8 -> 2）
+    # scikit-image 使用 1 表示 4-連通，2 表示 8-連通
+    skimage_connectivity = 1 if connectivity == 4 else 2
+
     # 連通元件標記
-    labeled_image = label(binary_image, connectivity=connectivity)
+    labeled_image = label(binary_image, connectivity=skimage_connectivity)
     regions = regionprops(labeled_image)
 
-    logger.info(f"連通性: {connectivity}")
+    logger.info(f"連通性: {connectivity}-connected (scikit-image: {skimage_connectivity})")
     logger.info(f"偵測到 {len(regions)} 個連通元件")
 
     # 面積過濾

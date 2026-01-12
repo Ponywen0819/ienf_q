@@ -77,12 +77,13 @@ class BackboneExtractor:
         Returns:
             subtree: Extracted subtree
         """
-        subgraph = G.subgraph(nodes).copy()
+        subgraph = G.subgraph(nodes)
 
-        # If only one node, add directly
-        if subgraph.number_of_nodes() == 1:
-            # forest.add_nodes_from(subgraph.nodes(data=True))
-            return subgraph
+        # If only one node or no edges, create a new graph with just the nodes
+        if subgraph.number_of_nodes() <= 1 or subgraph.number_of_edges() == 0:
+            result = nx.Graph()
+            result.add_nodes_from(subgraph.nodes(data=True))
+            return result
 
         # Build MST
         mst = nx.minimum_spanning_tree(subgraph, weight="weight")
