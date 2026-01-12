@@ -95,44 +95,6 @@ class NetworkBuilder:
         logger.info(f"強度權重: {intensity_weight}, 形狀權重: {shape_weight}")
         logger.info("=" * 70)
 
-    def _build_global_index(
-        self, component_results: List[ComponentAnalysisResult]
-    ) -> None:
-        """
-        建構全局種子點索引
-
-        從所有元件收集種子點，建立 cKDTree 空間索引與對應的 component_id 陣列。
-
-        Args:
-            component_results: 元件分析結果列表
-        """
-        all_seeds = []
-        all_component_ids = []
-
-        for result in component_results:
-            component_id = result.component_id
-            bbox = result.bbox
-            minr, minc, _, _ = bbox
-
-            # 將每個種子的局部座標轉換為全局座標
-            for seed in result.seeds:
-                local_y, local_x = seed.position
-                global_y = minr + local_y
-                global_x = minc + local_x
-
-                all_seeds.append([global_y, global_x])
-                all_component_ids.append(component_id)
-
-        # 建立全局陣列
-        self.global_seeds = np.array(all_seeds, dtype=np.int32)
-        self.component_ids = np.array(all_component_ids, dtype=np.int32)
-
-        # 建立 KD-Tree
-        self.kdtree = KDTree(self.global_seeds)
-
-        logger.info(f"建構全局索引: {len(self.global_seeds)} 個種子點")
-        logger.info(f"來自 {len(component_results)} 個元件")
-
     def build_graph(
         self, component_results: List[ComponentAnalysisResult]
     ) -> ConnectionGraphBuilderResult:
@@ -158,28 +120,24 @@ class NetworkBuilder:
                     'num_components': int
                 }
         """
-        if (
-            self.component_ids is None
-            or self.global_seeds is None
-            or self.kdtree is None
-        ):
-            raise RuntimeError("請先建構全局索引")
 
         logger.info("\n" + "=" * 70)
         logger.info("開始建構全局種子連接圖")
         logger.info("=" * 70)
 
-        # 步驟 1: 建構全局索引
-        self._build_global_index(component_results)
+        global_topology = self._build_global_topology(component_results)
+        self._build_global_index(global_topology)
 
         res = ConnectionGraphBuilderResult()
-
-        if self.kdtree is None or len(self.global_seeds) == 0:
+        if (
+            self.kdtree is None
+            or self.global_seeds is None
+            or len(self.global_seeds) == 0
+        ):
             logger.warning("沒有種子點，返回空圖")
             return res
 
         # 步驟 2: 對每個節點搜尋鄰居並建立邊
-        edges = []
         processed_pairs: Set[Tuple[int, int]] = set()  # 記錄已處理的節點對（無向圖）
 
         num_nodes = len(self.global_seeds)
@@ -187,61 +145,115 @@ class NetworkBuilder:
 
         for i in range(num_nodes):
             new_edges = self._compute_edges_from_source(i, processed_pairs)
-            edges.extend(new_edges)
+            # edges.extend(new_edges)
+            self._update_edges_to_graph(new_edges, global_topology)
 
             # 進度報告
             if (i + 1) % 100 == 0 or (i + 1) == num_nodes:
                 logger.info(
-                    f"  已處理 {i + 1}/{num_nodes} 個節點，當前邊數: {len(edges)}"
+                    f"  已處理 {i + 1}/{num_nodes} 個節點，當前邊數: {global_topology.number_of_edges()}"
                 )
 
         logger.info("\n" + "=" * 70)
         logger.info("圖建構完成")
         logger.info("=" * 70)
         logger.info(f"節點總數: {num_nodes}")
-        logger.info(f"邊總數: {len(edges)}")
+        logger.info(f"邊總數: {global_topology.number_of_edges()}")
         logger.info(f"元件總數: {len(component_results)}")
         logger.info("=" * 70)
 
         res.nodes = self.global_seeds
-        res.component_ids = self.component_ids
-        res.edges = edges
-        res.graph = self._build_nx_graph(edges)
+        res.graph = global_topology
         return res
 
-    def _build_initial_graph(
-        self, component_results: List[ComponentAnalysisResult]
-    ) -> nx.Graph:
+    def _get_component_global_topology(
+        self, component_result: ComponentAnalysisResult
+    ) -> nx.MultiGraph:
         """
-        從元件分析結果建構圖
+        獲取元件的全局拓樸結構
+
+        Args:
+            component_result: 元件分析結果
+
+        Returns:
+            nx.MultiGraph: 元件的全局拓樸圖
+        """
+        bbox = component_result.bbox
+        topology = component_result.topology
+        minr, minc, _, _ = bbox
+
+        # 建立座標轉換映射 (local -> global)
+        mapping = {node: (node[0] + minr, node[1] + minc) for node in topology.nodes()}
+
+        # 使用 nx.relabel_nodes 更新圖的節點 ID 到全局座標
+        # copy=False 表示直接修改原圖
+        nx.relabel_nodes(topology, mapping, copy=False)
+
+        # 更新 Edge 中的 path 資訊 (如果有的話)
+        for u, v, data in topology.edges(data=True):
+            if "path" in data:
+                # 將 path 中的每個點也轉換為全局座標
+                local_path = data["path"]
+                global_path = [(p[0] + minr, p[1] + minc) for p in local_path]
+                data["path"] = global_path
+            # 在邊屬性中新增 weight 屬性，預設為 1e-5
+            data["weight"] = 1e-5
+
+        #  在所有節點中新增 component_id 屬性
+        for node in topology.nodes():
+            topology.nodes[node]["component_id"] = component_result.component_id
+        return topology
+
+    def _build_global_topology(
+        self, component_result_list: List[ComponentAnalysisResult]
+    ) -> nx.MultiGraph:
+        """
+        建構元件的全局拓樸結構
+
+        Args:
+            component_result: 元件分析結果
+
+        Returns:
+            nx.MultiGraph: 元件的全局拓樸圖
+        """
+        result_graph = nx.MultiGraph()
+        for component_result in component_result_list:
+            topology = self._get_component_global_topology(component_result)
+
+            result_graph.update(topology)
+        return result_graph
+
+    def _build_global_index(self, global_graph: nx.MultiGraph) -> None:
+        """
+        建構全局種子點索引
+
+        從所有元件收集種子點，建立 cKDTree 空間索引與對應的 component_id 陣列。
 
         Args:
             component_results: 元件分析結果列表
-        Returns:
-            G: NetworkX 無向圖
         """
-        G = nx.Graph()
+        componenet_ids = []
+        global_seeds = []
 
-        for result in component_results:
-            component_id = result.component_id
-            bbox = result.bbox
-            minr, minc, _, _ = bbox
+        for node in global_graph.nodes():
+            global_seeds.append(node)
+            componenet_ids.append(global_graph.nodes[node]["component_id"])
 
-            # 將每個種子的局部座標轉換為全局座標並加入圖中
-            for seed in result.seeds:
-                local_y, local_x = seed.position
-                global_y = minr + local_y
-                global_x = minc + local_x
-                G.add_node(
-                    (global_y, global_x),
-                    component_id=component_id,
-                    seed_type=seed.seed_type,
-                )
-
-        logger.info(
-            f"初始圖建構完成: {G.number_of_nodes()} 個節點來自 {len(component_results)} 個元件"
+        # 建立全局陣列
+        self.component_ids = np.array(
+            componenet_ids,
+            dtype=np.int32,
         )
-        return G
+
+        self.global_seeds = np.array(
+            global_seeds,
+            dtype=np.int32,
+        )
+
+        # 建立 KD-Tree
+        self.kdtree = KDTree(self.global_seeds)
+
+        logger.info(f"建構全局索引: {len(self.global_seeds)} 個種子點")
 
     def _compute_edges_from_source(
         self, source_index: int, visited: Set[Tuple[int, int]]
@@ -371,27 +383,32 @@ class NetworkBuilder:
 
         return edges
 
-    def _build_nx_graph(self, edges: List[Dict]) -> nx.Graph:
+    def _update_edges_to_graph(self, edges: List[Dict], graph: nx.Graph) -> None:
         """
-        將邊列表轉換為 NetworkX 無向圖
+        將邊列表加入 NetworkX 無向圖
 
         Args:
             edges: 邊列表
-
-        Returns:
-            G: NetworkX 無向圖
+            graph: NetworkX 無向圖
         """
-        G = nx.Graph()
+        if (
+            self.component_ids is None
+            or self.global_seeds is None
+            or self.kdtree is None
+        ):
+            raise RuntimeError("請先建構全局索引")
 
         for edge in edges:
-            node_a = edge["node_a"]
-            node_b = edge["node_b"]
-            G.add_edge(
-                node_a,
-                node_b,
+            node_a_index = edge["node_a"]
+            node_b_index = edge["node_b"]
+
+            node_a_pos = tuple(map(int, self.global_seeds[node_a_index]))
+            node_b_pos = tuple(map(int, self.global_seeds[node_b_index]))
+
+            graph.add_edge(
+                node_a_pos,
+                node_b_pos,
                 distance=edge["distance"],
                 weight=edge["cost"],
                 path=edge["path"],
             )
-
-        return G
