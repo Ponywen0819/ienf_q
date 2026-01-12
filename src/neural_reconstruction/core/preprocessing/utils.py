@@ -10,7 +10,7 @@ import numpy as np
 import cv2
 
 
-KernelShape = Literal['rect', 'ellipse', 'cross']
+KernelShape = Literal["rect", "ellipse", "cross"]
 
 
 def validate_image(image: np.ndarray) -> None:
@@ -59,9 +59,7 @@ def normalize_image(image: np.ndarray) -> Tuple[np.ndarray, bool, np.dtype]:
 
 
 def denormalize_image(
-    image: np.ndarray,
-    was_float: bool,
-    original_dtype: np.dtype
+    image: np.ndarray, was_float: bool, original_dtype: np.dtype
 ) -> np.ndarray:
     """
     Convert image back to its original format.
@@ -82,8 +80,7 @@ def denormalize_image(
 
 
 def create_kernel(
-    size: Union[int, Tuple[int, int]],
-    shape: KernelShape = 'ellipse'
+    size: Union[int, Tuple[int, int]], shape: KernelShape = "ellipse"
 ) -> np.ndarray:
     """
     Create a morphological structuring element (kernel).
@@ -116,11 +113,11 @@ def create_kernel(
         kernel_size = size
 
     # Create kernel based on shape
-    if shape == 'rect':
+    if shape == "rect":
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, kernel_size)
-    elif shape == 'ellipse':
+    elif shape == "ellipse":
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, kernel_size)
-    elif shape == 'cross':
+    elif shape == "cross":
         kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, kernel_size)
     else:
         raise ValueError(
@@ -176,9 +173,7 @@ def clip_image(image: np.ndarray) -> np.ndarray:
 
 
 def regional_minmax_normalize(
-    image: np.ndarray,
-    epidermis_mask: np.ndarray,
-    dermis_mask: np.ndarray
+    image: np.ndarray, epidermis_mask: np.ndarray, dermis_mask: np.ndarray
 ) -> np.ndarray:
     """
     對表皮和真皮區域分別進行 Min-Max 正規化到 0-255。

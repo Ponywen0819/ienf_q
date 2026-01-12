@@ -21,8 +21,8 @@ from .utils import (
 def morphological_opening(
     image: np.ndarray,
     kernel_size: Union[int, Tuple[int, int]] = 3,
-    kernel_shape: KernelShape = 'ellipse',
-    iterations: int = 1
+    kernel_shape: KernelShape = "ellipse",
+    iterations: int = 1,
 ) -> np.ndarray:
     """
     Perform morphological opening operation on an image.
@@ -70,10 +70,7 @@ def morphological_opening(
 
     # Apply morphological opening
     opened = cv2.morphologyEx(
-        image_uint8,
-        cv2.MORPH_OPEN,
-        kernel,
-        iterations=iterations
+        image_uint8, cv2.MORPH_OPEN, kernel, iterations=iterations
     )
 
     # Convert back to original format
@@ -85,8 +82,8 @@ def morphological_opening(
 def morphological_closing(
     image: np.ndarray,
     kernel_size: Union[int, Tuple[int, int]] = 3,
-    kernel_shape: KernelShape = 'ellipse',
-    iterations: int = 1
+    kernel_shape: KernelShape = "ellipse",
+    iterations: int = 1,
 ) -> np.ndarray:
     """
     Perform morphological closing operation on an image.
@@ -134,10 +131,7 @@ def morphological_closing(
 
     # Apply morphological closing
     closed = cv2.morphologyEx(
-        image_uint8,
-        cv2.MORPH_CLOSE,
-        kernel,
-        iterations=iterations
+        image_uint8, cv2.MORPH_CLOSE, kernel, iterations=iterations
     )
 
     # Convert back to original format
@@ -149,7 +143,7 @@ def morphological_closing(
 def morphological_gradient(
     image: np.ndarray,
     kernel_size: Union[int, Tuple[int, int]] = 3,
-    kernel_shape: KernelShape = 'ellipse'
+    kernel_shape: KernelShape = "ellipse",
 ) -> np.ndarray:
     """
     Compute morphological gradient (dilation - erosion).
@@ -173,11 +167,7 @@ def morphological_gradient(
     kernel = create_kernel(kernel_size, kernel_shape)
 
     # Apply morphological gradient
-    gradient = cv2.morphologyEx(
-        image_uint8,
-        cv2.MORPH_GRADIENT,
-        kernel
-    )
+    gradient = cv2.morphologyEx(image_uint8, cv2.MORPH_GRADIENT, kernel)
 
     # Convert back to original format
     result = denormalize_image(gradient, was_float, original_dtype)
@@ -188,7 +178,7 @@ def morphological_gradient(
 def top_hat(
     image: np.ndarray,
     kernel_size: Union[int, Tuple[int, int]] = 3,
-    kernel_shape: KernelShape = 'ellipse'
+    kernel_shape: KernelShape = "ellipse",
 ) -> np.ndarray:
     """
     Compute top-hat transform (image - opening).
@@ -212,11 +202,7 @@ def top_hat(
     kernel = create_kernel(kernel_size, kernel_shape)
 
     # Apply top-hat transform
-    tophat = cv2.morphologyEx(
-        image_uint8,
-        cv2.MORPH_TOPHAT,
-        kernel
-    )
+    tophat = cv2.morphologyEx(image_uint8, cv2.MORPH_TOPHAT, kernel)
 
     # Convert back to original format
     result = denormalize_image(tophat, was_float, original_dtype)
@@ -227,7 +213,7 @@ def top_hat(
 def black_hat(
     image: np.ndarray,
     kernel_size: Union[int, Tuple[int, int]] = 3,
-    kernel_shape: KernelShape = 'ellipse'
+    kernel_shape: KernelShape = "ellipse",
 ) -> np.ndarray:
     """
     Compute black-hat transform (closing - image).
@@ -251,11 +237,7 @@ def black_hat(
     kernel = create_kernel(kernel_size, kernel_shape)
 
     # Apply black-hat transform
-    blackhat = cv2.morphologyEx(
-        image_uint8,
-        cv2.MORPH_BLACKHAT,
-        kernel
-    )
+    blackhat = cv2.morphologyEx(image_uint8, cv2.MORPH_BLACKHAT, kernel)
 
     # Convert back to original format
     result = denormalize_image(blackhat, was_float, original_dtype)

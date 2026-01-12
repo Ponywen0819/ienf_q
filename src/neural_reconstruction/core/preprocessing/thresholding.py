@@ -16,15 +16,15 @@ from .utils import (
 )
 
 
-ThresholdType = Literal['binary', 'binary_inv']
-AdaptiveMethod = Literal['mean', 'gaussian']
+ThresholdType = Literal["binary", "binary_inv"]
+AdaptiveMethod = Literal["mean", "gaussian"]
 
 
 def otsu_threshold(
     image: np.ndarray,
-    threshold_type: ThresholdType = 'binary',
-    return_threshold: bool = False
-) -> np.ndarray | Tuple[np.ndarray, float]:
+    threshold_type: ThresholdType = "binary",
+    return_threshold: bool = False,
+) -> np.ndarray:
     """
     Apply Otsu's automatic thresholding method to binarize an image.
 
@@ -67,9 +67,9 @@ def otsu_threshold(
     image_uint8, was_float, original_dtype = normalize_image(image)
 
     # Determine OpenCV threshold type
-    if threshold_type == 'binary':
+    if threshold_type == "binary":
         cv_thresh_type = cv2.THRESH_BINARY
-    elif threshold_type == 'binary_inv':
+    elif threshold_type == "binary_inv":
         cv_thresh_type = cv2.THRESH_BINARY_INV
     else:
         raise ValueError(
@@ -82,26 +82,26 @@ def otsu_threshold(
         image_uint8,
         0,  # Threshold value is ignored when using Otsu
         255,
-        cv_thresh_type | cv2.THRESH_OTSU
+        cv_thresh_type | cv2.THRESH_OTSU,
     )
 
     # Convert back to original format
     result = denormalize_image(binary, was_float, original_dtype)
 
-    if return_threshold:
-        # Return threshold in 0-1 range if original was float
-        if was_float:
-            threshold_value = threshold_value / 255.0
-        return result, threshold_value
-    else:
-        return result
+    # if return_threshold:
+    #     # Return threshold in 0-1 range if original was float
+    #     if was_float:
+    #         threshold_value = threshold_value / 255.0
+    #     return result, threshold_value
+    # else:
+    return result
 
 
 def fixed_threshold(
     image: np.ndarray,
     threshold_value: float,
-    threshold_type: ThresholdType = 'binary',
-    max_value: float = 255
+    threshold_type: ThresholdType = "binary",
+    max_value: float = 255,
 ) -> np.ndarray:
     """
     Apply fixed threshold binarization to an image.
@@ -147,9 +147,9 @@ def fixed_threshold(
         )
 
     # Determine OpenCV threshold type
-    if threshold_type == 'binary':
+    if threshold_type == "binary":
         cv_thresh_type = cv2.THRESH_BINARY
-    elif threshold_type == 'binary_inv':
+    elif threshold_type == "binary_inv":
         cv_thresh_type = cv2.THRESH_BINARY_INV
     else:
         raise ValueError(
@@ -158,12 +158,7 @@ def fixed_threshold(
         )
 
     # Apply fixed thresholding
-    _, binary = cv2.threshold(
-        image_uint8,
-        threshold_uint8,
-        max_value,
-        cv_thresh_type
-    )
+    _, binary = cv2.threshold(image_uint8, threshold_uint8, max_value, cv_thresh_type)
 
     # Convert back to original format
     result = denormalize_image(binary, was_float, original_dtype)
@@ -173,10 +168,10 @@ def fixed_threshold(
 
 def adaptive_threshold(
     image: np.ndarray,
-    method: AdaptiveMethod = 'gaussian',
-    threshold_type: ThresholdType = 'binary',
+    method: AdaptiveMethod = "gaussian",
+    threshold_type: ThresholdType = "binary",
     block_size: int = 11,
-    c: float = 2
+    c: float = 2,
 ) -> np.ndarray:
     """
     Apply adaptive thresholding to an image.
@@ -230,19 +225,17 @@ def adaptive_threshold(
     image_uint8, was_float, original_dtype = normalize_image(image)
 
     # Determine adaptive method
-    if method == 'mean':
+    if method == "mean":
         cv_method = cv2.ADAPTIVE_THRESH_MEAN_C
-    elif method == 'gaussian':
+    elif method == "gaussian":
         cv_method = cv2.ADAPTIVE_THRESH_GAUSSIAN_C
     else:
-        raise ValueError(
-            f"Invalid method '{method}'. Must be 'mean' or 'gaussian'"
-        )
+        raise ValueError(f"Invalid method '{method}'. Must be 'mean' or 'gaussian'")
 
     # Determine threshold type
-    if threshold_type == 'binary':
+    if threshold_type == "binary":
         cv_thresh_type = cv2.THRESH_BINARY
-    elif threshold_type == 'binary_inv':
+    elif threshold_type == "binary_inv":
         cv_thresh_type = cv2.THRESH_BINARY_INV
     else:
         raise ValueError(
@@ -252,12 +245,7 @@ def adaptive_threshold(
 
     # Apply adaptive thresholding
     binary = cv2.adaptiveThreshold(
-        image_uint8,
-        255,
-        cv_method,
-        cv_thresh_type,
-        block_size,
-        c
+        image_uint8, 255, cv_method, cv_thresh_type, block_size, c
     )
 
     # Convert back to original format
@@ -267,9 +255,7 @@ def adaptive_threshold(
 
 
 def multi_otsu_threshold(
-    image: np.ndarray,
-    n_classes: int = 3,
-    return_thresholds: bool = False
+    image: np.ndarray, n_classes: int = 3, return_thresholds: bool = False
 ) -> np.ndarray | Tuple[np.ndarray, np.ndarray]:
     """
     Apply multi-level Otsu thresholding to segment image into multiple classes.
@@ -341,8 +327,8 @@ def multi_otsu_threshold(
 
 def triangle_threshold(
     image: np.ndarray,
-    threshold_type: ThresholdType = 'binary',
-    return_threshold: bool = False
+    threshold_type: ThresholdType = "binary",
+    return_threshold: bool = False,
 ) -> np.ndarray | Tuple[np.ndarray, float]:
     """
     Apply Triangle algorithm for automatic thresholding.
@@ -368,9 +354,9 @@ def triangle_threshold(
     image_uint8, was_float, original_dtype = normalize_image(image)
 
     # Determine OpenCV threshold type
-    if threshold_type == 'binary':
+    if threshold_type == "binary":
         cv_thresh_type = cv2.THRESH_BINARY
-    elif threshold_type == 'binary_inv':
+    elif threshold_type == "binary_inv":
         cv_thresh_type = cv2.THRESH_BINARY_INV
     else:
         raise ValueError(
@@ -380,10 +366,7 @@ def triangle_threshold(
 
     # Apply Triangle thresholding
     threshold_value, binary = cv2.threshold(
-        image_uint8,
-        0,
-        255,
-        cv_thresh_type | cv2.THRESH_TRIANGLE
+        image_uint8, 0, 255, cv_thresh_type | cv2.THRESH_TRIANGLE
     )
 
     # Convert back to original format

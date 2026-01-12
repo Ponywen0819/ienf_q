@@ -16,7 +16,7 @@ from .mask_operations import (
     dilate_epidermis_vertically,
     apply_mask,
     invert_mask,
-    combine_masks_or
+    combine_masks_or,
 )
 from .utils import regional_minmax_normalize
 
@@ -36,6 +36,7 @@ class DebugOutput:
         pseudo_label: 從原始影像產生的 pseudo-label
         final_label: 最終合併的 label
     """
+
     processed_label: Optional[np.ndarray] = None
     dilated_mask: Optional[np.ndarray] = None
     background_corrected: Optional[np.ndarray] = None
@@ -102,18 +103,18 @@ class SkinAnalysisPipeline:
         self._validate_config()
 
         # Extract configuration parameters with defaults
-        self.closing_kernel = config.get('morphology', {}).get('closing_kernel', 3)
-        self.opening_kernel = config.get('morphology', {}).get('opening_kernel', 3)
-        self.dilate_offset = config.get('mask', {}).get('dilate_offset', 50)
-        
-        bg_config = config.get('background', {})
-        self.bg_method = bg_config.get('method', 'morphology')
-        self.bg_radius = bg_config.get('radius', 12)
-        self.bg_sigma = bg_config.get('sigma', 0)
-        self.light_background = bg_config.get('light_background', False)
-        
-        self.threshold_method = config.get('threshold', {}).get('method', 'binary')
-        self.regional_normalize = config.get('normalization', {}).get('enabled', False)
+        self.closing_kernel = config.get("morphology", {}).get("closing_kernel", 3)
+        self.opening_kernel = config.get("morphology", {}).get("opening_kernel", 3)
+        self.dilate_offset = config.get("mask", {}).get("dilate_offset", 50)
+
+        bg_config = config.get("background", {})
+        self.bg_method = bg_config.get("method", "morphology")
+        self.bg_radius = bg_config.get("radius", 12)
+        self.bg_sigma = bg_config.get("sigma", 0)
+        self.light_background = bg_config.get("light_background", False)
+
+        self.threshold_method = config.get("threshold", {}).get("method", "binary")
+        self.regional_normalize = config.get("normalization", {}).get("enabled", False)
 
     def _validate_config(self) -> None:
         """
@@ -126,7 +127,7 @@ class SkinAnalysisPipeline:
             raise ValueError("Config must be a dictionary")
 
         # Check for required top-level keys
-        required_keys = ['morphology', 'mask', 'background', 'threshold']
+        required_keys = ["morphology", "mask", "background", "threshold"]
         for key in required_keys:
             if key not in self.config:
                 raise ValueError(f"Missing required config key: '{key}'")
@@ -136,8 +137,8 @@ class SkinAnalysisPipeline:
         label_image: np.ndarray,
         epidermis_mask: np.ndarray,
         original_image: np.ndarray,
-        debug: bool = False
-    ) -> Tuple[np.ndarray, np.ndarray] | Tuple[np.ndarray, np.ndarray, DebugOutput]:
+        debug: bool = False,
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Execute the complete skin analysis pipeline.
 
@@ -196,29 +197,18 @@ class SkinAnalysisPipeline:
 
         # Step 1: Process label path (can be parallelized)
         processed_label = self._process_label_path(label_image)
-        if debug:
-            debug_output.processed_label = processed_label.copy()
 
         # Step 2: Create dilated mask (can be parallelized with step 1)
         dilated_mask = self._create_dilated_mask(epidermis_mask)
-        if debug:
-            debug_output.dilated_mask = dilated_mask.copy()
 
         # Step 3: Process original image (depends on dilated_mask)
         roi_image, pseudo_label = self._process_original_with_masks(
-            original_image,
-            epidermis_mask,
-            dilated_mask,
-            debug_output=debug_output
+            original_image, epidermis_mask, dilated_mask, debug_output=debug_output
         )
 
         # Step 4: Merge labels using OR operation
         final_label = self._merge_labels(processed_label, pseudo_label)
-        if debug:
-            debug_output.final_label = final_label.copy()
 
-        if debug:
-            return final_label, roi_image, debug_output
         return final_label, roi_image
 
     def _process_label_path(self, label_image: np.ndarray) -> np.ndarray:
@@ -238,9 +228,9 @@ class SkinAnalysisPipeline:
             closed = morphological_closing(
                 label_image,
                 kernel_size=self.closing_kernel,
-                kernel_shape='ellipse',
-                iterations=1
-        )
+                kernel_shape="ellipse",
+                iterations=1,
+            )
         else:
             closed = label_image.copy()
 
@@ -249,8 +239,8 @@ class SkinAnalysisPipeline:
             opened = morphological_opening(
                 closed,
                 kernel_size=self.opening_kernel,
-                kernel_shape='ellipse',
-                iterations=1
+                kernel_shape="ellipse",
+                iterations=1,
             )
         else:
             opened = closed.copy()
@@ -270,8 +260,7 @@ class SkinAnalysisPipeline:
             Dilated mask
         """
         dilated = dilate_epidermis_vertically(
-            epidermis_mask,
-            offset_px=self.dilate_offset
+            epidermis_mask, offset_px=self.dilate_offset
         )
 
         return dilated
@@ -281,7 +270,7 @@ class SkinAnalysisPipeline:
         original_image: np.ndarray,
         epidermis_mask: np.ndarray,
         dilated_mask: np.ndarray,
-        debug_output: Optional[DebugOutput] = None
+        debug_output: Optional[DebugOutput] = None,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Process original image to generate ROI and pseudo-label.
@@ -302,9 +291,9 @@ class SkinAnalysisPipeline:
         """
         # Step 1: Apply background correction
         should_correct = False
-        if self.bg_method in ['morphology', 'rolling_ball'] and self.bg_radius > 0:
+        if self.bg_method in ["morphology", "rolling_ball"] and self.bg_radius > 0:
             should_correct = True
-        elif self.bg_method == 'gaussian' and self.bg_sigma > 0:
+        elif self.bg_method == "gaussian" and self.bg_sigma > 0:
             should_correct = True
 
         if should_correct:
@@ -314,57 +303,36 @@ class SkinAnalysisPipeline:
                 radius=self.bg_radius,
                 sigma=self.bg_sigma,
                 light_background=self.light_background,
-                smoothing=False
+                smoothing=False,
             )
         else:
             corrected = original_image.copy()
-
-        if debug_output is not None:
-            debug_output.background_corrected = corrected.copy()
 
         # Step 2: Calculate dermis ROI mask (moved before normalization)
         # dermis_roi = dilated_mask AND (NOT epidermis_mask)
         inverted_epidermis = invert_mask(epidermis_mask)
         dermis_roi_mask = apply_mask(dilated_mask, inverted_epidermis)
 
-        if debug_output is not None:
-            debug_output.dermis_roi_mask = dermis_roi_mask.copy()
-
         # Step 3: Apply regional normalization (optional)
         if self.regional_normalize:
             corrected = regional_minmax_normalize(
-                corrected,
-                epidermis_mask=epidermis_mask,
-                dermis_mask=dermis_roi_mask
+                corrected, epidermis_mask=epidermis_mask, dermis_mask=dermis_roi_mask
             )
-            if debug_output is not None:
-                debug_output.normalized = corrected.copy()
 
         # Step 4: Create ROI image using dilated mask
         roi_image = apply_mask(corrected, dilated_mask)
-
-        if debug_output is not None:
-            debug_output.roi_image = roi_image.copy()
 
         # Step 5: Generate pseudo-label for boundary-crossing region
         masked_region = apply_mask(corrected, dermis_roi_mask)
 
         # Step 6: Apply Otsu thresholding to generate pseudo-label
         pseudo_label = otsu_threshold(
-            masked_region,
-            threshold_type=self.threshold_method
+            masked_region, threshold_type=self.threshold_method
         )
-
-        if debug_output is not None:
-            debug_output.pseudo_label = pseudo_label.copy()
 
         return roi_image, pseudo_label
 
-    def _merge_labels(
-        self,
-        label1: np.ndarray,
-        label2: np.ndarray
-    ) -> np.ndarray:
+    def _merge_labels(self, label1: np.ndarray, label2: np.ndarray) -> np.ndarray:
         """
         Merge two binary labels using OR operation.
 
@@ -378,5 +346,3 @@ class SkinAnalysisPipeline:
         final_label = combine_masks_or(label1, label2)
 
         return final_label
-
-

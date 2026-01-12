@@ -12,10 +12,7 @@ import cv2
 from .utils import validate_image
 
 
-def dilate_epidermis_vertically(
-    mask: np.ndarray,
-    offset_px: int
-) -> np.ndarray:
+def dilate_epidermis_vertically(mask: np.ndarray, offset_px: int) -> np.ndarray:
     """
     Dilate a binary mask in the vertical (y-axis) direction only.
 
@@ -72,10 +69,7 @@ def dilate_epidermis_vertically(
         return dilated.astype(original_dtype)
 
 
-def apply_mask(
-    image: np.ndarray,
-    mask: np.ndarray
-) -> np.ndarray:
+def apply_mask(image: np.ndarray, mask: np.ndarray) -> np.ndarray:
     """
     Apply a binary mask to an image, keeping only masked regions.
 
@@ -170,10 +164,7 @@ def invert_mask(mask: np.ndarray) -> np.ndarray:
         return inverted.astype(original_dtype)
 
 
-def combine_masks_or(
-    mask1: np.ndarray,
-    mask2: np.ndarray
-) -> np.ndarray:
+def combine_masks_or(mask1: np.ndarray, mask2: np.ndarray) -> np.ndarray:
     """
     Combine two binary masks using OR operation.
 
