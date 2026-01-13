@@ -55,7 +55,7 @@ class BackboneExtractor:
         logger.info(f"  Number of connected components: {len(components)}")
 
         # Build MST for each component
-        forest = nx.Graph()
+        forest = nx.MultiGraph()
 
         for i, component_nodes in enumerate(components):
             subtree_backbone = self._extract_subtree(G, component_nodes)
@@ -81,7 +81,7 @@ class BackboneExtractor:
 
         # If only one node or no edges, create a new graph with just the nodes
         if subgraph.number_of_nodes() <= 1 or subgraph.number_of_edges() == 0:
-            result = nx.Graph()
+            result = nx.MultiGraph()
             result.add_nodes_from(subgraph.nodes(data=True))
             return result
 

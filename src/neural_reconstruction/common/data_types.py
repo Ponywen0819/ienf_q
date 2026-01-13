@@ -50,7 +50,7 @@ class ConnectionGraphBuilderResult:
     )  # 對應的元件 ID (N,)
     edges: List[dict] = field(default_factory=list)  # 邊列表
 
-    graph: nx.Graph = field(default_factory=nx.Graph)
+    graph: nx.MultiGraph = field(default_factory=nx.MultiGraph)
 
 
 @dataclass

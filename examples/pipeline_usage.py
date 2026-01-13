@@ -12,8 +12,7 @@ from neural_reconstruction.ui.main_pipeline import NeuralReconstructionPipeline
 
 # 設定 logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
 logger = logging.getLogger(__name__)
@@ -30,9 +29,9 @@ def example_1_default_config():
 
     # 執行 pipeline
     result = pipeline.run_from_files(
-        label_path="data/Label/S163-2_a.tif",
-        mask_path="data/Mask/S163-2_a.tif",
-        image_path="data/Original/S163-2_a.tif"
+        label_path="data/Label/S1585-2_a..tif",
+        mask_path="data/Mask/S1585-2_a..tif",
+        image_path="data/Original/S1585-2_a..tif",
     )
 
     # 取得結果
@@ -50,48 +49,46 @@ def example_2_custom_config():
 
     # 自訂前處理配置
     preprocessing_config = {
-        'morphology': {
-            'closing_kernel': 5,  # 增大 closing kernel
-            'opening_kernel': 3
+        "morphology": {
+            "closing_kernel": 5,  # 增大 closing kernel
+            "opening_kernel": 3,
         },
-        'mask': {
-            'dilate_offset': 100  # 增大 dilation offset
+        "mask": {
+            "dilate_offset": 100  # 增大 dilation offset
         },
-        'background': {
-            'method': 'rolling_ball',  # 使用 rolling ball 方法
-            'radius': 20,
-            'light_background': True
+        "background": {
+            "method": "rolling_ball",  # 使用 rolling ball 方法
+            "radius": 20,
+            "light_background": True,
         },
-        'threshold': {
-            'method': 'binary'
+        "threshold": {"method": "binary"},
+        "normalization": {
+            "enabled": True  # 啟用區域正規化
         },
-        'normalization': {
-            'enabled': True  # 啟用區域正規化
-        }
     }
 
     # 自訂重建配置
     reconstruction_config = {
-        'connectivity': 4,
-        'min_area': 30,  # 降低最小面積閾值
-        'segment_length': 3.0,  # 減小種子間隔
-        'search_radius': 100.0,  # 增大搜尋半徑
-        'max_cost_threshold': 0.95,  # 降低成本閾值
-        'intensity_weight': 0.7,  # 增加強度權重
-        'shape_weight': 0.3
+        "connectivity": 4,
+        "min_area": 30,  # 降低最小面積閾值
+        "segment_length": 3.0,  # 減小種子間隔
+        "search_radius": 100.0,  # 增大搜尋半徑
+        "max_cost_threshold": 0.95,  # 降低成本閾值
+        "intensity_weight": 0.7,  # 增加強度權重
+        "shape_weight": 0.3,
     }
 
     # 建立 pipeline
     pipeline = NeuralReconstructionPipeline(
         preprocessing_config=preprocessing_config,
-        reconstruction_config=reconstruction_config
+        reconstruction_config=reconstruction_config,
     )
 
     # 執行 pipeline
     result = pipeline.run_from_files(
         label_path="data/Label/S163-2_a.tif",
         mask_path="data/Mask/S163-2_a.tif",
-        image_path="data/Original/S163-2_a.tif"
+        image_path="data/Original/S163-2_a.tif",
     )
 
     # 取得結果
@@ -123,7 +120,7 @@ def example_3_direct_array_input():
         label_image=label_image,
         mask_image=mask_image,
         original_image=original_image,
-        debug=False
+        debug=False,
     )
 
     # 取得結果
@@ -156,7 +153,7 @@ def example_4_save_results():
     result = pipeline.run_from_files(
         label_path="data/Label/S163-2_a.tif",
         mask_path="data/Mask/S163-2_a.tif",
-        image_path="data/Original/S163-2_a.tif"
+        image_path="data/Original/S163-2_a.tif",
     )
 
     # 建立輸出目錄
@@ -180,7 +177,7 @@ def example_4_save_results():
 
     # 儲存結果摘要
     summary_path = output_dir / "summary.txt"
-    with open(summary_path, 'w') as f:
+    with open(summary_path, "w") as f:
         f.write("神經重建結果摘要\n")
         f.write("=" * 50 + "\n")
         f.write(f"節點數: {result.num_nodes}\n")

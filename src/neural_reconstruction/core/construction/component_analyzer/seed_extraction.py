@@ -56,7 +56,10 @@ class EdgeSeedGenerator:
 
             # 從邊的屬性中獲取路徑和長度
             path_coords = data.get("path", [])
-            path_coords = [u] + path_coords  # 加上 source 座標，因為原始 path 不包含
+            # 將 numpy array 轉換為 tuple list
+            path_coords = [tuple(p) for p in path_coords]
+            # 加上 source 座標，因為 skan 的 path 不包含 source
+            path_coords = [u] + path_coords
             length = data.get("branch-distance", 0.0)
 
             # 抽取種子

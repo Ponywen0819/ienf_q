@@ -126,6 +126,7 @@ class NetworkBuilder:
         logger.info("=" * 70)
 
         global_topology = self._build_global_topology(component_results)
+        print(global_topology.number_of_edges())
         self._build_global_index(global_topology)
 
         res = ConnectionGraphBuilderResult()
@@ -143,15 +144,17 @@ class NetworkBuilder:
         num_nodes = len(self.global_seeds)
         logger.info(f"\n開始搜尋節點鄰居（半徑 {self.search_radius} 像素）...")
 
+        total_new_edges = 0
         for i in range(num_nodes):
             new_edges = self._compute_edges_from_source(i, processed_pairs)
+            total_new_edges += len(new_edges)
             # edges.extend(new_edges)
             self._update_edges_to_graph(new_edges, global_topology)
 
             # 進度報告
             if (i + 1) % 100 == 0 or (i + 1) == num_nodes:
                 logger.info(
-                    f"  已處理 {i + 1}/{num_nodes} 個節點，當前邊數: {global_topology.number_of_edges()}"
+                    f"  已處理 {i + 1}/{num_nodes} 個節點，找到 {total_new_edges} 條新邊，當前圖邊數: {global_topology.number_of_edges()}"
                 )
 
         logger.info("\n" + "=" * 70)
@@ -346,8 +349,10 @@ class NetworkBuilder:
 
         # target_index_list 是 tuple pair 列表 [(min_idx, max_idx), ...]
         # 需要從 pair 中提取實際的 target index
-        target_indices = [pair[1] if pair[0] == source_index else pair[0]
-                         for pair in target_index_list]
+        target_indices = [
+            pair[1] if pair[0] == source_index else pair[0]
+            for pair in target_index_list
+        ]
         target_position_list = [
             tuple(self.global_seeds[j].astype(int)) for j in target_indices
         ]
@@ -357,12 +362,17 @@ class NetworkBuilder:
         )
 
         edges = []
+        num_no_path = 0
+        num_cost_filtered = 0
         # 處理路徑結果
-        for pair, target_index, target_pos in zip(target_index_list, target_indices, target_position_list):
+        for pair, target_index, target_pos in zip(
+            target_index_list, target_indices, target_position_list
+        ):
             visited.add(pair)
             result = path_results.get(target_pos)
 
             if result is None:
+                num_no_path += 1
                 continue
 
             path, cost = result
@@ -371,11 +381,12 @@ class NetworkBuilder:
             )
 
             # 判斷成本是否在閾值內
-            max_cost = (
-                self.pathfinder.cost_map.max() * distance * self.max_cost_threshold
-            )
-            if cost > max_cost:
-                continue
+            # max_cost = (
+            #     self.pathfinder.cost_map.max() * distance * self.max_cost_threshold
+            # )
+            # if cost > max_cost:
+            #     num_cost_filtered += 1
+            #     continue
 
             edges.append(
                 {

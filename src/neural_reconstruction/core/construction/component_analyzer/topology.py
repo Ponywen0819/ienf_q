@@ -14,7 +14,7 @@ import logging
 import numpy as np
 import networkx as nx
 from skimage import morphology
-from skan import Skeleton
+from skan import Skeleton, summarize
 from skan.csr import skeleton_to_nx
 
 logger = logging.getLogger(__name__)
@@ -86,8 +86,22 @@ class ComponentTopologyBuilder:
         Returns:
             Skeleton 物件與分支摘要資料陣列
         """
-        skel_obj = Skeleton(skeleton, keep_images=False)
-        graph = skeleton_to_nx(skel_obj)
+        # 檢查骨架是否為空或太小
+        skeleton_pixels = np.sum(skeleton > 0)
+        if skeleton_pixels < 2:
+            logger.debug(f"骨架太小（{skeleton_pixels} 像素），返回空圖")
+            return nx.MultiGraph()
+
+        try:
+            skel_obj = Skeleton(skeleton, keep_images=False)
+        except (ValueError, IndexError) as e:
+            logger.debug(f"Skeleton 建立失敗: {e}，返回空圖")
+            return nx.MultiGraph()
+
+        # 獲取分支摘要資料（包含 branch-distance）
+        branch_data = summarize(skel_obj, separator="-")
+
+        graph = skeleton_to_nx(skel_obj, summary=branch_data)
 
         # 建立節點 ID 到座標的映射
         # skel_obj.coordinates 是一個 (N, 2) 的 numpy array
@@ -95,5 +109,23 @@ class ComponentTopologyBuilder:
 
         # 重標籤節點
         graph = nx.relabel_nodes(graph, mapping)
+
+        # 將 branch-distance 添加到邊屬性
+        # branch_data 的每一行對應一條邊（node-id-src, node-id-dst, branch-distance）
+        for _, row in branch_data.iterrows():
+            src_id = int(row["node-id-src"])
+            dst_id = int(row["node-id-dst"])
+            branch_distance = float(row["branch-distance"])
+
+            # 將節點 ID 映射為座標
+            src_coord = mapping[src_id]
+            dst_coord = mapping[dst_id]
+
+            # 在 MultiGraph 中，可能有多條邊連接同一對節點
+            # 找到對應的邊並添加 branch-distance 屬性
+            # 由於是 MultiGraph，需要遍歷所有邊
+            for key in graph[src_coord][dst_coord]:
+                graph[src_coord][dst_coord][key]["branch-distance"] = branch_distance
+                break  # 假設每對節點只有一條對應的邊
 
         return graph
