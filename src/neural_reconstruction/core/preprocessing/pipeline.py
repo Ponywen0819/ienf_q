@@ -9,8 +9,8 @@ from typing import Tuple, Dict, Any, Optional, Union, overload, Literal
 from dataclasses import dataclass, field
 import numpy as np
 
+from .background_correction import BackgroundCorrection
 from .morphology import morphological_closing, morphological_opening
-from .background_correction import correct_background
 from .thresholding import otsu_threshold
 from .mask_operations import (
     dilate_epidermis_vertically,
@@ -19,32 +19,6 @@ from .mask_operations import (
     combine_masks_or,
 )
 from .utils import regional_minmax_normalize
-
-
-@dataclass
-class DebugOutput:
-    """
-    儲存 pipeline 各階段的中間輸出，用於 debug 和分析。
-
-    Attributes:
-        processed_label: 經過形態學處理後的 label
-        dilated_mask: 垂直擴張後的表皮 mask
-        background_corrected: 背景校正後的影像
-        dermis_roi_mask: 真皮層 ROI mask
-        normalized: 正規化後的影像（如果啟用）
-        roi_image: ROI 區域影像
-        pseudo_label: 從原始影像產生的 pseudo-label
-        final_label: 最終合併的 label
-    """
-
-    processed_label: Optional[np.ndarray] = None
-    dilated_mask: Optional[np.ndarray] = None
-    background_corrected: Optional[np.ndarray] = None
-    dermis_roi_mask: Optional[np.ndarray] = None
-    normalized: Optional[np.ndarray] = None
-    roi_image: Optional[np.ndarray] = None
-    pseudo_label: Optional[np.ndarray] = None
-    final_label: Optional[np.ndarray] = None
 
 
 class SkinAnalysisPipeline:
@@ -119,6 +93,13 @@ class SkinAnalysisPipeline:
             "use_full_roi", False
         )
         self.regional_normalize = config.get("normalization", {}).get("enabled", False)
+
+        self.background_corrector = BackgroundCorrection(
+            method=self.bg_method,
+            radius=self.bg_radius,
+            smoothing=False,
+            smoothing_sigma=self.bg_sigma,
+        )
 
     def _validate_config(self) -> None:
         """
@@ -298,14 +279,7 @@ class SkinAnalysisPipeline:
             should_correct = True
 
         if should_correct:
-            corrected = correct_background(
-                original_image,
-                method=self.bg_method,
-                radius=self.bg_radius,
-                sigma=self.bg_sigma,
-                light_background=self.light_background,
-                smoothing=False,
-            )
+            corrected = self.background_corrector(original_image)
         else:
             corrected = original_image.copy()
 
