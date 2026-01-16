@@ -5,9 +5,9 @@ This module provides a complete pipeline for processing skin images with
 epidermis masks and labels to generate high-quality neural fiber reconstructions.
 """
 
-from typing import Tuple, Dict, Any, Optional, Union, overload, Literal
-from dataclasses import dataclass, field
+from typing import Tuple
 import numpy as np
+
 from .config import PipelineConfig
 from .background_correction import BackgroundCorrection
 from .morphology import morphological_closing, morphological_opening
@@ -247,12 +247,11 @@ class SkinAnalysisPipeline:
         # Step 5 & 6: Generate pseudo-label
         if self.config.threshold.use_full_roi:
             # 使用整個 ROI image 進行 threshold
-            pseudo_label = otsu_threshold(roi_image, threshold_type="binary")
+            pseudo_label = otsu_threshold(roi_image)
         else:
             # 原本做法：只對 masked region (dermis_roi_mask) 進行 threshold
             masked_region = apply_mask(corrected, dermis_roi_mask)
-            pseudo_label = otsu_threshold(masked_region, threshold_type="binary")
-
+            pseudo_label = otsu_threshold(masked_region)
         return roi_image, pseudo_label
 
     def _merge_labels(self, label1: np.ndarray, label2: np.ndarray) -> np.ndarray:
