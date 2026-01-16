@@ -64,6 +64,8 @@ class Pathfinder:
             inverted_intensity * self.intensity_weight
             + inverted_sato * self.shape_weight
         )
+        cost_map = cost_map / 255.0  # 正規化到 0-1
+        cost_map = cost_map.astype(np.float32)
 
         # 為了防止代價為 0，加上一個很小的 epsilon
         self.cost_map = cost_map + 1e-5

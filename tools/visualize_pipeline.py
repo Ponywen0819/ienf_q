@@ -102,18 +102,18 @@ def main():
     pipeline = NeuralReconstructionPipeline(
         preprocessing_config={
             "morphology": {
-                "closing_kernel": 5,
+                "closing_kernel": 0,
                 "opening_kernel": 3,
             },
             "mask": {
-                "dilate_offset": 100,
+                "dilate_offset": 50,
             },
             "background": {
                 "method": "rolling_ball",
-                "radius": 20,
+                "radius": 2,
                 "light_background": True,
             },
-            "threshold": {"method": "binary"},
+            "threshold": {"method": "binary", "use_full_roi": False},
             "normalization": {
                 "enabled": True,
             },
@@ -124,11 +124,11 @@ def main():
             "segment_length": 5.0,
             "min_edge_length": 0,
             "prune_threshold": 5.0,
-            "spacing": 1.0,
+            "spacing": 0,
             "search_radius": 20.0,
             "max_cost_threshold": 0.98,
-            "intensity_weight": 0.2,
-            "shape_weight": 0.8,
+            "intensity_weight": 1,
+            "shape_weight": 0,
         },
     )
 

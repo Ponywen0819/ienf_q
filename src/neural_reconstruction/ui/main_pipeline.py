@@ -109,41 +109,32 @@ class NeuralReconstructionPipeline:
     def _get_default_preprocessing_config() -> Dict[str, Any]:
         """取得預設前處理配置"""
         return {
-            'morphology': {
-                'closing_kernel': 3,
-                'opening_kernel': 3
+            "morphology": {"closing_kernel": 3, "opening_kernel": 3},
+            "mask": {"dilate_offset": 50},
+            "background": {
+                "method": "morphology",
+                "radius": 12,
+                "sigma": 0,
+                "light_background": True,
             },
-            'mask': {
-                'dilate_offset': 50
-            },
-            'background': {
-                'method': 'morphology',
-                'radius': 12,
-                'sigma': 0,
-                'light_background': True
-            },
-            'threshold': {
-                'method': 'binary'
-            },
-            'normalization': {
-                'enabled': False
-            }
+            "threshold": {"method": "binary"},
+            "normalization": {"enabled": False},
         }
 
     @staticmethod
     def _get_default_reconstruction_config() -> Dict[str, Any]:
         """取得預設重建配置"""
         return {
-            'connectivity': 4,
-            'min_area': 50,
-            'segment_length': 5.0,
-            'min_edge_length': None,
-            'prune_threshold': 5.0,
-            'spacing': 1.0,
-            'search_radius': 50.0,
-            'max_cost_threshold': 0.98,
-            'intensity_weight': 0.6,
-            'shape_weight': 0.4
+            "connectivity": 4,
+            "min_area": 50,
+            "segment_length": 5.0,
+            "min_edge_length": None,
+            "prune_threshold": 5.0,
+            "spacing": 1.0,
+            "search_radius": 50.0,
+            "max_cost_threshold": 0.98,
+            "intensity_weight": 0.6,
+            "shape_weight": 0.4,
         }
 
     def run(
@@ -192,7 +183,7 @@ class NeuralReconstructionPipeline:
         logger.info("-" * 80)
 
         final_label, roi_image, preprocessing_debug = self._run_preprocessing(
-            label_image, mask_image, green_channel_input, debug
+            label_image, mask_image, green_channel_input
         )
 
         logger.info("✓ 前處理完成")
@@ -232,7 +223,7 @@ class NeuralReconstructionPipeline:
             preprocessing_debug=preprocessing_debug,
             num_nodes=num_nodes,
             num_edges=num_edges,
-            num_components=num_components
+            num_components=num_components,
         )
 
         return result
@@ -283,7 +274,7 @@ class NeuralReconstructionPipeline:
         self,
         label_image: np.ndarray,
         mask_image: np.ndarray,
-        original_image: np.ndarray
+        original_image: np.ndarray,
     ) -> None:
         """驗證輸入影像"""
         if label_image.shape != mask_image.shape:
@@ -301,7 +292,6 @@ class NeuralReconstructionPipeline:
         label_image: np.ndarray,
         mask_image: np.ndarray,
         original_image: np.ndarray,
-        debug: bool
     ) -> Tuple[np.ndarray, np.ndarray, Optional[Any]]:
         """執行前處理 Pipeline"""
         # 建立前處理 pipeline
@@ -309,15 +299,13 @@ class NeuralReconstructionPipeline:
 
         # 執行前處理
         final_label, roi_image = preprocessing_pipeline.run(
-            label_image, mask_image, original_image, debug=False
+            label_image, mask_image, original_image
         )
 
         preprocessing_debug = None
-        if debug:
-            # 如果需要 debug 資訊，可以在此處理
-            preprocessing_debug = {
-                'config': self.preprocessing_config
-            }
+        # if debug:
+        #     # 如果需要 debug 資訊，可以在此處理
+        #     preprocessing_debug = {"config": self.preprocessing_config}
 
         return final_label, roi_image, preprocessing_debug
 
@@ -344,15 +332,13 @@ class NeuralReconstructionPipeline:
             raise ValueError(f"不支援的影像格式: {image.shape}")
 
     def _run_reconstruction(
-        self,
-        label_image: np.ndarray,
-        green_channel: np.ndarray
+        self, label_image: np.ndarray, green_channel: np.ndarray
     ) -> nx.Graph:
         """執行神經重建"""
         mst_forest = build_neural_network(
             label_image=label_image,
             green_channel=green_channel,
-            **self.reconstruction_config
+            **self.reconstruction_config,
         )
 
         return mst_forest

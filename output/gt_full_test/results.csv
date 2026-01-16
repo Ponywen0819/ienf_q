@@ -1,0 +1,4 @@
+sample_id,status,hausdorff_distance,num_nodes_pred,num_nodes_gt,num_edges_pred,num_edges_gt,num_components_pred,error_message
+S1585-2_a,success,101.21264743103995,2024,322,1880,248,144,
+S1585-2_b,success,113.99122773266372,2145,374,2009,297,136,
+S1616-2_a,success,3197.800025017199,953,202,884,153,69,

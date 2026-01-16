@@ -221,6 +221,9 @@ final_label, roi_image = pipeline.run(
 - `background.radius`: Rolling ball radius (default: 12)
 - `background.light_background`: Whether background is light (default: True)
 - `threshold.method`: Threshold type 'binary' or 'binary_inv' (default: 'binary')
+- `threshold.use_full_roi`: Use full ROI image for pseudo-label generation instead of masked region (default: False)
+  - When `False`: Only dermis ROI mask region is used for Otsu thresholding
+  - When `True`: Entire ROI image is used for Otsu thresholding (may capture more fiber details)
 - `normalization.enabled`: Enable regional normalization (default: False)
 
 ### Reconstruction Configuration

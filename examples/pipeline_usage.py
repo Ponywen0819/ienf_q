@@ -136,10 +136,72 @@ def example_3_direct_array_input():
         logger.info(f"  邊: {list(result.mst_forest.edges())[:5]}...")  # 顯示前 5 條邊
 
 
-def example_4_save_results():
-    """範例 4: 儲存結果"""
+def example_4_use_full_roi_for_pseudo_label():
+    """範例 4: 使用完整 ROI 影像產生 pseudo-label"""
     logger.info("\n" + "=" * 80)
-    logger.info("範例 4: 儲存結果")
+    logger.info("範例 4: 使用完整 ROI 影像產生 pseudo-label")
+    logger.info("=" * 80)
+
+    # 配置 1: 原本做法（只對 masked region 做 threshold）
+    preprocessing_config_masked = {
+        "morphology": {"closing_kernel": 3, "opening_kernel": 3},
+        "mask": {"dilate_offset": 50},
+        "background": {
+            "method": "rolling_ball",
+            "radius": 12,
+            "light_background": True,
+        },
+        "threshold": {
+            "method": "binary",
+            "use_full_roi": False  # 只對 masked region 做 threshold
+        },
+        "normalization": {"enabled": False},
+    }
+
+    # 配置 2: 新做法（使用整個 ROI image 做 threshold）
+    preprocessing_config_full_roi = {
+        "morphology": {"closing_kernel": 3, "opening_kernel": 3},
+        "mask": {"dilate_offset": 50},
+        "background": {
+            "method": "rolling_ball",
+            "radius": 12,
+            "light_background": True,
+        },
+        "threshold": {
+            "method": "binary",
+            "use_full_roi": True  # 使用完整 ROI image 做 threshold
+        },
+        "normalization": {"enabled": False},
+    }
+
+    # 執行兩種配置並比較
+    logger.info("\n>>> 配置 1: 只對 masked region 做 threshold")
+    pipeline1 = NeuralReconstructionPipeline(
+        preprocessing_config=preprocessing_config_masked
+    )
+    result1 = pipeline1.run_from_files(
+        label_path="data/Label/S163-2_a.tif",
+        mask_path="data/Mask/S163-2_a.tif",
+        image_path="data/Original/S163-2_a.tif",
+    )
+    logger.info(f"  節點數: {result1.num_nodes}, 邊數: {result1.num_edges}")
+
+    logger.info("\n>>> 配置 2: 使用完整 ROI image 做 threshold")
+    pipeline2 = NeuralReconstructionPipeline(
+        preprocessing_config=preprocessing_config_full_roi
+    )
+    result2 = pipeline2.run_from_files(
+        label_path="data/Label/S163-2_a.tif",
+        mask_path="data/Mask/S163-2_a.tif",
+        image_path="data/Original/S163-2_a.tif",
+    )
+    logger.info(f"  節點數: {result2.num_nodes}, 邊數: {result2.num_edges}")
+
+
+def example_5_save_results():
+    """範例 5: 儲存結果"""
+    logger.info("\n" + "=" * 80)
+    logger.info("範例 5: 儲存結果")
     logger.info("=" * 80)
 
     import numpy as np
@@ -200,5 +262,8 @@ if __name__ == "__main__":
     # 範例 3: 直接使用 NumPy 陣列輸入
     # example_3_direct_array_input()
 
-    # 範例 4: 儲存結果
-    example_4_save_results()
+    # 範例 4: 使用完整 ROI 影像產生 pseudo-label
+    # example_4_use_full_roi_for_pseudo_label()
+
+    # 範例 5: 儲存結果
+    example_5_save_results()

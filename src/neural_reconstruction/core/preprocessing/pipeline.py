@@ -5,7 +5,7 @@ This module provides a complete pipeline for processing skin images with
 epidermis masks and labels to generate high-quality neural fiber reconstructions.
 """
 
-from typing import Tuple, Dict, Any, Optional
+from typing import Tuple, Dict, Any, Optional, Union, overload, Literal
 from dataclasses import dataclass, field
 import numpy as np
 
@@ -92,7 +92,8 @@ class SkinAnalysisPipeline:
                         'light_background': bool  # Whether background is light (default: True)
                     },
                     'threshold': {
-                        'method': str           # Threshold type: 'binary' or 'binary_inv' (default: 'binary')
+                        'method': str,          # Threshold type: 'binary' or 'binary_inv' (default: 'binary')
+                        'use_full_roi': bool    # Use full ROI for pseudo-label instead of masked region (default: False)
                     }
                 }
 
@@ -114,6 +115,9 @@ class SkinAnalysisPipeline:
         self.light_background = bg_config.get("light_background", False)
 
         self.threshold_method = config.get("threshold", {}).get("method", "binary")
+        self.use_full_roi_for_pseudo_label = config.get("threshold", {}).get(
+            "use_full_roi", False
+        )
         self.regional_normalize = config.get("normalization", {}).get("enabled", False)
 
     def _validate_config(self) -> None:
@@ -137,7 +141,6 @@ class SkinAnalysisPipeline:
         label_image: np.ndarray,
         epidermis_mask: np.ndarray,
         original_image: np.ndarray,
-        debug: bool = False,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Execute the complete skin analysis pipeline.
@@ -192,9 +195,6 @@ class SkinAnalysisPipeline:
                 f"must match mask shape {epidermis_mask.shape}"
             )
 
-        # 初始化 debug output
-        debug_output = DebugOutput() if debug else None
-
         # Step 1: Process label path (can be parallelized)
         processed_label = self._process_label_path(label_image)
 
@@ -203,11 +203,14 @@ class SkinAnalysisPipeline:
 
         # Step 3: Process original image (depends on dilated_mask)
         roi_image, pseudo_label = self._process_original_with_masks(
-            original_image, epidermis_mask, dilated_mask, debug_output=debug_output
+            original_image, epidermis_mask, dilated_mask
         )
 
         # Step 4: Merge labels using OR operation
-        final_label = self._merge_labels(processed_label, pseudo_label)
+        if self.use_full_roi_for_pseudo_label:
+            final_label = pseudo_label
+        else:
+            final_label = self._merge_labels(processed_label, pseudo_label)
 
         return final_label, roi_image
 
@@ -270,7 +273,6 @@ class SkinAnalysisPipeline:
         original_image: np.ndarray,
         epidermis_mask: np.ndarray,
         dilated_mask: np.ndarray,
-        debug_output: Optional[DebugOutput] = None,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Process original image to generate ROI and pseudo-label.
@@ -284,7 +286,6 @@ class SkinAnalysisPipeline:
             original_image: Original grayscale image
             epidermis_mask: Epidermis region mask
             dilated_mask: Vertically dilated epidermis mask
-            debug_output: If provided, intermediate results will be stored here
 
         Returns:
             Tuple of (roi_image, pseudo_label)
@@ -322,13 +323,18 @@ class SkinAnalysisPipeline:
         # Step 4: Create ROI image using dilated mask
         roi_image = apply_mask(corrected, dilated_mask)
 
-        # Step 5: Generate pseudo-label for boundary-crossing region
-        masked_region = apply_mask(corrected, dermis_roi_mask)
-
-        # Step 6: Apply Otsu thresholding to generate pseudo-label
-        pseudo_label = otsu_threshold(
-            masked_region, threshold_type=self.threshold_method
-        )
+        # Step 5 & 6: Generate pseudo-label
+        if self.use_full_roi_for_pseudo_label:
+            # 使用整個 ROI image 進行 threshold
+            pseudo_label = otsu_threshold(
+                roi_image, threshold_type=self.threshold_method
+            )
+        else:
+            # 原本做法：只對 masked region (dermis_roi_mask) 進行 threshold
+            masked_region = apply_mask(corrected, dermis_roi_mask)
+            pseudo_label = otsu_threshold(
+                masked_region, threshold_type=self.threshold_method
+            )
 
         return roi_image, pseudo_label
 
