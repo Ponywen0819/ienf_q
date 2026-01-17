@@ -5,8 +5,9 @@
 到另一個分界點的路徑。
 """
 
-from typing import Dict, List, Set, Tuple
+from typing import Set, Tuple
 import logging
+import networkx as nx
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +27,8 @@ class SegmentDetector:
         """初始化分段偵測器"""
         logger.info("Initialized SegmentDetector")
 
-    def detect_segments(
-        self,
-        topology: Dict
-    ) -> List[Dict]:
+    @classmethod
+    def detect_segments(cls, graph: nx.Graph) -> nx.Graph:
         """
         從拓樸結構中識別所有分段
 
@@ -53,218 +52,138 @@ class SegmentDetector:
                     ...
                 ]
         """
-        nodes = topology['nodes']
-        edges = topology['edges']
+        res_graph = graph.copy()
+        nodes = res_graph.nodes(data=True)
+        edges = res_graph.edges(data=True)
 
         if not nodes or not edges:
             logger.warning("拓樸結構為空")
-            return []
+            return res_graph
 
         # 識別所有分界點
-        boundary_nodes = self._identify_boundary_nodes(topology)
-        logger.info(f"識別到 {len(boundary_nodes)} 個分界點")
+        cls._identify_boundary_nodes(res_graph)
 
-        # 建立鄰接表
-        adjacency = self._build_adjacency(topology)
+        cls._identify_segment_nodes(res_graph)
 
-        # 追蹤所有分段
-        segments = []
-        visited_edges: Set[int] = set()
-        segment_id = 0
+        return res_graph
 
-        for start_node in boundary_nodes:
-            # 從每個分界點的每條出邊開始追蹤
-            if start_node not in adjacency:
-                continue
-
-            for neighbor_id, edge_idx in adjacency[start_node]:
-                if edge_idx in visited_edges:
-                    continue
-
-                # 追蹤此分段
-                segment = self._trace_segment(
-                    start_node=start_node,
-                    first_edge_idx=edge_idx,
-                    adjacency=adjacency,
-                    boundary_nodes=boundary_nodes,
-                    edges=edges,
-                    visited_edges=visited_edges
-                )
-
-                if segment:
-                    segment['segment_id'] = segment_id
-                    segments.append(segment)
-                    segment_id += 1
-
-        logger.info(f"偵測到 {len(segments)} 個分段")
-
-        return segments
-
-    def _identify_boundary_nodes(
-        self,
-        topology: Dict
-    ) -> Set[int]:
+    @classmethod
+    def _identify_boundary_nodes(cls, graph: nx.Graph) -> None:
         """
         識別所有分界點（端點或分支點）
 
         分界點條件:
-        - 端點 (type='endpoint', degree=1)
-        - 分支點 (type='branchpoint', degree>=3)
-
-        注意：由於拓樸中 type 已經標記了 endpoint 和 branchpoint，
-        所有節點都應該是分界點（因為中間節點不會被加入拓樸）。
+        - 端點 (degree=1)
+        - 分支點 (degree>=3)
 
         Args:
-            topology: 拓樸結構
-
-        Returns:
-            boundary_node_ids: 分界點 ID 集合
+            graph: NetworkX Graph
         """
-        boundary_nodes: Set[int] = set()
 
-        for node in topology['nodes']:
-            node_type = node.get('type', '')
-            # endpoint 和 branchpoint 都是分界點
-            if node_type in ('endpoint', 'branchpoint'):
-                boundary_nodes.add(node['id'])
+        for node_id in graph.nodes():
+            degree = graph.degree(node_id)
+            # endpoint (degree=1) 和 branchpoint (degree>=3) 都是分界點
 
-        return boundary_nodes
+            is_endpoint = degree == 1
+            is_branchpoint = degree >= 3
 
-    def _build_adjacency(
-        self,
-        topology: Dict
-    ) -> Dict[int, List[Tuple[int, int]]]:
+            if is_endpoint:
+                graph.nodes[node_id]["node_type"] = "endpoint"
+            elif is_branchpoint:
+                graph.nodes[node_id]["node_type"] = "branchpoint"
+
+    @classmethod
+    def _identify_segment_nodes(cls, graph: nx.Graph) -> None:
         """
-        建立節點鄰接表
+        為每條邊分配片段 ID
+
+        片段定義：從一個分界點到另一個分界點之間的所有邊
 
         Args:
-            topology: 拓樸結構
-
-        Returns:
-            adjacency: {node_id: [(neighbor_id, edge_index), ...]}
+            graph: NetworkX Graph，節點已標記 node_type
         """
-        adjacency: Dict[int, List[Tuple[int, int]]] = {}
+        segment_id = 0
+        visited_edges: Set[Tuple] = set()  # 記錄已訪問的邊 (u, v, key)
 
-        for edge_idx, edge in enumerate(topology['edges']):
-            source = edge['source']
-            target = edge['target']
+        # 取得所有 boundary nodes (endpoint 或 branchpoint)
+        boundary_nodes = [
+            node
+            for node in graph.nodes()
+            if graph.nodes[node].get("node_type") in ["endpoint", "branchpoint"]
+        ]
 
-            # 添加 source -> target
-            if source not in adjacency:
-                adjacency[source] = []
-            adjacency[source].append((target, edge_idx))
+        logger.debug(f"找到 {len(boundary_nodes)} 個分界點")
 
-            # 添加 target -> source（無向邊）
-            if target not in adjacency:
-                adjacency[target] = []
-            adjacency[target].append((source, edge_idx))
+        # 從每個 boundary node 開始探索
+        for boundary_node in boundary_nodes:
+            # 檢查此節點的每條邊
+            for neighbor in list(graph.neighbors(boundary_node)):
+                for key in list(graph[boundary_node][neighbor].keys()):
+                    edge_id = (boundary_node, neighbor, key)
 
-        return adjacency
+                    # 如果這條邊已經訪問過，跳過
+                    if (
+                        edge_id in visited_edges
+                        or (neighbor, boundary_node, key) in visited_edges
+                    ):
+                        continue
 
-    def _trace_segment(
-        self,
-        start_node: int,
-        first_edge_idx: int,
-        adjacency: Dict[int, List[Tuple[int, int]]],
-        boundary_nodes: Set[int],
-        edges: List[Dict],
-        visited_edges: Set[int]
-    ) -> Dict:
+                    # 開始一個新片段：從 boundary_node 沿著這條邊遍歷
+                    cls._trace_and_label_segment(
+                        graph, boundary_node, neighbor, key, segment_id, visited_edges
+                    )
+                    logger.debug(f"完成片段 {segment_id} 的標記")
+                    segment_id += 1
+
+        logger.info(f"片段識別完成，共 {segment_id} 個片段")
+
+    @classmethod
+    def _trace_and_label_segment(
+        cls,
+        graph: nx.Graph,
+        from_node: Tuple[int, int],
+        current_node: Tuple[int, int],
+        edge_key,
+        segment_id: int,
+        visited_edges: Set[Tuple],
+    ) -> None:
         """
-        從起點追蹤一個完整分段
+        遞迴遍歷並標記片段中的所有邊
 
         Args:
-            start_node: 起點節點 ID
-            first_edge_idx: 第一條邊的索引
-            adjacency: 鄰接表
-            boundary_nodes: 分界點集合
-            edges: 邊列表
-            visited_edges: 已訪問的邊集合（會被修改）
-
-        Returns:
-            segment: 分段資訊字典，若追蹤失敗返回 None
+            graph: NetworkX Graph
+            from_node: 來源節點（前一個節點）
+            current_node: 當前節點
+            edge_key: Graph 的邊鍵值
+            segment_id: 要分配的片段 ID
+            visited_edges: 已訪問的邊集合
         """
-        edge_indices: List[int] = []
-        current_node = start_node
-        current_edge_idx = first_edge_idx
+        # 建立當前邊的標識
+        edge_id = (from_node, current_node, edge_key)
 
-        while True:
-            # 標記當前邊為已訪問
-            visited_edges.add(current_edge_idx)
-            edge_indices.append(current_edge_idx)
+        # 如果已經訪問過，停止
+        if (
+            edge_id in visited_edges
+            or (current_node, from_node, edge_key) in visited_edges
+        ):
+            return
 
-            # 取得當前邊
-            edge = edges[current_edge_idx]
+        # 標記這條邊的 segment_id
+        graph[from_node][current_node][edge_key]["segment_id"] = segment_id
+        visited_edges.add(edge_id)
+        visited_edges.add((current_node, from_node, edge_key))
 
-            # 找到下一個節點
-            if edge['source'] == current_node:
-                next_node = edge['target']
-            else:
-                next_node = edge['source']
+        # 如果 current_node 是 boundary node（endpoint 或 branchpoint），停止
+        if graph.nodes[current_node].get("node_type") in ["endpoint", "branchpoint"]:
+            return
 
-            # 如果下一個節點是分界點，分段結束
-            if next_node in boundary_nodes:
-                # 計算總長度
-                total_length = sum(edges[idx].get('length', 0) for idx in edge_indices)
+        # current_node 是 degree-2 的中間節點，繼續遍歷
+        for next_node in graph.neighbors(current_node):
+            if next_node == from_node:
+                continue  # 不要回頭
 
-                return {
-                    'start_node_id': start_node,
-                    'end_node_id': next_node,
-                    'edge_indices': edge_indices,
-                    'total_length': total_length
-                }
-
-            # 繼續追蹤：找到下一條未訪問的邊
-            next_edge_idx = None
-            if next_node in adjacency:
-                for neighbor_id, edge_idx in adjacency[next_node]:
-                    if edge_idx not in visited_edges:
-                        next_edge_idx = edge_idx
-                        break
-
-            if next_edge_idx is None:
-                # 沒有下一條邊，分段結束（可能是孤立節點或已遍歷完）
-                total_length = sum(edges[idx].get('length', 0) for idx in edge_indices)
-                return {
-                    'start_node_id': start_node,
-                    'end_node_id': next_node,
-                    'edge_indices': edge_indices,
-                    'total_length': total_length
-                }
-
-            # 移動到下一個節點和邊
-            current_node = next_node
-            current_edge_idx = next_edge_idx
-
-    def get_segment_statistics(
-        self,
-        segments: List[Dict]
-    ) -> Dict:
-        """
-        取得分段統計資訊
-
-        Args:
-            segments: 分段列表
-
-        Returns:
-            statistics: 統計資訊字典
-        """
-        if not segments:
-            return {
-                'total_segments': 0,
-                'total_edges': 0,
-                'total_length': 0.0,
-                'avg_edges_per_segment': 0.0,
-                'avg_length_per_segment': 0.0
-            }
-
-        total_edges = sum(len(s['edge_indices']) for s in segments)
-        total_length = sum(s['total_length'] for s in segments)
-
-        return {
-            'total_segments': len(segments),
-            'total_edges': total_edges,
-            'total_length': total_length,
-            'avg_edges_per_segment': total_edges / len(segments),
-            'avg_length_per_segment': total_length / len(segments)
-        }
+            # 遍歷所有連接到 next_node 的邊
+            for next_key in graph[current_node][next_node].keys():
+                cls._trace_and_label_segment(
+                    graph, current_node, next_node, next_key, segment_id, visited_edges
+                )
