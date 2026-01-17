@@ -67,19 +67,11 @@ from .morphology import (
 )
 
 # Background correction
-from .background_correction import (
-    rolling_ball_background,
-    simple_background_subtraction,
-    create_ball_kernel,
-)
+from .background_correction import BackgroundCorrection
 
 # Thresholding and binarization
 from .thresholding import (
     otsu_threshold,
-    fixed_threshold,
-    adaptive_threshold,
-    multi_otsu_threshold,
-    triangle_threshold,
 )
 
 # Mask operations
@@ -93,8 +85,9 @@ from .mask_operations import (
 # Pipeline
 from .pipeline import (
     SkinAnalysisPipeline,
-    DebugOutput,
 )
+
+from .config import PipelineConfig
 
 # Utilities
 from .utils import (
@@ -107,34 +100,28 @@ from .utils import (
 
 __all__ = [
     # Morphological operations
-    'morphological_opening',
-    'morphological_closing',
-    'morphological_gradient',
-    'top_hat',
-    'black_hat',
+    "morphological_opening",
+    "morphological_closing",
+    "morphological_gradient",
+    "top_hat",
+    "black_hat",
     # Background correction
-    'rolling_ball_background',
-    'simple_background_subtraction',
-    'create_ball_kernel',
+    "BackgroundCorrection",
     # Thresholding and binarization
-    'otsu_threshold',
-    'fixed_threshold',
-    'adaptive_threshold',
-    'multi_otsu_threshold',
-    'triangle_threshold',
+    "otsu_threshold",
     # Mask operations
-    'dilate_epidermis_vertically',
-    'apply_mask',
-    'invert_mask',
-    'combine_masks_or',
+    "dilate_epidermis_vertically",
+    "apply_mask",
+    "invert_mask",
+    "combine_masks_or",
     # Pipeline
-    'SkinAnalysisPipeline',
-    'DebugOutput',
+    "SkinAnalysisPipeline",
     # Utilities
-    'create_kernel',
-    'ensure_grayscale',
-    'validate_image',
-    'regional_minmax_normalize',
+    "create_kernel",
+    "ensure_grayscale",
+    "validate_image",
+    "regional_minmax_normalize",
+    "PipelineConfig",
 ]
 
-__version__ = '1.0.0'
+__version__ = "1.0.0"

@@ -36,7 +36,11 @@ import numpy as np
 import networkx as nx
 from PIL import Image
 
-from neural_reconstruction.core.preprocessing.pipeline import SkinAnalysisPipeline
+from neural_reconstruction.core.preprocessing.pipeline import (
+    SkinAnalysisPipeline,
+    PipelineConfig as PreprocessingPipelineConfig,
+)
+
 from neural_reconstruction.core.construction.main import build_neural_network
 
 # 設定 logger
@@ -81,7 +85,7 @@ class NeuralReconstructionPipeline:
 
     def __init__(
         self,
-        preprocessing_config: Optional[Dict[str, Any]] = None,
+        preprocessing_config: Optional[PreprocessingPipelineConfig] = None,
         reconstruction_config: Optional[Dict[str, Any]] = None,
     ):
         """
@@ -106,20 +110,21 @@ class NeuralReconstructionPipeline:
         logger.info(f"重建配置: {reconstruction_config}")
 
     @staticmethod
-    def _get_default_preprocessing_config() -> Dict[str, Any]:
+    def _get_default_preprocessing_config() -> PreprocessingPipelineConfig:
         """取得預設前處理配置"""
-        return {
-            "morphology": {"closing_kernel": 3, "opening_kernel": 3},
-            "mask": {"dilate_offset": 50},
-            "background": {
-                "method": "morphology",
-                "radius": 12,
-                "sigma": 0,
-                "light_background": True,
-            },
-            "threshold": {"method": "binary"},
-            "normalization": {"enabled": False},
-        }
+        config = PreprocessingPipelineConfig.from_dict(
+            {
+                "morphology": {"closing_kernel": 0, "opening_kernel": 3},
+                "mask": {"dilate_offset": 50},
+                "background": {
+                    "method": "rolling_ball",
+                    "radius": 25,
+                },
+                "threshold": {"use_full_roi": False},
+                "normalization": {"enabled": False},
+            }
+        )
+        return config
 
     @staticmethod
     def _get_default_reconstruction_config() -> Dict[str, Any]:
