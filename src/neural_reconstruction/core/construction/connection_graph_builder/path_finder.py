@@ -45,31 +45,16 @@ class Pathfinder:
 
     def _create_cost_map(self, image: np.ndarray) -> None:
         """建立成本地圖"""
-        # 1. 原始亮度成本 (越高越好 -> 成本越低)
-        inverted_intensity = 255 - image.astype(np.float32)
+        # intensity_cost_map = 1 / (
+        #     image.astype(np.float64) + 1
+        # )  # 反轉強度 (亮度越高成本越低)
+        intensity_cost_map = 255 - image.astype(
+            np.float64
+        )  # 反轉強度 (亮度越高成本越低)
 
-        # 2. Sato 管狀結構濾波 (響應越高代表越像管狀結構)
-        # sigmas 範圍決定要偵測的管狀結構粗細，這裡設為 1-5 像素
-        sato_response = sato(image, sigmas=range(1, 6, 1), mode="reflect")
-
-        # 正規化 Sato 響應到 0-255
-        if sato_response.max() > 0:
-            sato_response = (sato_response / sato_response.max()) * 255.0
-
-        # 反轉 Sato (響應越高 -> 成本越低)
-        inverted_sato = 255 - sato_response
-
-        # 3. 混合成本 (加權平均)
-        cost_map = (
-            inverted_intensity * self.intensity_weight
-            + inverted_sato * self.shape_weight
+        self.cost_map = (
+            intensity_cost_map**self.intensity_weight / 255**self.intensity_weight
         )
-        cost_map = cost_map / 255.0  # 正規化到 0-1
-        cost_map = cost_map.astype(np.float32)
-
-        # 為了防止代價為 0，加上一個很小的 epsilon
-        self.cost_map = cost_map + 1e-5
-
         self.height, self.width = self.cost_map.shape
 
     def find_paths_from_source(

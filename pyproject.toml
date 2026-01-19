@@ -20,6 +20,7 @@ dependencies = [
     "numpy>=2.2.6",
     "scipy>=1.15.3",
     "skan>=0.13.0",
+    "simpleitk>=2.5.3",
 ]
 
 [tool.setuptools]
