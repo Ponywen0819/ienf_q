@@ -116,6 +116,12 @@ class EdgeSeedGenerator:
             subpath = path[last_subpath_end_index : seed_index + 1]
             last_subpath_end_index = seed_index
             edges.append(subpath)
+
+        # 加入最後一段路徑（從最後一個種子到終點）
+        if last_subpath_end_index < len(path) - 1:
+            final_subpath = path[last_subpath_end_index:]
+            edges.append(final_subpath)
+
         return edges
 
     def _compute_cumulative_distances(self, path: List[Tuple[int, int]]) -> List[float]:

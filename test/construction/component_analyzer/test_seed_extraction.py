@@ -119,13 +119,14 @@ class TestEdgeSeedGeneratorExtractSeedsFromEdge:
 
         edges = seed_generator.extract_seeds_from_edge(path, segment_length, length)
 
-        # Should generate 4 seeds (49 // 10 = 4)
-        assert len(edges) == 4
+        # Should generate 4 seeds (49 // 10 = 4) plus final segment to endpoint
+        # Seeds at distance 10, 20, 30, 40, plus final segment from 40 to 49
+        assert len(edges) == 5
 
         # Each edge should be a list of path coordinates
         for edge in edges:
             assert isinstance(edge, list)
-            assert len(edge) == 2  # At least start and end
+            assert len(edge) >= 2  # At least start and end
 
     def test_extract_seeds_short_edge(self):
         """Test seed extraction from edge shorter than min_edge_length"""
@@ -158,8 +159,9 @@ class TestEdgeSeedGeneratorExtractSeedsFromEdge:
 
         edges = seed_generator.extract_seeds_from_edge(path, segment_length, length)
 
-        # Should generate 1 seed (14 // 10 = 1)
-        assert len(edges) == 1
+        # Should generate 1 seed (15 // 10 = 1) plus final segment to endpoint
+        # Seed at distance 10, plus final segment from 10 to 14
+        assert len(edges) == 2
 
     def test_extract_seeds_edge_length_filtering(self):
         """Test that min_edge_length filters correctly"""
@@ -195,9 +197,10 @@ class TestEdgeSeedGeneratorExtractSeedsFromTopology:
         result_graph = seed_generator.extract_seeds_from_topology(graph, segment_length)
 
         assert isinstance(result_graph, nx.MultiGraph)
+        # 4 intermediate seed nodes + 2 original endpoints = 6 nodes
         assert result_graph.number_of_nodes() == 6
-        # Should have created seed edges
-        assert result_graph.number_of_edges() == 4
+        # Should have created seed edges: 4 seeds + 1 final segment = 5 edges
+        assert result_graph.number_of_edges() == 5
 
     def test_extract_from_empty_topology(self, seed_generator):
         """Test seed extraction from empty topology"""

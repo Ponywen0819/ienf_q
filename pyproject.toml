@@ -21,6 +21,7 @@ dependencies = [
     "scipy>=1.15.3",
     "skan>=0.13.0",
     "simpleitk>=2.5.3",
+    "seaborn>=0.13.2",
 ]
 
 [tool.setuptools]
@@ -61,3 +62,8 @@ exclude_lines = [
     "@abstract",
 ]
 precision = 2
+
+[dependency-groups]
+dev = [
+    "jinja2>=3.1.6",
+]
