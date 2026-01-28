@@ -24,6 +24,9 @@ src_path = project_root / "src"
 sys.path.append(str(src_path))
 
 from neural_reconstruction.ui.main_pipeline import NeuralReconstructionPipeline
+from neural_reconstruction.core.preprocessing.config import (
+    PipelineConfig as PreprocessingConfig,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -100,24 +103,25 @@ def main():
     # Initialize pipeline
     logger.info("Initializing pipeline...")
     pipeline = NeuralReconstructionPipeline(
-        preprocessing_config={
-            "morphology": {
-                "closing_kernel": 0,
-                "opening_kernel": 3,
-            },
-            "mask": {
-                "dilate_offset": 50,
-            },
-            "background": {
-                "method": "rolling_ball",
-                "radius": 2,
-                "light_background": True,
-            },
-            "threshold": {"method": "binary", "use_full_roi": False},
-            "normalization": {
-                "enabled": True,
-            },
-        },
+        preprocessing_config=PreprocessingConfig.from_dict(
+            {
+                "morphology": {
+                    "closing_kernel": 0,
+                    "opening_kernel": 3,
+                },
+                "mask": {
+                    "dilate_offset": 50,
+                },
+                "background": {
+                    "method": "rolling_ball",
+                    "radius": 2,
+                },
+                "threshold": {"use_full_roi": False},
+                "normalization": {
+                    "enabled": True,
+                },
+            }
+        ),
         reconstruction_config={
             "connectivity": 4,
             "min_area": 0,
