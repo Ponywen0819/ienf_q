@@ -17,6 +17,15 @@ resolution-markers = [
 ]
 
 [[package]]
+name = "attrs"
+version = "25.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6b/5c/685e6633917e101e5dcb62b9dd76946cbb57c26e133bae9e0cd36033c0a9/attrs-25.4.0.tar.gz", hash = "sha256:16d5969b87f0859ef33a48b35d55ac1be6e42ae49d5e853b597db70c35c57e11", size = 934251, upload-time = "2025-10-06T13:54:44.725Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3a/2a/7cc015f5b9f5db42b7d48157e23356022889fc354a2813c15934b7cb5c0e/attrs-25.4.0-py3-none-any.whl", hash = "sha256:adcf7e2a1fb3b36ac48d97835bb6d8ade15b8dcce26aba8bf1d14847b57a3373", size = 67615, upload-time = "2025-10-06T13:54:43.17Z" },
+]
+
+[[package]]
 name = "certifi"
 version = "2026.1.4"
 source = { registry = "https://pypi.org/simple" }
@@ -529,6 +538,7 @@ test = [
 [package.dev-dependencies]
 dev = [
     { name = "jinja2" },
+    { name = "psd-tools" },
 ]
 
 [package.metadata]
@@ -552,7 +562,10 @@ requires-dist = [
 provides-extras = ["test"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "jinja2", specifier = ">=3.1.6" }]
+dev = [
+    { name = "jinja2", specifier = ">=3.1.6" },
+    { name = "psd-tools", specifier = ">=1.12.1" },
+]
 
 [[package]]
 name = "imageio"
@@ -1358,6 +1371,53 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412, upload-time = "2025-05-15T12:30:07.975Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
+]
+
+[[package]]
+name = "psd-tools"
+version = "1.12.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "attrs" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.3.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "pillow" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bb/43/1e8deae3d7867b74d6224fb5923abb3deda96cc61b7862481aad580db1ca/psd_tools-1.12.1-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:9e99464f6368997b9dce5b504fab9734dd13e45080a78e4666f23c0395705942", size = 360934, upload-time = "2025-12-05T02:17:22.486Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/d1/a3f81ddf35f65dd4197ad82cfc866328638c03b3a6775c4943725926ca8f/psd_tools-1.12.1-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:57cf15e1b2a40d532e6e22c5c739483e4d65b8783f68abd2c28e3536c2cb63e6", size = 360004, upload-time = "2025-12-05T02:17:24.567Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/65/10a779bed45fece534da46ecda5a5fa7684498534555e6f40f997866b8a1/psd_tools-1.12.1-cp310-cp310-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:9e73bbebe496749a5b4a9f2e001a107132cc56368050c18624c6a1721cc354dc", size = 735360, upload-time = "2025-12-05T02:17:26.17Z" },
+    { url = "https://files.pythonhosted.org/packages/22/99/ee683738b24d245b64ce654feec0d03f3b4360d446e6ca6b69f13ebc34bc/psd_tools-1.12.1-cp310-cp310-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:e9be3c9098cc565fe4d8e2d48894172620fba9915c12fc924b8e87dbaeb292e6", size = 738469, upload-time = "2025-12-05T02:17:27.538Z" },
+    { url = "https://files.pythonhosted.org/packages/e6/e9/25e3070d3d471f8c591c70b183b5b6db8bac2226a3ad7d61793d94ecd369/psd_tools-1.12.1-cp310-cp310-musllinux_1_2_aarch64.whl", hash = "sha256:fb7f01057e0a01ea460f60b289ac4169e3670f5567df7a8709c10b5948e60041", size = 1708954, upload-time = "2025-12-05T02:17:29.438Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/90/19e19659bd2468fd8fa180825cfc19618de9d830da8b27e6cf8eac6efaa8/psd_tools-1.12.1-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:d739ad4353105c49116ac58ab1de1063af4bb996981579ce90aae647683edca5", size = 1773738, upload-time = "2025-12-05T02:17:31.153Z" },
+    { url = "https://files.pythonhosted.org/packages/22/6b/838fc1901544ec03d908398288999a83f20082dc343b240cf4cd92bdc09b/psd_tools-1.12.1-cp310-cp310-win_amd64.whl", hash = "sha256:c11291c4790fa93933128e4e1c444c8429a2d4dc504fb9dc004a337356a07ef7", size = 543207, upload-time = "2025-12-05T02:17:32.701Z" },
+    { url = "https://files.pythonhosted.org/packages/30/c0/39ea80bf90146fbfd5784fc479bb9a2385d0c324544a6d8609c640f0eb28/psd_tools-1.12.1-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:4c87fbf36682d36f2f30659542f90cbfbd3f58306f3767209c80fbd0314c4176", size = 360594, upload-time = "2025-12-05T02:17:34.73Z" },
+    { url = "https://files.pythonhosted.org/packages/55/84/861e256d65db4b238d7f61d8023b0a05959d07b22693fda3fb45a7928e8d/psd_tools-1.12.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:8791f0c04ceb7d709140590821d502eed186b53f215bfd6b594fb555f14db09c", size = 359687, upload-time = "2025-12-05T02:17:36.195Z" },
+    { url = "https://files.pythonhosted.org/packages/0f/0b/81ec556a421562ff663f276fc15d080b11e720ab0ec1fd5a82257ab1f5b2/psd_tools-1.12.1-cp311-cp311-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:8432db9e9cdc64e74de0cc587c28a93061ef72168de0045ab5f3fb6d73bc4099", size = 758207, upload-time = "2025-12-05T02:17:37.764Z" },
+    { url = "https://files.pythonhosted.org/packages/a6/47/0d3a34515a93b286d5f761863c9ada27b7ec237bb924d11caeb8c50950a5/psd_tools-1.12.1-cp311-cp311-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:e85101b347094edf7e9cbd109fd39309cbdc472cd636850088e42af84b1251fc", size = 762420, upload-time = "2025-12-05T02:17:38.913Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/7f/7db727fb747a0569ccc28be81c49f2703b6013410e9509f110b79226242b/psd_tools-1.12.1-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:44d0d1716cb1898f1b546c19068b347d7b5dfa7849953bc65cfe54489bbd3b56", size = 1732562, upload-time = "2025-12-05T02:17:40.151Z" },
+    { url = "https://files.pythonhosted.org/packages/5a/dc/80cc1c9676afa9390bd08237d996e3e9660fcc096d12c12fd2cffb9f2718/psd_tools-1.12.1-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:46e556a01ee90dafeb58e5ea2ee7d86ffe47c794f341f41705e4a48000c17b4d", size = 1796960, upload-time = "2025-12-05T02:17:41.496Z" },
+    { url = "https://files.pythonhosted.org/packages/49/a7/163a350f5520e9f33b1925c1ed6306a32b8f3ad1d220561399477f29d977/psd_tools-1.12.1-cp311-cp311-win_amd64.whl", hash = "sha256:cf93c133adb01755a58d261fb76a34c2ebcbc772ab696b711538f75f7fff772c", size = 543008, upload-time = "2025-12-05T02:17:43.074Z" },
+    { url = "https://files.pythonhosted.org/packages/93/8e/d7ac3789885daeeb41f8ea0c6e6beecb96390b713900945c679506511410/psd_tools-1.12.1-cp311-cp311-win_arm64.whl", hash = "sha256:705acfb3eac10aa0f05900860bb79ff19b6229a854ae953fc9c644c3aa506789", size = 704358, upload-time = "2025-12-05T02:17:44.588Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/44/4f1137752267d06fde16cbf80e938062e8183d9488cf9417dec65de6361c/psd_tools-1.12.1-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:93aa190b84205a991ad43432683be4627adb39a4b81f548b0052c3f49b65b4f3", size = 361641, upload-time = "2025-12-05T02:17:46.156Z" },
+    { url = "https://files.pythonhosted.org/packages/c6/e4/138135a6ea50bdd9a57a6f3678498e0054b3735a6d162ff12992c9f6bdf9/psd_tools-1.12.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:6d9034ede9d50ddb10aeda7d11188424dae087945f80d45badf2bc73a4879ba1", size = 360274, upload-time = "2025-12-05T02:17:47.526Z" },
+    { url = "https://files.pythonhosted.org/packages/b5/85/dc1db2d0fc038f696ad95735d233478a8f784651d24e1a12ca1d7e740007/psd_tools-1.12.1-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:3c9f0c0929cb4b69120c545c27ddfe4b7aee22d8a754319f987ebb21da0d90c0", size = 751884, upload-time = "2025-12-05T02:17:48.697Z" },
+    { url = "https://files.pythonhosted.org/packages/54/df/f7152bd702c990b392e60fa70a4e90cb5731ef76aa72e95d80b93d6701b0/psd_tools-1.12.1-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:38628432f87b00d914acf914a52385f434fed9ec6b9f19a825b6798e4f5deab8", size = 760290, upload-time = "2025-12-05T02:17:50.22Z" },
+    { url = "https://files.pythonhosted.org/packages/4b/6a/37ea8fd9281c7c50bd7fa9adcaa669d5648928906187de80c39f9f9ab9b9/psd_tools-1.12.1-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:a162fbe2a24eb71e27d402c6356c6f1924c44617cfc676e0d96567f832148cdf", size = 1720978, upload-time = "2025-12-05T02:17:51.995Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/02/0bbc68b87ce0b8bcd546429c2889292c7d4d3127533ec48b5248c19c38c0/psd_tools-1.12.1-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:041e9a452e8c283b7fb8d04ff5e481556b9d904df9c87e407b9554097e2ff5a4", size = 1789370, upload-time = "2025-12-05T02:17:53.529Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/c8/93c97ca56736e92465ac1dff71c066f7055cc3fdb0b58d24eaae80ac3f82/psd_tools-1.12.1-cp312-cp312-win_amd64.whl", hash = "sha256:d3c8c8d9359deb6bbec9feb8ef074a716e14491cef136d9a040d36ac8f351f8f", size = 543915, upload-time = "2025-12-05T02:17:54.922Z" },
+    { url = "https://files.pythonhosted.org/packages/44/cf/34d0e430cdb2f8b8635aee3fa539817dbd573ed04c7b5fe4f63dcbba6af9/psd_tools-1.12.1-cp312-cp312-win_arm64.whl", hash = "sha256:ccca70398ada1eb9f79917ac9ea8c521a75ce7779364ba5c6621a6d9357bc4f3", size = 704433, upload-time = "2025-12-05T02:17:56.479Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/a7/2c2a6a478422e26ff434f33c43c8d4d5dda5694567d018b327d4b64a8769/psd_tools-1.12.1-cp313-abi3-macosx_10_13_x86_64.whl", hash = "sha256:a5cbd9b140490836137962528671c4d450e4a3b7e19171c566d5ea1c45a5e0c8", size = 354381, upload-time = "2025-12-05T02:17:57.627Z" },
+    { url = "https://files.pythonhosted.org/packages/db/0e/a3124ec0244e3dec3cb2bd3d74c812cad737dc242b8906ebf3ad1af37996/psd_tools-1.12.1-cp313-abi3-macosx_11_0_arm64.whl", hash = "sha256:2787b8caa2f8c7089de5705833a0a4d5cb787a76de435e3845fb62b9c6211a9e", size = 353531, upload-time = "2025-12-05T02:17:59.227Z" },
+    { url = "https://files.pythonhosted.org/packages/c1/84/6e90fecd15a6b42568a2efa8aa7750ec36304bb78bc8fa21bbf5808fee63/psd_tools-1.12.1-cp313-abi3-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:ad52c3ae9fe3c57bd5bb95cd3d8524256d9fb7542cb6f5b32af5bc9ff7e033e2", size = 698193, upload-time = "2025-12-05T02:18:01.137Z" },
+    { url = "https://files.pythonhosted.org/packages/5b/23/8b3908e388525a9528c2b621eb7b3a49c559af5b55e695cc7d61177f0a17/psd_tools-1.12.1-cp313-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:8a09ed4a97c5a5634c672fb5a8c1732378bda9a548bebe92087508d9dfef65b7", size = 702665, upload-time = "2025-12-05T02:18:02.282Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/d4/871b357d2424bbe6f7fe8ef29fbf00349b82c3b56bb81b489f3136e83f61/psd_tools-1.12.1-cp313-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:a7a57edb16dbdece015cbdcdfaaa232382443a056deb4ff507e1856d4e04a064", size = 1671349, upload-time = "2025-12-05T02:18:04.005Z" },
+    { url = "https://files.pythonhosted.org/packages/e6/bc/35c91ec155f29a5e98def40244253403908f8ecc68b98eb44f43675d837a/psd_tools-1.12.1-cp313-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:568ed2bd02153015bb87243faa77bb337be2859a13b853e6e45281db072defed", size = 1733599, upload-time = "2025-12-05T02:18:05.424Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/c7/87c07adcf173a8c559cfbd0f7986072a802c91b818d8bb6f901ce1ca9b78/psd_tools-1.12.1-cp313-cp313-win_amd64.whl", hash = "sha256:a835c014116b8d5f739a51f7e3c51892451c66635d8b39bf0c870b2cbc917593", size = 541407, upload-time = "2025-12-05T02:18:06.605Z" },
+    { url = "https://files.pythonhosted.org/packages/e2/f6/e395fa12d2775a0fd872761cdaea2c34d9ce0f6dcb0915795a47211a221f/psd_tools-1.12.1-cp313-cp313-win_arm64.whl", hash = "sha256:8547002c4336c3eddda47a717065015170706cd818369f13ec0ccaf72b58fc1d", size = 702253, upload-time = "2025-12-05T02:18:07.804Z" },
+    { url = "https://files.pythonhosted.org/packages/d8/9c/7674c0acd991da2b721c11964e3e9bf739cf4adc6d75ee8cdcc700b4f604/psd_tools-1.12.1-cp314-cp314-win_amd64.whl", hash = "sha256:3b3658928238cbdf0ff3ff9d5bd6f730ff2527b8ca12fe3123263ee8b46fd9f3", size = 542869, upload-time = "2025-12-05T02:18:08.915Z" },
+    { url = "https://files.pythonhosted.org/packages/e7/ca/d93590e4c595a8e85a379df5986a796ff1dc08bc6aa79054acbb6dff2227/psd_tools-1.12.1-cp314-cp314-win_arm64.whl", hash = "sha256:f642eea09aff7d56993c8a49c444b807d2cac7ac4eb1be736066748d77ec4865", size = 703737, upload-time = "2025-12-05T02:18:10.584Z" },
 ]
 
 [[package]]
