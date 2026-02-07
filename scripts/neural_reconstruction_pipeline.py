@@ -25,6 +25,7 @@ import networkx as nx
 from pathlib import Path
 from typing import Tuple, List, Dict, Optional, Callable
 from dataclasses import dataclass
+import json
 
 # Skan 用於骨架分析
 from skan import Skeleton, summarize
@@ -34,6 +35,7 @@ from skan.csr import skeleton_to_nx
 @dataclass
 class PreprocessingConfig:
     """預處理配置參數"""
+
     # Dermis 遮罩參數
     dermis_offset_px: int = 100
 
@@ -57,6 +59,7 @@ class PreprocessingConfig:
 @dataclass
 class ReconstructionConfig:
     """重建配置參數"""
+
     # 種子提取參數
     segment_length: float = 3.0  # 種子間距
 
@@ -68,6 +71,7 @@ class ReconstructionConfig:
 @dataclass
 class ReconstructionResult:
     """重建結果"""
+
     # 預處理結果
     roi_image: np.ndarray  # 處理後的 ROI 圖像
     roi_annotation: np.ndarray  # 處理後的標註
@@ -92,7 +96,7 @@ class NeuralReconstructionPipeline:
         self,
         preprocessing_config: Optional[PreprocessingConfig] = None,
         reconstruction_config: Optional[ReconstructionConfig] = None,
-        progress_callback: Optional[Callable[[str, float], None]] = None
+        progress_callback: Optional[Callable[[str, float], None]] = None,
     ):
         """
         初始化流程
@@ -111,7 +115,7 @@ class NeuralReconstructionPipeline:
         image_path: str,
         mask_path: str,
         annotation_path: str,
-        output_dir: Optional[str] = None
+        output_dir: Optional[str] = None,
     ) -> ReconstructionResult:
         """
         執行完整的重建流程
@@ -156,7 +160,9 @@ class NeuralReconstructionPipeline:
         self.progress_callback("計算種子對連接...", 0.5)
 
         # 4. A* 路徑查找
-        topology_points, pairings = self._find_connections(roi_image, seed_graph)
+        topology_points, pairings = self._find_connections(
+            roi_image, roi_annotation, seed_graph
+        )
 
         self.progress_callback("構建 MST...", 0.8)
 
@@ -178,14 +184,11 @@ class NeuralReconstructionPipeline:
             pairings=pairings,
             num_mst_trees=len(mst_trees),
             num_edges=num_edges,
-            num_seeds=len(topology_points)
+            num_seeds=len(topology_points),
         )
 
     def _preprocess(
-        self,
-        orig_img: np.ndarray,
-        mask_img: np.ndarray,
-        annotation_img: np.ndarray
+        self, orig_img: np.ndarray, mask_img: np.ndarray, annotation_img: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         預處理流程（來自 preprocess.ipynb）
@@ -207,15 +210,16 @@ class NeuralReconstructionPipeline:
             cv2.dilate(
                 mask_uint8,
                 cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (offset_px, offset_px)),
-                iterations=1
-            )
+                iterations=1,
+            ),
         )
-        roi_mask = cv2.bitwise_or(dermis_mask.astype(np.uint8), mask_uint8.astype(np.uint8))
+        roi_mask = cv2.bitwise_or(
+            dermis_mask.astype(np.uint8), mask_uint8.astype(np.uint8)
+        )
 
         # 2. Rolling ball 背景減除
         bg = ski.restoration.rolling_ball(
-            orig_img,
-            radius=self.preproc_config.rolling_ball_radius
+            orig_img, radius=self.preproc_config.rolling_ball_radius
         )
         rolling_fg = (orig_img.astype(np.uint8) - bg.astype(np.uint8)).astype(np.uint8)
 
@@ -225,11 +229,14 @@ class NeuralReconstructionPipeline:
                 rolling_fg.astype(np.float32),
                 sigmas=range(*self.preproc_config.sato_sigmas),
                 black_ridges=False,
-                mode='reflect'
+                mode="reflect",
             )
-            sato_normalized = (sato_result - sato_result.min()) / (sato_result.max() - sato_result.min())
-            fg_img = ((1 - self.preproc_config.sato_weight) * rolling_fg +
-                     self.preproc_config.sato_weight * sato_normalized)
+            sato_normalized = (sato_result - sato_result.min()) / (
+                sato_result.max() - sato_result.min()
+            )
+            fg_img = (
+                1 - self.preproc_config.sato_weight
+            ) * rolling_fg + self.preproc_config.sato_weight * sato_normalized
             fg_img = fg_img.clip(0, 255).astype(np.uint8)
         else:
             fg_img = rolling_fg
@@ -242,25 +249,9 @@ class NeuralReconstructionPipeline:
         regions = np.digitize(roi_image, bins=thresholds)
         toplevel_mask = (regions == len(thresholds)).astype(np.uint8)
 
-        cv_result = ski.segmentation.chan_vese(
-            roi_image.astype(np.float32),
-            mu=self.preproc_config.chan_vese_mu,
-            lambda1=self.preproc_config.chan_vese_lambda1,
-            lambda2=self.preproc_config.chan_vese_lambda2,
-            tol=self.preproc_config.chan_vese_tol,
-            max_num_iter=self.preproc_config.chan_vese_max_iter,
-            dt=self.preproc_config.chan_vese_dt,
-            init_level_set=toplevel_mask.astype(np.float32),
-            extended_output=True,
-        )
-
-        chanvese_mask = (cv_result[0] > 0).astype(np.uint8)
-        dermis_annotation = cv2.bitwise_and(chanvese_mask, chanvese_mask, mask=dermis_mask)
-
         # 6. 合併標註
         roi_annotation = cv2.bitwise_or(
-            dermis_annotation,
-            (annotation_img > 0).astype(np.uint8)
+            toplevel_mask, (annotation_img > 0).astype(np.uint8)
         )
 
         # 7. 形態學 opening
@@ -269,15 +260,13 @@ class NeuralReconstructionPipeline:
             roi_annotation.astype(np.uint8),
             cv2.MORPH_OPEN,
             cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size)),
-            iterations=1
+            iterations=1,
         )
 
         return roi_image, roi_annotation, roi_mask
 
     def _extract_skeleton_and_seeds(
-        self,
-        roi_image: np.ndarray,
-        roi_annotation: np.ndarray
+        self, roi_image: np.ndarray, roi_annotation: np.ndarray
     ) -> nx.MultiGraph:
         """
         骨架與種子提取（來自 hierarchical_fragment_linking.ipynb cells 5-6）
@@ -295,25 +284,31 @@ class NeuralReconstructionPipeline:
         # 2. 過濾短邊
         filtered_skeleton_graph = nx.MultiGraph()
         for u, v, data in skeleton_graph.edges(data=True):
-            path = data['path']
-            if len(path) > 2 or (skeleton_graph.degree(u) != 1 and skeleton_graph.degree(v) != 1):
+            path = data["path"]
+            if len(path) > 2 or (
+                skeleton_graph.degree(u) != 1 and skeleton_graph.degree(v) != 1
+            ):
                 filtered_skeleton_graph.add_edge(u, v, **data)
 
         # 將節點 id 轉回座標
-        mapping = {i: tuple(skel_obj.coordinates[i].astype(int)) for i in filtered_skeleton_graph.nodes()}
+        mapping = {
+            i: tuple(skel_obj.coordinates[i].astype(int))
+            for i in filtered_skeleton_graph.nodes()
+        }
         filtered_skeleton_graph = nx.relabel_nodes(filtered_skeleton_graph, mapping)
 
         # 3. 合併中間點
         middle_points = [
-            point for point in filtered_skeleton_graph.nodes()
+            point
+            for point in filtered_skeleton_graph.nodes()
             if len(list(filtered_skeleton_graph.neighbors(point))) == 2
         ]
 
         for mp in middle_points:
             neighbors = list(filtered_skeleton_graph.neighbors(mp))
             u, v = neighbors
-            path1 = filtered_skeleton_graph[u][mp][0]['path']
-            path2 = filtered_skeleton_graph[mp][v][0]['path']
+            path1 = filtered_skeleton_graph[u][mp][0]["path"]
+            path2 = filtered_skeleton_graph[mp][v][0]["path"]
             u_y, u_x = u
             mp_y, mp_x = mp
             v_y, v_x = v
@@ -339,8 +334,12 @@ class NeuralReconstructionPipeline:
         for region in regions:
             min_row, min_col, max_row, max_col = region.bbox
             bbox_nodes = [
-                node for node in filtered_skeleton_graph.nodes()
-                if node[0] >= min_row and node[0] < max_row and node[1] >= min_col and node[1] < max_col
+                node
+                for node in filtered_skeleton_graph.nodes()
+                if node[0] >= min_row
+                and node[0] < max_row
+                and node[1] >= min_col
+                and node[1] < max_col
             ]
             if len(bbox_nodes) != 0:
                 continue
@@ -364,9 +363,11 @@ class NeuralReconstructionPipeline:
             seed_graph.add_node(u)
 
         for u, v, data in filtered_skeleton_graph.edges(data=True):
-            path = data['path']
+            path = data["path"]
             # 擺正方向
-            corrected_path = path[:] if tuple(path[0]) == u and tuple(path[-1]) == v else path[::-1]
+            corrected_path = (
+                path[:] if tuple(path[0]) == u and tuple(path[-1]) == v else path[::-1]
+            )
             path_arr = np.array(corrected_path)
             diffs = np.diff(path_arr, axis=0)
             distances = np.linalg.norm(diffs, axis=1)
@@ -382,26 +383,35 @@ class NeuralReconstructionPipeline:
             for i in range(num_segments):
                 target_distance = (i + 1) * path_length / num_segments
                 segment_end_index = 0
-                for idx, cumulative_distance in enumerate(cumulative_distances[last_index:]):
+                for idx, cumulative_distance in enumerate(
+                    cumulative_distances[last_index:]
+                ):
                     if cumulative_distance >= target_distance:
                         segment_end_index = idx + last_index
                         break
-                segment_path = corrected_path[last_index:segment_end_index + 1]
+                segment_path = corrected_path[last_index : segment_end_index + 1]
                 if len(segment_path) == 0:
                     continue
-                seed_graph.add_edge(tuple(segment_path[0]), tuple(segment_path[-1]), path=segment_path)
+                seed_graph.add_edge(
+                    tuple(segment_path[0]), tuple(segment_path[-1]), path=segment_path
+                )
                 last_index = segment_end_index
 
             if last_index < len(corrected_path) - 1:
                 final_segment_path = corrected_path[last_index:]
-                seed_graph.add_edge(tuple(final_segment_path[0]), tuple(final_segment_path[-1]), path=final_segment_path)
+                seed_graph.add_edge(
+                    tuple(final_segment_path[0]),
+                    tuple(final_segment_path[-1]),
+                    path=final_segment_path,
+                )
 
         return seed_graph
 
     def _find_connections(
         self,
         roi_image: np.ndarray,
-        seed_graph: nx.MultiGraph
+        roi_annotation: np.ndarray,
+        seed_graph: nx.MultiGraph,
     ) -> Tuple[np.ndarray, Dict]:
         """
         A* 路徑查找（來自 hierarchical_fragment_linking.ipynb cell 9）
@@ -414,7 +424,7 @@ class NeuralReconstructionPipeline:
         kdtree = KDTree(topology_points)
 
         # 建立成本地圖
-        cost_map = ((255 - roi_image.astype(np.float64)) / 255.0) ** 1.5
+        cost_map = ((255 - roi_image.astype(np.float64)) / 255.0) ** 2
         cost_map_h, cost_map_w = cost_map.shape
 
         # 建立種子地圖（用於過濾）
@@ -425,7 +435,7 @@ class NeuralReconstructionPipeline:
         # 為 seed graph 中的邊添加低成本
         path_lookup = {}
         for u, v, data in seed_graph.edges(data=True):
-            path = data['path']
+            path = data["path"]
             path_lookup[(u, v)] = (path, 1e-5)
 
         # A* 搜索
@@ -433,7 +443,7 @@ class NeuralReconstructionPipeline:
         bbox_padding = self.recon_config.path_finding_bbox_padding
 
         # 獲取 annotation 的連通分量（用於排除同一 component 的點）
-        binary = (roi_image > 0).astype(np.uint8)
+        binary = (roi_annotation > 0).astype(np.uint8)
         label_img = label(binary, connectivity=2)
 
         total = len(topology_points)
@@ -455,13 +465,15 @@ class NeuralReconstructionPipeline:
             # 排除屬於同一個 component 的點
             current_component_id = label_img[u[0], u[1]]
             targets = [
-                target for target in targets
+                target
+                for target in targets
                 if label_img[target[0], target[1]] != current_component_id
             ]
 
             # 排除已存在的配對
             targets = [
-                target for target in targets
+                target
+                for target in targets
                 if (tuple(u), tuple(target)) not in path_lookup
                 and (tuple(target), tuple(u)) not in path_lookup
             ]
@@ -479,7 +491,7 @@ class NeuralReconstructionPipeline:
             min_x = max(0, min(all_x) - bbox_padding)
             max_x = min(cost_map_w - 1, max(all_x) + bbox_padding)
 
-            cropped_cost_map = cost_map[min_y:max_y + 1, min_x:max_x + 1]
+            cropped_cost_map = cost_map[min_y : max_y + 1, min_x : max_x + 1]
 
             # A* 路徑查找
             local_points = [
@@ -489,8 +501,7 @@ class NeuralReconstructionPipeline:
 
             mcp = ski.graph.MCP_Geometric(cropped_cost_map, fully_connected=True)
             cumulative_costs, traceback = mcp.find_costs(
-                starts=local_points[:1],
-                ends=local_points[1:]
+                starts=local_points[:1], ends=local_points[1:]
             )
 
             for target in local_points[1:]:
@@ -511,15 +522,22 @@ class NeuralReconstructionPipeline:
                 middle_points = np.array(path[1:-1])
                 if len(middle_points) > 0:
                     middle_points_global = middle_points + np.array([min_y, min_x])
-                    if np.any(seed_map[middle_points_global[:, 0], middle_points_global[:, 1]]):
+                    if np.any(
+                        seed_map[middle_points_global[:, 0], middle_points_global[:, 1]]
+                    ):
                         continue
 
                 # 更新 path_lookup
                 if (global_target, global_start) in path_lookup:
-                    min_cost = min(path_lookup[(global_target, global_start)][1], normalized_cost)
+                    min_cost = min(
+                        path_lookup[(global_target, global_start)][1], normalized_cost
+                    )
                     path_lookup[(global_target, global_start)] = (global_path, min_cost)
                 else:
-                    path_lookup[(global_start, global_target)] = (global_path, normalized_cost)
+                    path_lookup[(global_start, global_target)] = (
+                        global_path,
+                        normalized_cost,
+                    )
 
         return topology_points, path_lookup
 
@@ -554,7 +572,7 @@ def visualize_result(
     roi_y: int = 0,
     roi_w: Optional[int] = None,
     roi_h: Optional[int] = None,
-    save_path: Optional[str] = None
+    save_path: Optional[str] = None,
 ) -> np.ndarray:
     """
     可視化重建結果
@@ -575,16 +593,29 @@ def visualize_result(
     # 創建彩色圖像
     viz_img = cv2.cvtColor(result.roi_image.copy(), cv2.COLOR_GRAY2BGR)
 
-    # 繪製 MST
+    # 繪製 MST（亮紅色，較粗的線條）
+    num_edges_drawn = 0
     for mst_tree in result.mst_trees:
         for u, v, data in mst_tree.edges(data=True):
-            if "path" in data and data["path"]:
+            if "path" in data and len(data["path"]) > 0:
                 path_points = data["path"]
                 path_array = np.array(path_points)[:, [1, 0]]  # (y, x) -> (x, y)
-                cv2.polylines(viz_img, [path_array.reshape(-1, 1, 2)], False, (0, 0, 255), 2)
+                cv2.polylines(
+                    viz_img, [path_array.reshape(-1, 1, 2)], False, (0, 0, 255), 1
+                )
+                num_edges_drawn += 1
+
+    # 繪製種子點（藍色小圓點）
+    for point in result.topology_points:
+        # cv2.circle(viz_img, (int(point[1]), int(point[0])), 1, (255, 0, 0), -1)
+        viz_img[point[0], point[1]] = (255, 0, 0)
+
+    print(
+        f"可視化: 繪製了 {num_edges_drawn} 條 MST 邊，{len(result.topology_points)} 個種子點"
+    )
 
     # 裁剪 ROI
-    viz_roi = viz_img[roi_y:roi_y + roi_h, roi_x:roi_x + roi_w]
+    viz_roi = viz_img[roi_y : roi_y + roi_h, roi_x : roi_x + roi_w]
 
     if save_path:
         cv2.imwrite(save_path, viz_roi)
@@ -592,20 +623,104 @@ def visualize_result(
     return viz_roi
 
 
+def save_result_json(result: ReconstructionResult, output_path: str):
+    """
+    將重建結果保存為 JSON 格式
+
+    Args:
+        result: 重建結果
+        output_path: 輸出 JSON 文件路徑
+    """
+    # 將 MST 樹轉換為邊列表
+    mst_data = []
+    for tree_idx, mst_tree in enumerate(result.mst_trees):
+        edges = []
+        for u, v, data in mst_tree.edges(data=True):
+            edge_dict = {
+                "source": [int(u[0]), int(u[1])],
+                "target": [int(v[0]), int(v[1])],
+                "weight": float(data.get("weight", 0.0)),
+                "path": [[int(p[0]), int(p[1])] for p in data.get("path", [])]
+            }
+            edges.append(edge_dict)
+        mst_data.append({"tree_id": tree_idx, "edges": edges})
+
+    # 將 pairings 轉換為列表
+    pairings_data = []
+    for (p1, p2), (path, cost) in result.pairings.items():
+        pairings_data.append({
+            "source": [int(p1[0]), int(p1[1])],
+            "target": [int(p2[0]), int(p2[1])],
+            "cost": float(cost),
+            "path": [[int(p[0]), int(p[1])] for p in path]
+        })
+
+    # 構建完整的 JSON 數據
+    json_data = {
+        "metadata": {
+            "num_mst_trees": result.num_mst_trees,
+            "num_edges": result.num_edges,
+            "num_seeds": result.num_seeds,
+            "image_shape": list(result.roi_image.shape)
+        },
+        "mst_trees": mst_data,
+        "topology_points": result.topology_points.tolist(),
+        "pairings": pairings_data,
+        "statistics": {
+            "num_components": result.num_mst_trees,
+            "total_edges": result.num_edges,
+            "total_seeds": result.num_seeds
+        }
+    }
+
+    # 保存 JSON
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(json_data, f, indent=2, ensure_ascii=False)
+
+    print(f"結果已保存至: {output_path}")
+
+
+def load_result_json(json_path: str) -> Dict:
+    """
+    從 JSON 文件加載重建結果
+
+    Args:
+        json_path: JSON 文件路徑
+
+    Returns:
+        重建結果字典
+    """
+    with open(json_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+
+    print(f"已加載結果: {data['metadata']['num_mst_trees']} 個 MST 樹, "
+          f"{data['metadata']['num_edges']} 條邊, "
+          f"{data['metadata']['num_seeds']} 個種子")
+
+    return data
+
+
 # =============================================================================
 # 命令行接口
 # =============================================================================
+
 
 def main():
     """命令行主函數"""
     import argparse
 
-    parser = argparse.ArgumentParser(description='神經纖維重建流程')
-    parser.add_argument('--image_id', type=str, required=True, help='圖像 ID')
-    parser.add_argument('--data_dir', type=str, default='../data', help='數據目錄')
-    parser.add_argument('--output_dir', type=str, default=None, help='輸出目錄')
-    parser.add_argument('--search_radius', type=float, default=50.0, help='搜索半徑')
-    parser.add_argument('--segment_length', type=float, default=3.0, help='種子間距')
+    parser = argparse.ArgumentParser(description="神經纖維重建流程")
+    parser.add_argument("--image_id", type=str, required=True, help="圖像 ID")
+    parser.add_argument(
+        "--data_dir",
+        type=str,
+        default="/home/pony/projects/ienf_q/data",
+        help="數據目錄",
+    )
+    parser.add_argument("--output_dir", type=str, default=None, help="輸出目錄")
+    parser.add_argument("--search_radius", type=float, default=50.0, help="搜索半徑")
+    parser.add_argument("--segment_length", type=float, default=3.0, help="種子間距")
+    parser.add_argument("--save-json", action="store_true", help="保存結果為 JSON 格式")
 
     args = parser.parse_args()
 
@@ -617,23 +732,20 @@ def main():
 
     # 配置
     recon_config = ReconstructionConfig(
-        search_radius=args.search_radius,
-        segment_length=args.segment_length
+        search_radius=args.search_radius, segment_length=args.segment_length
     )
 
     # 進度回調
     def progress_callback(msg: str, progress: float):
-        print(f"[{progress*100:.1f}%] {msg}")
+        print(f"[{progress * 100:.1f}%] {msg}")
 
     # 運行流程
     pipeline = NeuralReconstructionPipeline(
-        reconstruction_config=recon_config,
-        progress_callback=progress_callback
+        reconstruction_config=recon_config, progress_callback=progress_callback
     )
 
     result = pipeline.run(
-        image_path, mask_path, annotation_path,
-        output_dir=args.output_dir
+        image_path, mask_path, annotation_path, output_dir=args.output_dir
     )
 
     # 打印統計
@@ -647,6 +759,14 @@ def main():
         viz_path = str(Path(args.output_dir) / f"{args.image_id}_mst.png")
         visualize_result(result, save_path=viz_path)
         print(f"\n可視化已保存: {viz_path}")
+
+    # 保存 JSON
+    if args.save_json:
+        if not args.output_dir:
+            print("警告: 需要指定 --output_dir 才能保存 JSON")
+        else:
+            json_path = str(Path(args.output_dir) / f"{args.image_id}_result.json")
+            save_result_json(result, json_path)
 
 
 if __name__ == "__main__":
