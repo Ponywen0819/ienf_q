@@ -26,3 +26,5 @@ Neural_Connections/
 *.tif
 
 *.png
+
+*.pth
