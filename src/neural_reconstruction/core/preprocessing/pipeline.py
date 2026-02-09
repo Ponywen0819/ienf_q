@@ -11,7 +11,7 @@ import numpy as np
 from .config import PipelineConfig
 from .background_correction import BackgroundCorrection
 from .morphology import morphological_closing, morphological_opening
-from .thresholding import otsu_threshold
+from .thresholding import multi_otsu_threshold
 from .mask_operations import (
     dilate_epidermis_vertically,
     apply_mask,
@@ -36,18 +36,21 @@ class SkinAnalysisPipeline:
         config: Either a PipelineConfig instance or a dictionary for backward compatibility
     """
 
-    def __init__(self, config: PipelineConfig | None = None):
+    def __init__(self, config: PipelineConfig | dict | None = None):
         """
         Initialize the skin analysis pipeline with configuration.
 
         Args:
-            config: PipelineConfig instance
+            config: PipelineConfig instance or dict for backward compatibility
         Raises:
             ValueError: If required configuration keys are missing
         """
 
         if config is None:
             self.config = PipelineConfig()
+        elif isinstance(config, dict):
+            # Backward compatibility: convert dict to PipelineConfig
+            self.config = PipelineConfig.from_dict(config)
         else:
             self.config = config
 
@@ -56,6 +59,8 @@ class SkinAnalysisPipeline:
             radius=self.config.background.radius,
             smoothing=False,
             smoothing_sigma=self.config.background.sigma,
+            sato_weight=self.config.background.sato_weight,
+            sato_sigmas=self.config.background.sato_sigmas,
         )
 
     def run(
@@ -247,11 +252,11 @@ class SkinAnalysisPipeline:
         # Step 5 & 6: Generate pseudo-label
         if self.config.threshold.use_full_roi:
             # 使用整個 ROI image 進行 threshold
-            pseudo_label = otsu_threshold(roi_image)
+            pseudo_label = multi_otsu_threshold(roi_image)
         else:
             # 原本做法：只對 masked region (dermis_roi_mask) 進行 threshold
             masked_region = apply_mask(corrected, dermis_roi_mask)
-            pseudo_label = otsu_threshold(masked_region)
+            pseudo_label = multi_otsu_threshold(masked_region)
         return roi_image, pseudo_label
 
     def _merge_labels(self, label1: np.ndarray, label2: np.ndarray) -> np.ndarray:

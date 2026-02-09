@@ -20,10 +20,10 @@ class MaskConfig:
     """Configuration for mask operations.
 
     Attributes:
-        dilate_offset: Vertical dilation offset in pixels. Default: 50
+        dilate_offset: Vertical dilation offset in pixels. Default: 100
     """
 
-    dilate_offset: int = 50
+    dilate_offset: int = 100
 
 
 @dataclass
@@ -34,12 +34,20 @@ class BackgroundConfig:
         method: Background correction method ('morphology', 'rolling_ball', or 'gaussian'). Default: 'morphology'
         radius: Ball radius for rolling ball/morphology methods. Default: 12
         sigma: Gaussian sigma for gaussian method. Default: 0
-        light_background: Whether background is brighter than foreground. Default: False
+        sato_weight: Blend weight for Sato filter (0=disabled, >0=enabled). Default: 0.0
+        sato_sigmas: Scale range tuple for Sato filter (min, max). Default: (1, 2)
     """
 
     method: Literal["morphology", "rolling_ball"] = "rolling_ball"
     radius: int = 2
     sigma: float = 0
+    sato_weight: float = 0.0
+    sato_sigmas: tuple = (1, 2)
+
+    def __post_init__(self):
+        """Validate configuration parameters."""
+        if not 0 <= self.sato_weight <= 1:
+            raise ValueError(f"sato_weight must be in [0, 1], got {self.sato_weight}")
 
 
 @dataclass
@@ -145,6 +153,8 @@ class PipelineConfig:
                 "method": self.background.method,
                 "radius": self.background.radius,
                 "sigma": self.background.sigma,
+                "sato_weight": self.background.sato_weight,
+                "sato_sigmas": self.background.sato_sigmas,
             },
             "threshold": {
                 "use_full_roi": self.threshold.use_full_roi,

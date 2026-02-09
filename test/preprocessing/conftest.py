@@ -199,10 +199,9 @@ def default_config():
         'background': {
             'method': 'morphology',
             'radius': 12,
-            'light_background': True,
         },
         'threshold': {
-            'method': 'binary',
+            'use_full_roi': False,
         },
         'normalization': {
             'enabled': False,
@@ -224,10 +223,9 @@ def rolling_ball_config():
         'background': {
             'method': 'rolling_ball',
             'radius': 20,
-            'light_background': True,
         },
         'threshold': {
-            'method': 'binary',
+            'use_full_roi': False,
         },
         'normalization': {
             'enabled': False,
@@ -249,10 +247,9 @@ def gaussian_config():
         'background': {
             'method': 'gaussian',
             'sigma': 10.0,
-            'light_background': True,
         },
         'threshold': {
-            'method': 'binary',
+            'use_full_roi': False,
         },
         'normalization': {
             'enabled': True,

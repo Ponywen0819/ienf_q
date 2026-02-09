@@ -96,7 +96,9 @@ Located in [src/neural_reconstruction/core/preprocessing/pipeline.py](src/neural
 1. **Green Channel Extraction**: Neural tissue has strongest signal in green channel
 2. **Morphological Operations**: Opening/closing to clean binary masks
 3. **Background Correction**: Rolling ball algorithm (radius configurable)
-4. **Mask Operations**: ROI extraction using epidermis mask
+4. **Sato Vesselness Filter** (optional): Enhances tubular/fiber structures for better detection
+5. **Multi-Otsu Thresholding**: More robust than single Otsu for complex intensity distributions
+6. **Mask Operations**: ROI extraction using epidermis mask with configurable dilation
 
 ### Crosses Detection Module
 
@@ -143,8 +145,13 @@ print(f"Nodes: {result.num_nodes}, Edges: {result.num_edges}")
 preprocessing_config = {
     'morphology': {'closing_kernel': 5, 'opening_kernel': 3},
     'mask': {'dilate_offset': 100},
-    'background': {'method': 'rolling_ball', 'radius': 20, 'light_background': True},
-    'threshold': {'method': 'binary'},
+    'background': {
+        'method': 'rolling_ball',
+        'radius': 2,
+        'sato_weight': 0.3,  # >0 enables Sato filter
+        'sato_sigmas': (1, 2)
+    },
+    'threshold': {'use_full_roi': False},
     'normalization': {'enabled': True}
 }
 
@@ -216,15 +223,16 @@ final_label, roi_image = pipeline.run(
 ### Preprocessing Configuration
 - `morphology.closing_kernel`: Kernel size for morphological closing (default: 3)
 - `morphology.opening_kernel`: Kernel size for morphological opening (default: 3)
-- `mask.dilate_offset`: Vertical dilation offset in pixels (default: 50)
-- `background.method`: 'morphology', 'rolling_ball', or 'gaussian' (default: 'morphology')
-- `background.radius`: Rolling ball radius (default: 12)
-- `background.light_background`: Whether background is light (default: True)
-- `threshold.method`: Threshold type 'binary' or 'binary_inv' (default: 'binary')
+- `mask.dilate_offset`: Vertical dilation offset in pixels (default: 100)
+- `background.method`: 'morphology', 'rolling_ball', or 'gaussian' (default: 'rolling_ball')
+- `background.radius`: Rolling ball radius (default: 2)
+- `background.sato_weight`: Sato filter blend weight, 0=disabled, >0 enables with blending up to 1 (default: 0.0)
+- `background.sato_sigmas`: Scale range tuple (min, max) for Sato filter to detect fiber widths (default: (1, 2))
 - `threshold.use_full_roi`: Use full ROI image for pseudo-label generation instead of masked region (default: False)
-  - When `False`: Only dermis ROI mask region is used for Otsu thresholding
-  - When `True`: Entire ROI image is used for Otsu thresholding (may capture more fiber details)
-- `normalization.enabled`: Enable regional normalization (default: False)
+  - When `False`: Only dermis ROI mask region is used for multi-Otsu thresholding
+  - When `True`: Entire ROI image is used for multi-Otsu thresholding (may capture more fiber details)
+  - Note: Uses **multi-level Otsu thresholding** which is more robust for complex intensity distributions
+- `normalization.enabled`: Enable regional normalization (default: True)
 
 ### Reconstruction Configuration
 
