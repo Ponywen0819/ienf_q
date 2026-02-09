@@ -1,0 +1,63 @@
+{
+  "summary": {
+    "total_samples": 1,
+    "processed": 0,
+    "skipped": 0,
+    "failed": 1,
+    "hausdorff_mean": null,
+    "hausdorff_median": null,
+    "hausdorff_std": null,
+    "hausdorff_min": null,
+    "hausdorff_max": null
+  },
+  "samples": {
+    "S1585-2_a": {
+      "sample_id": "S1585-2_a",
+      "status": "failed",
+      "hausdorff_distance": null,
+      "num_nodes_pred": null,
+      "num_nodes_gt": null,
+      "num_edges_pred": null,
+      "num_edges_gt": null,
+      "num_components_pred": null,
+      "error_message": "pipeline_failed"
+    }
+  },
+  "skipped_samples": [],
+  "config": {
+    "preprocessing": {
+      "morphology": {
+        "closing_kernel": 0,
+        "opening_kernel": 3
+      },
+      "mask": {
+        "dilate_offset": 50
+      },
+      "background": {
+        "method": "rolling_ball",
+        "radius": 2,
+        "sigma": 0,
+        "light_background": true
+      },
+      "threshold": {
+        "method": "binary",
+        "use_full_roi": false
+      },
+      "normalization": {
+        "enabled": false
+      }
+    },
+    "reconstruction": {
+      "connectivity": 4,
+      "min_area": 0,
+      "segment_length": 5.0,
+      "min_edge_length": null,
+      "prune_threshold": 5.0,
+      "spacing": 0,
+      "search_radius": 20.0,
+      "max_cost_threshold": 0.98,
+      "intensity_weight": 1,
+      "shape_weight": 0
+    }
+  }
+}

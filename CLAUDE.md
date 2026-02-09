@@ -275,3 +275,83 @@ This project uses **uv** as the package manager:
   - `test/construction/connection_graph_builder/` - Path finding and graph building tests
 - **Output**: Pipeline generates NetworkX graphs; visualization is handled externally
 - **Edge case handling**: The pipeline handles graphs with no edges (isolated components) gracefully. This is expected when components are too far apart or cost threshold is too strict.
+
+## Evaluation and Topology Tools
+
+The project includes specialized tools for topology extraction, comparison, and evaluation:
+
+### Dataset GT Topology Extraction
+
+Extract Ground Truth topologies from all samples with `label.png`:
+
+```bash
+# Extract all GT topologies from data/ directory
+uv run python tools/extract_dataset_topologies.py
+
+# Custom paths
+uv run python tools/extract_dataset_topologies.py \
+    --data-dir data \
+    --output-dir output/gt_topologies \
+    --verbose
+```
+
+**Features**:
+- Automatically scans `data/` for samples with `label.png`
+- Extracts complete topology using `TopologyExtractor`
+- Saves as `.pkl` files (e.g., `S1585-2_a_gt.pkl`)
+- Provides detailed extraction statistics
+
+**Documentation**: [docs/DATASET_TOPOLOGY_EXTRACTION.md](docs/DATASET_TOPOLOGY_EXTRACTION.md)
+
+### Topology Comparison
+
+Compare topologies without running the full image processing pipeline:
+
+```bash
+# Compare two topologies
+uv run python tools/compare_topologies.py \
+    --topology1 output/pred.pkl \
+    --topology2 output/gt.pkl
+
+# Batch comparison
+uv run python tools/compare_topologies.py \
+    --batch \
+    --pred-dir output/predictions \
+    --gt-dir output/gt_topologies \
+    --output results.csv
+```
+
+**Features**:
+- Supports Pickle, JSON, GraphML, GML formats
+- Computes Average Hausdorff Distance
+- Includes both nodes and edge path points
+- Single-pair and batch comparison modes
+
+**Documentation**: [docs/TOPOLOGY_COMPARISON.md](docs/TOPOLOGY_COMPARISON.md)
+
+### Complete Evaluation
+
+Evaluate full pipeline including preprocessing and reconstruction:
+
+```bash
+uv run python tools/evaluate_dataset.py \
+    --data-dir data \
+    --output-dir output/evaluation \
+    --sample-ids S1585-2_a S1585-2_b
+```
+
+**Features**:
+- End-to-end evaluation from images to metrics
+- Average Hausdorff Distance with edge path points
+- Batch processing with statistical summaries
+- JSON and CSV output formats
+
+### Quick Reference
+
+All tools are documented in [QUICK_REFERENCE.md](QUICK_REFERENCE.md) with common commands and workflows.
+
+### Evaluation Metrics
+
+- **Average Hausdorff Distance**: `d(A→B) = mean(min_distance(a, B))`, symmetric average
+- **Point Sets**: Includes graph nodes + all edge path points (`path` or `path-coordinates` attributes)
+- **More Robust**: Less sensitive to outliers than maximum Hausdorff distance

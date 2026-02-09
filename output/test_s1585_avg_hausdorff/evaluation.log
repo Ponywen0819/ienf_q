@@ -1,0 +1,33 @@
+2026-02-09 15:16:52,648 - __main__ - INFO - ================================================================================
+2026-02-09 15:16:52,648 - __main__ - INFO - 資料集評測腳本
+2026-02-09 15:16:52,648 - __main__ - INFO - ================================================================================
+2026-02-09 15:16:52,648 - __main__ - INFO - 資料集目錄: /home/pony/projects/ienf_q/data
+2026-02-09 15:16:52,648 - __main__ - INFO - 輸出目錄: /home/pony/projects/ienf_q/output/test_s1585_avg_hausdorff
+2026-02-09 15:16:52,649 - src.neural_reconstruction.ui.main_pipeline - INFO - Pipeline 初始化完成
+2026-02-09 15:16:52,649 - src.neural_reconstruction.ui.main_pipeline - INFO - 前處理配置: {'morphology': {'closing_kernel': 0, 'opening_kernel': 3}, 'mask': {'dilate_offset': 50}, 'background': {'method': 'rolling_ball', 'radius': 2, 'sigma': 0, 'light_background': True}, 'threshold': {'method': 'binary', 'use_full_roi': False}, 'normalization': {'enabled': False}}
+2026-02-09 15:16:52,649 - src.neural_reconstruction.ui.main_pipeline - INFO - 重建配置: {'connectivity': 4, 'min_area': 0, 'segment_length': 5.0, 'min_edge_length': None, 'prune_threshold': 5.0, 'spacing': 0, 'search_radius': 20.0, 'max_cost_threshold': 0.98, 'intensity_weight': 1, 'shape_weight': 0}
+2026-02-09 15:16:52,649 - __main__ - INFO - 開始資料集評測...
+2026-02-09 15:16:52,649 - __main__ - INFO - 掃描資料集目錄: /home/pony/projects/ienf_q/data
+2026-02-09 15:16:52,649 - __main__ - INFO - 找到 1 個樣本目錄
+2026-02-09 15:16:52,686 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2026-02-09 15:16:52,686 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 65536
+2026-02-09 15:16:53,552 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2026-02-09 15:16:53,553 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 29477
+2026-02-09 15:16:53,676 - PIL.PngImagePlugin - DEBUG - STREAM b'IHDR' 16 13
+2026-02-09 15:16:53,676 - PIL.PngImagePlugin - DEBUG - STREAM b'IDAT' 41 26470
+2026-02-09 15:16:53,780 - src.neural_reconstruction.ui.main_pipeline - INFO - 
+================================================================================
+2026-02-09 15:16:53,781 - src.neural_reconstruction.ui.main_pipeline - INFO - 開始執行神經重建 Pipeline
+2026-02-09 15:16:53,781 - src.neural_reconstruction.ui.main_pipeline - INFO - ================================================================================
+2026-02-09 15:16:53,781 - src.neural_reconstruction.ui.main_pipeline - INFO - 從 RGB 影像 (2867, 5632, 3) 萃取綠色通道
+2026-02-09 15:16:53,799 - src.neural_reconstruction.ui.main_pipeline - INFO - 
+【階段 1/2】影像預處理
+2026-02-09 15:16:53,799 - src.neural_reconstruction.ui.main_pipeline - INFO - --------------------------------------------------------------------------------
+2026-02-09 15:16:53,799 - __main__ - ERROR - Pipeline 執行失敗: 'dict' object has no attribute 'background'
+2026-02-09 15:16:53,807 - __main__ - INFO - 生成評測報告...
+2026-02-09 15:16:53,808 - __main__ - INFO - JSON 報告已儲存: /home/pony/projects/ienf_q/output/test_s1585_avg_hausdorff/results.json
+2026-02-09 15:16:53,809 - __main__ - INFO - CSV 報告已儲存: /home/pony/projects/ienf_q/output/test_s1585_avg_hausdorff/results.csv
+2026-02-09 15:16:53,809 - __main__ - INFO - 評測完成
+2026-02-09 15:16:53,809 - __main__ - INFO - ================================================================================
+2026-02-09 15:16:53,809 - __main__ - INFO - 評測完成
+2026-02-09 15:16:53,809 - __main__ - INFO - ================================================================================

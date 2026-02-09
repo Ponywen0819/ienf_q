@@ -28,7 +28,7 @@ import csv
 import numpy as np
 import networkx as nx
 from PIL import Image
-from scipy.spatial.distance import directed_hausdorff
+from scipy.spatial.distance import cdist
 from tqdm import tqdm
 
 # 添加專案根目錄到 Python 路徑
@@ -315,56 +315,191 @@ class TopologyExtractor:
 # ============================================================================
 
 
+def compute_average_hausdorff(
+    points_a: np.ndarray,
+    points_b: np.ndarray
+) -> float:
+    """
+    計算兩個點集之間的平均 Hausdorff 距離
+
+    Average Hausdorff Distance 定義:
+    - d(A→B) = mean(min_distance(a, B) for a in A)
+    - d(B→A) = mean(min_distance(b, A) for b in B)
+    - avg_hausdorff(A, B) = (d(A→B) + d(B→A)) / 2
+
+    與傳統的 Hausdorff 距離（取最大值）不同，平均 Hausdorff 距離
+    對離群點更加穩健，能更好地反映整體的相似度。
+
+    Args:
+        points_a: 點集 A，形狀 (M, 2)，每行為 [y, x]
+        points_b: 點集 B，形狀 (N, 2)，每行為 [y, x]
+
+    Returns:
+        平均 Hausdorff 距離（像素單位）
+
+    Raises:
+        ValueError: 如果任一點集為空
+    """
+    if len(points_a) == 0 or len(points_b) == 0:
+        raise ValueError("點集不能為空")
+
+    # 驗證輸入形狀
+    if points_a.ndim != 2 or points_a.shape[1] != 2:
+        raise ValueError(f"points_a 應為形狀 (M, 2)，實際為 {points_a.shape}")
+    if points_b.ndim != 2 or points_b.shape[1] != 2:
+        raise ValueError(f"points_b 應為形狀 (N, 2)，實際為 {points_b.shape}")
+
+    # 計算距離矩陣：dist_matrix[i, j] = distance(points_a[i], points_b[j])
+    # 形狀: (M, N)，其中 M = len(points_a), N = len(points_b)
+    dist_matrix = cdist(points_a, points_b, metric='euclidean')
+
+    # 對每個點在 A 中，找到它到 B 中所有點的最小距離
+    # min_dist_a_to_b[i] = min_j(dist_matrix[i, j])
+    min_dist_a_to_b = np.min(dist_matrix, axis=1)  # 形狀: (M,)
+
+    # 對每個點在 B 中，找到它到 A 中所有點的最小距離
+    # min_dist_b_to_a[j] = min_i(dist_matrix[i, j])
+    min_dist_b_to_a = np.min(dist_matrix, axis=0)  # 形狀: (N,)
+
+    # 計算雙向平均距離
+    d_a_to_b = np.mean(min_dist_a_to_b)
+    d_b_to_a = np.mean(min_dist_b_to_a)
+
+    # 返回對稱的平均距離
+    avg_hausdorff_dist = (d_a_to_b + d_b_to_a) / 2.0
+
+    return float(avg_hausdorff_dist)
+
+
 class HausdorffCalculator:
     """
-    Hausdorff 距離計算器
+    平均 Hausdorff 距離計算器
 
-    計算兩個節點集合之間的 Hausdorff 距離。
+    計算兩個圖之間的平均 Hausdorff 距離，包含：
+    - 所有節點座標
+    - 所有邊上的路徑點座標
+
+    使用雙向平均距離：avg((d(A→B) + d(B→A)) / 2)
+
+    相比傳統的 Hausdorff 距離（取最大值），平均 Hausdorff 距離
+    對離群點更加穩健，能更好地反映整體的相似度。
     """
 
     def __init__(self):
         self.logger = logging.getLogger(__name__)
 
+    def _extract_all_points(self, graph: nx.Graph) -> np.ndarray:
+        """
+        從圖中提取所有點（包括節點和邊上的路徑點）
+
+        此方法會提取：
+        1. 圖的所有節點座標
+        2. 圖的所有邊上的路徑點座標
+
+        邊路徑支援兩種屬性名稱：
+        - 'path': 預測圖（Pipeline 生成）使用
+        - 'path-coordinates': GT 圖（從標註生成）使用
+
+        Args:
+            graph: NetworkX 圖，節點為 (y, x) 座標
+
+        Returns:
+            所有點的陣列，形狀 (N, 2)，每行為 [y, x]
+            如果圖為空，返回形狀為 (0, 2) 的空陣列
+        """
+        # 提取所有節點
+        points = list(graph.nodes())
+        num_nodes = len(points)
+
+        # 提取所有邊上的路徑點
+        num_path_points = 0
+        edges_with_path = 0
+
+        for u, v, edge_data in graph.edges(data=True):
+            # 嘗試兩種屬性名稱
+            path = edge_data.get('path')
+            if path is None:
+                path = edge_data.get('path-coordinates')
+
+            if path is not None and len(path) > 0:
+                # path 是一個 (y, x) 元組的列表
+                points.extend(path)
+                num_path_points += len(path)
+                edges_with_path += 1
+
+        # 記錄提取資訊
+        total_edges = graph.number_of_edges()
+        if total_edges > 0:
+            self.logger.debug(
+                f"提取點集: {num_nodes} 節點 + {num_path_points} 邊路徑點 "
+                f"({edges_with_path}/{total_edges} 條邊包含路徑) = {len(points)} 總點數"
+            )
+        else:
+            self.logger.debug(f"提取點集: {num_nodes} 節點（無邊）")
+
+        # 轉換為 numpy 陣列
+        if len(points) == 0:
+            return np.array([]).reshape(0, 2)
+
+        points_array = np.array(points, dtype=np.float64)
+
+        # 去除重複點（例如節點可能與邊的端點重複）
+        # 這可以減少計算量並提高效率
+        points_unique = np.unique(points_array, axis=0)
+
+        if len(points_unique) < len(points_array):
+            self.logger.debug(
+                f"去除 {len(points_array) - len(points_unique)} 個重複點，"
+                f"剩餘 {len(points_unique)} 個唯一點"
+            )
+
+        return points_unique
+
     def compute(
         self, graph_pred: Optional[nx.Graph], graph_gt: Optional[nx.Graph]
     ) -> Optional[float]:
         """
-        計算兩個圖的節點集合之間的 Hausdorff 距離
+        計算兩個圖之間的平均 Hausdorff 距離
+
+        包含圖的所有節點和邊路徑點。邊路徑支援兩種屬性名稱：
+        - 'path': 預測圖（Pipeline 生成）使用
+        - 'path-coordinates': GT 圖（從標註生成）使用
 
         Args:
             graph_pred: 預測的圖
             graph_gt: Ground truth 圖
 
         Returns:
-            Hausdorff 距離，若無法計算則返回 None
+            平均 Hausdorff 距離（像素單位），若無法計算則返回 None
         """
         if graph_pred is None or graph_gt is None:
-            self.logger.warning("其中一個圖為 None，無法計算 Hausdorff 距離")
+            self.logger.warning("其中一個圖為 None，無法計算平均 Hausdorff 距離")
             return None
 
-        nodes_pred = list(graph_pred.nodes())
-        nodes_gt = list(graph_gt.nodes())
+        # 提取所有點（包括節點和邊路徑點）
+        points_pred = self._extract_all_points(graph_pred)
+        points_gt = self._extract_all_points(graph_gt)
 
-        if len(nodes_pred) == 0:
-            self.logger.warning("預測圖節點數為 0")
+        if len(points_pred) == 0:
+            self.logger.warning("預測圖點集為空（無節點或路徑點）")
             return None
 
-        if len(nodes_gt) == 0:
-            self.logger.warning("GT 圖節點數為 0")
+        if len(points_gt) == 0:
+            self.logger.warning("GT 圖點集為空（無節點或路徑點）")
             return None
 
-        # 轉換為 numpy array
-        pred_array = np.array(nodes_pred, dtype=np.float64)
-        gt_array = np.array(nodes_gt, dtype=np.float64)
-
-        # 計算雙向 Hausdorff 距離
+        # 計算平均 Hausdorff 距離
         try:
-            d1 = directed_hausdorff(pred_array, gt_array)[0]
-            d2 = directed_hausdorff(gt_array, pred_array)[0]
-            hausdorff_dist = max(d1, d2)
+            hausdorff_dist = compute_average_hausdorff(points_pred, points_gt)
+
+            self.logger.debug(
+                f"平均 Hausdorff 距離: {hausdorff_dist:.4f} "
+                f"(預測點數: {len(points_pred)}, GT點數: {len(points_gt)})"
+            )
+
             return float(hausdorff_dist)
         except Exception as e:
-            self.logger.error(f"Hausdorff 距離計算失敗: {e}")
+            self.logger.error(f"平均 Hausdorff 距離計算失敗: {e}")
             return None
 
 
@@ -518,14 +653,14 @@ class EvaluationReporter:
         print("-" * 80)
 
         if summary.hausdorff_mean is not None:
-            print("Hausdorff 距離統計:")
+            print("平均 Hausdorff 距離統計:")
             print(f"  平均值:     {summary.hausdorff_mean:.4f}")
             print(f"  中位數:     {summary.hausdorff_median:.4f}")
             print(f"  標準差:     {summary.hausdorff_std:.4f}")
             print(f"  最小值:     {summary.hausdorff_min:.4f}")
             print(f"  最大值:     {summary.hausdorff_max:.4f}")
         else:
-            print("Hausdorff 距離: 無有效數據")
+            print("平均 Hausdorff 距離: 無有效數據")
 
         print("=" * 80 + "\n")
 
