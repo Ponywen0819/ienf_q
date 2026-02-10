@@ -220,3 +220,69 @@ def regional_minmax_normalize(
             result[derm_only] = 127
 
     return np.clip(result, 0, 255).astype(np.uint8)
+
+
+def regional_clahe_normalize(
+    image: np.ndarray,
+    epidermis_mask: np.ndarray,
+    dermis_mask: np.ndarray,
+    clip_limit: float = 2.0,
+    tile_grid_size: Tuple[int, int] = (8, 8),
+) -> np.ndarray:
+    """
+    對表皮和真皮區域分別進行 CLAHE (Contrast Limited Adaptive Histogram Equalization) 正規化。
+
+    Args:
+        image: 輸入灰階影像 (uint8 或 float)
+        epidermis_mask: 表皮區域二值遮罩 (0 或 255)
+        dermis_mask: 真皮 ROI 區域二值遮罩 (0 或 255)
+        clip_limit: CLAHE 的對比度限制閾值 (default: 2.0)
+        tile_grid_size: CLAHE 的網格大小 (width, height) (default: (8, 8))
+
+    Returns:
+        正規化後的影像
+
+    Note:
+        - 表皮和真皮區域各自獨立進行 CLAHE
+        - 重疊區域以表皮優先
+        - 兩個 mask 之外的區域設為 0
+        - CLAHE 提供自適應對比度增強，對局部細節保留更好
+    """
+    validate_image(image)
+
+    # 轉換為 uint8
+    if np.issubdtype(image.dtype, np.floating):
+        image_uint8 = (np.clip(image, 0.0, 1.0) * 255).astype(np.uint8)
+    else:
+        image_uint8 = image.astype(np.uint8)
+
+    result = np.zeros_like(image_uint8)
+
+    epi_bool = epidermis_mask > 0
+    derm_bool = dermis_mask > 0
+
+    # 創建 CLAHE 物件
+    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
+
+    # 對表皮區域進行 CLAHE
+    if np.any(epi_bool):
+        # 創建只包含表皮區域的影像
+        epi_image = np.zeros_like(image_uint8)
+        epi_image[epi_bool] = image_uint8[epi_bool]
+        # 應用 CLAHE
+        epi_clahe = clahe.apply(epi_image)
+        # 只保留 mask 內的結果
+        result[epi_bool] = epi_clahe[epi_bool]
+
+    # 對真皮區域進行 CLAHE (排除表皮重疊)
+    derm_only = derm_bool & (~epi_bool)
+    if np.any(derm_only):
+        # 創建只包含真皮區域的影像
+        derm_image = np.zeros_like(image_uint8)
+        derm_image[derm_only] = image_uint8[derm_only]
+        # 應用 CLAHE
+        derm_clahe = clahe.apply(derm_image)
+        # 只保留 mask 內的結果
+        result[derm_only] = derm_clahe[derm_only]
+
+    return result

@@ -26,7 +26,7 @@ import networkx as nx
 from scipy.spatial import KDTree
 from PIL import Image
 import skimage as ski
-from skimage import morphology, segmentation, filters, restoration
+from skimage import morphology, segmentation
 from skimage.measure import label, regionprops
 from skan import Skeleton, summarize
 from skan.csr import skeleton_to_nx
@@ -35,157 +35,8 @@ from skan.csr import skeleton_to_nx
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from tools.compare_topologies import TopologyLoader
-
-
-# =============================================================================
-# 預處理
-# =============================================================================
-
-
-class Preprocessor:
-    """圖像預處理器"""
-
-    def __init__(
-        self,
-        # ROI 參數
-        offset_px: int = 100,
-        # 背景減除參數
-        rolling_ball_radius: int = 2,
-        sato_weight: float = 0.0,
-        # 形態學參數
-        opening_kernel_size: int = 3,
-        verbose: bool = False,
-    ):
-        self.offset_px = offset_px
-        self.rolling_ball_radius = rolling_ball_radius
-        self.sato_weight = sato_weight
-        self.opening_kernel_size = opening_kernel_size
-        self.verbose = verbose
-
-    def process(
-        self, image: np.ndarray, mask: np.ndarray, annotation: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        完整的預處理流程
-
-        Args:
-            image: 原始圖像 (H, W) 或 (H, W, 3)，綠色通道用於神經纖維
-            mask: 表皮遮罩 (H, W)，二值圖像
-            annotation: 手工標註 (H, W)，二值圖像
-
-        Returns:
-            roi_image: ROI 圖像（已背景減除）
-            roi_annotation: ROI 標註（包含偽標註）
-        """
-        if self.verbose:
-            print("  a. 提取綠色通道...")
-
-        # 1. 提取綠色通道
-        if len(image.shape) == 3:
-            orig_img = image[:, :, 1]  # 綠色通道
-        else:
-            orig_img = image
-
-        if self.verbose:
-            print("  b. 構建 ROI mask...")
-
-        # 2. 構建 ROI mask
-        mask_uint8 = (mask > 0).astype(np.uint8) * 255
-
-        # 垂直膨胀創建 dermis 區域
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, self.offset_px * 6))
-        anchor = (0, self.offset_px * 6 - 1)
-        dilated = cv2.dilate(mask_uint8, kernel, anchor=anchor, iterations=1)
-
-        dermis_available_mask = dilated - mask_uint8
-
-        # Dermis mask
-        dermis_mask = cv2.bitwise_and(
-            dermis_available_mask,
-            cv2.dilate(
-                mask_uint8,
-                cv2.getStructuringElement(
-                    cv2.MORPH_ELLIPSE, (self.offset_px, self.offset_px)
-                ),
-                iterations=1,
-            ),
-        )
-
-        # 完整 ROI mask
-        roi_mask = cv2.bitwise_or(
-            dermis_mask.astype(np.uint8), mask_uint8.astype(np.uint8)
-        )
-
-        if self.verbose:
-            print("  c. 背景減除...")
-
-        # 3. Rolling ball 背景減除
-        bg = restoration.rolling_ball(orig_img, radius=self.rolling_ball_radius)
-        rolling_fg = (
-            (orig_img.astype(np.int16) - bg.astype(np.int16))
-            .clip(0, 255)
-            .astype(np.uint8)
-        )
-
-        # 可選的 Sato 濾波器
-        if self.sato_weight > 0:
-            from skimage.filters import sato
-
-            sato_result = sato(
-                rolling_fg.astype(np.float32),
-                sigmas=range(1, 3),
-                black_ridges=False,
-                mode="reflect",
-            )
-            sato_normalized = (sato_result - sato_result.min()) / (
-                sato_result.max() - sato_result.min()
-            )
-            fg_img = (
-                1 - self.sato_weight
-            ) * rolling_fg + self.sato_weight * sato_normalized * 255
-            fg_img = fg_img.clip(0, 255).astype(np.uint8)
-        else:
-            fg_img = rolling_fg
-
-        if self.verbose:
-            print("  d. 提取 ROI...")
-
-        # 4. 提取 ROI
-        roi_image = cv2.bitwise_and(fg_img, fg_img, mask=roi_mask)
-
-        if self.verbose:
-            print("  e. 生成偽標註...")
-
-        # 5. 生成偽標註（Multi-Otsu + Chan-Vese）
-        thresholds = filters.threshold_multiotsu(roi_image, classes=3)
-        regions = np.digitize(roi_image, bins=thresholds)
-        toplevel_mask = (regions == len(thresholds)).astype(np.uint8)
-
-        # 結合 dermis 偽標註和原始標註
-        dermis_annotation = cv2.bitwise_and(
-            toplevel_mask, toplevel_mask, mask=dermis_mask
-        )
-        roi_annotation = cv2.bitwise_or(
-            dermis_annotation, (annotation > 0).astype(np.uint8)
-        )
-
-        if self.verbose:
-            print("  f. 形態學處理...")
-
-        # 6. Opening 清理噪聲
-        opening_roi_annotation = cv2.morphologyEx(
-            roi_annotation.astype(np.uint8),
-            cv2.MORPH_OPEN,
-            cv2.getStructuringElement(
-                cv2.MORPH_ELLIPSE, (self.opening_kernel_size, self.opening_kernel_size)
-            ),
-            iterations=1,
-        )
-
-        if self.verbose:
-            print("  ✓ 預處理完成")
-
-        return roi_image, opening_roi_annotation
+from src.neural_reconstruction.core.preprocessing import SkinAnalysisPipeline
+from src.neural_reconstruction.core.preprocessing.utils import ensure_grayscale
 
 
 # =============================================================================
@@ -323,6 +174,9 @@ class TopologyBuilder:
 
         for mp in middle_points:
             neighbors = list(graph.neighbors(mp))
+            # Skip if node no longer has exactly 2 neighbors (graph may have changed)
+            if len(neighbors) != 2:
+                continue
             u, v = neighbors
 
             # 獲取兩條邊的路徑
@@ -936,15 +790,49 @@ class HierarchicalFragmentLinker:
         if self.verbose:
             print("\n1. 圖像預處理...")
 
-        preprocessor = Preprocessor(
-            offset_px=self.offset_px,
-            rolling_ball_radius=self.rolling_ball_radius,
-            sato_weight=self.sato_weight,
-            opening_kernel_size=self.opening_kernel_size,
-            verbose=self.verbose,
-        )
+        # 使用 SkinAnalysisPipeline 進行預處理
+        preprocessing_config = {
+            'morphology': {
+                'closing_kernel': 0,  # 不使用 closing
+                'opening_kernel': self.opening_kernel_size,
+            },
+            'mask': {
+                'dilate_offset': self.offset_px,
+            },
+            'background': {
+                'method': 'rolling_ball',
+                'radius': self.rolling_ball_radius,
+                'sato_weight': self.sato_weight,
+                'sato_sigmas': (1.0, 2.0),
+            },
+            'threshold': {
+                'use_full_roi': False,
+            },
+            'normalization': {
+                'enabled': False,
+            }
+        }
 
-        roi_image, roi_annotation = preprocessor.process(image, mask, annotation)
+        pipeline = SkinAnalysisPipeline(preprocessing_config)
+
+        # 提取綠色通道
+        if len(image.shape) == 3:
+            orig_img = image[:, :, 1]  # 綠色通道
+        else:
+            orig_img = image
+
+        if self.verbose:
+            print("  - 提取綠色通道")
+            print("  - 構建 ROI mask")
+            print("  - 背景減除")
+            print("  - 提取 ROI")
+            print("  - 生成偽標註")
+            print("  - 形態學處理")
+
+        roi_annotation, roi_image = pipeline.run(annotation, mask, orig_img)
+
+        if self.verbose:
+            print("  ✓ 預處理完成")
 
         # CLAHE 均衡化用於種子點提取
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))

@@ -31,18 +31,16 @@ class BackgroundConfig:
     """Configuration for background correction.
 
     Attributes:
-        method: Background correction method ('morphology', 'rolling_ball', or 'gaussian'). Default: 'morphology'
-        radius: Ball radius for rolling ball/morphology methods. Default: 12
-        sigma: Gaussian sigma for gaussian method. Default: 0
+        method: Background correction method ('morphology', 'rolling_ball'). Default: 'rolling_ball'
+        radius: Ball radius for rolling ball/morphology methods. Default: 4
         sato_weight: Blend weight for Sato filter (0=disabled, >0=enabled). Default: 0.0
-        sato_sigmas: Scale range tuple for Sato filter (min, max). Default: (1, 2)
+        sato_sigmas: Iterable of floats for Sato filter scales. Default: (1.0, 2.0, 3.0)
     """
 
     method: Literal["morphology", "rolling_ball"] = "rolling_ball"
-    radius: int = 2
-    sigma: float = 0
+    radius: int = 4
     sato_weight: float = 0.0
-    sato_sigmas: tuple = (1, 2)
+    sato_sigmas: tuple[float, ...] = (1.0, 2.0, 3.0)
 
     def __post_init__(self):
         """Validate configuration parameters."""
@@ -67,10 +65,16 @@ class NormalizationConfig:
     """Configuration for normalization operations.
 
     Attributes:
-        enabled: Whether to enable regional normalization. Default: False
+        enabled: Whether to enable regional normalization. Default: True
+        method: Normalization method ('minmax' or 'clahe'). Default: 'minmax'
+        clip_limit: CLAHE clip limit for contrast limiting. Default: 2.0
+        tile_grid_size: CLAHE tile grid size (width, height). Default: (8, 8)
     """
 
     enabled: bool = True
+    method: Literal["minmax", "clahe"] = "minmax"
+    clip_limit: float = 2.0
+    tile_grid_size: tuple[int, int] = (8, 8)
 
 
 @dataclass
@@ -90,7 +94,7 @@ class PipelineConfig:
         >>> config = PipelineConfig(
         ...     morphology=MorphologyConfig(closing_kernel=3, opening_kernel=3),
         ...     mask=MaskConfig(dilate_offset=50),
-        ...     background=BackgroundConfig(method='rolling_ball', radius=12),
+        ...     background=BackgroundConfig(method='rolling_ball', radius=4, sato_weight=0.2, sato_sigmas=(1.0, 2.0)),
         ...     threshold=ThresholdConfig(method='binary')
         ... )
         >>> pipeline = SkinAnalysisPipeline(config)
@@ -152,7 +156,6 @@ class PipelineConfig:
             "background": {
                 "method": self.background.method,
                 "radius": self.background.radius,
-                "sigma": self.background.sigma,
                 "sato_weight": self.background.sato_weight,
                 "sato_sigmas": self.background.sato_sigmas,
             },
@@ -161,5 +164,8 @@ class PipelineConfig:
             },
             "normalization": {
                 "enabled": self.normalization.enabled,
+                "method": self.normalization.method,
+                "clip_limit": self.normalization.clip_limit,
+                "tile_grid_size": self.normalization.tile_grid_size,
             },
         }

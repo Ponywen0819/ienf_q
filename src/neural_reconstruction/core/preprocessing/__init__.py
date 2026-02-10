@@ -95,6 +95,7 @@ from .utils import (
     ensure_grayscale,
     validate_image,
     regional_minmax_normalize,
+    regional_clahe_normalize,
 )
 
 
@@ -121,6 +122,7 @@ __all__ = [
     "ensure_grayscale",
     "validate_image",
     "regional_minmax_normalize",
+    "regional_clahe_normalize",
     "PipelineConfig",
 ]
 

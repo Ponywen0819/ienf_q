@@ -246,7 +246,6 @@ def gaussian_config():
         },
         'background': {
             'method': 'gaussian',
-            'sigma': 10.0,
         },
         'threshold': {
             'use_full_roi': False,

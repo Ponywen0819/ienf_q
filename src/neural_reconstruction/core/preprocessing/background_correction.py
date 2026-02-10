@@ -23,22 +23,22 @@ class BackgroundCorrection:
     Background correction class for removing uneven illumination from images.
 
     This class provides methods for background correction using rolling ball
-    and morphology techniques.
+    and morphology techniques, with optional Sato vesselness filtering.
 
     Attributes:
         method: Background correction method ('rolling_ball' or 'morphology')
         radius: Radius for rolling ball/morphology operations
-        smoothing: Whether to apply Gaussian smoothing to background estimate
-        smoothing_sigma: Sigma for smoothing Gaussian filter
+        sato_weight: Blend weight for Sato filter (0=disabled, >0=enabled)
+        sato_sigmas: Iterable of floats for Sato filter scales
 
     Args:
         method: Background correction method ('rolling_ball' or 'morphology'). Default: 'morphology'
         radius: Radius for rolling ball/morphology operations. Default: 50
-        smoothing: Whether to apply Gaussian smoothing to background estimate. Default: False
-        smoothing_sigma: Sigma for smoothing Gaussian filter. Default: 2.0
+        sato_weight: Blend weight for Sato filter. Default: 0.0 (disabled)
+        sato_sigmas: Iterable of floats for Sato filter scales. Default: (1.0, 2.0, 3.0)
 
     Example:
-        >>> corrector = BackgroundCorrection(method='rolling_ball', radius=50)
+        >>> corrector = BackgroundCorrection(method='rolling_ball', radius=50, sato_weight=0.3)
         >>> corrected_image = corrector.correct(image)
     """
 
@@ -46,10 +46,8 @@ class BackgroundCorrection:
         self,
         method: Literal["rolling_ball", "morphology"] = "morphology",
         radius: int = 50,
-        smoothing: bool = False,
-        smoothing_sigma: float = 2.0,
         sato_weight: float = 0.0,
-        sato_sigmas: tuple = (1, 2),
+        sato_sigmas: tuple[float, ...] = (1.0, 2.0, 3.0),
     ):
         """
         Initialize BackgroundCorrection.
@@ -57,10 +55,8 @@ class BackgroundCorrection:
         Args:
             method: Background correction method ('rolling_ball' or 'morphology')
             radius: Radius for rolling ball/morphology operations
-            smoothing: Whether to apply Gaussian smoothing to background estimate
-            smoothing_sigma: Sigma for smoothing Gaussian filter
             sato_weight: Blend weight for Sato filter (0=disabled, >0=enabled, max 1)
-            sato_sigmas: Scale range tuple for Sato filter (min, max)
+            sato_sigmas: Iterable of floats for Sato filter scales
 
         Raises:
             ValueError: If method is not 'rolling_ball' or 'morphology'
@@ -73,15 +69,11 @@ class BackgroundCorrection:
             )
         if radius <= 0:
             raise ValueError(f"Radius must be positive, got {radius}")
-        if smoothing and smoothing_sigma <= 0:
-            raise ValueError(f"Smoothing sigma must be positive, got {smoothing_sigma}")
         if not 0 <= sato_weight <= 1:
             raise ValueError(f"sato_weight must be in [0, 1], got {sato_weight}")
 
         self.method = method
         self.radius = radius
-        self.smoothing = smoothing
-        self.smoothing_sigma = smoothing_sigma
         self.sato_weight = sato_weight
         self.sato_sigmas = sato_sigmas
 
@@ -159,7 +151,7 @@ class BackgroundCorrection:
         # Apply Sato filter on float32
         sato_result = sato(
             image.astype(np.float32),
-            sigmas=range(self.sato_sigmas[0], self.sato_sigmas[1] + 1),
+            sigmas=self.sato_sigmas,
             black_ridges=False,  # Detect bright structures (nerve fibers)
             mode='reflect'
         )
@@ -196,12 +188,6 @@ class BackgroundCorrection:
         else:
             raise ValueError(f"Invalid method '{self.method}'")
 
-        if self.smoothing:
-            background = cv2.GaussianBlur(
-                background.astype(np.float32), (0, 0), sigmaX=self.smoothing_sigma
-            )
-            background = background.astype(np.uint8)
-
         return background
 
     def __call__(self, image: np.ndarray) -> np.ndarray:
@@ -220,8 +206,6 @@ class BackgroundCorrection:
         """String representation of the BackgroundCorrection instance."""
         return (
             f"BackgroundCorrection(method='{self.method}', radius={self.radius}, "
-            f"smoothing={self.smoothing}, "
-            f"smoothing_sigma={self.smoothing_sigma}, "
             f"sato_weight={self.sato_weight}, "
             f"sato_sigmas={self.sato_sigmas})"
         )
