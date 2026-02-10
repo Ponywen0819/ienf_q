@@ -76,7 +76,9 @@ class HierarchicalFragmentLinker:
         self.search_radius_endpoint_extension = search_radius_endpoint_extension
         self.max_angle_endpoint_extension = max_angle_endpoint_extension
         self.angle_penalty_endpoint_extension = angle_penalty_endpoint_extension
-        self.direction_threshold_endpoint_extension = direction_threshold_endpoint_extension
+        self.direction_threshold_endpoint_extension = (
+            direction_threshold_endpoint_extension
+        )
 
         self.search_radius_mst = search_radius_mst
         self.max_angle_mst = max_angle_mst
@@ -108,25 +110,25 @@ class HierarchicalFragmentLinker:
         logger.info("1. 圖像預處理...")
 
         preprocessing_config = {
-            'morphology': {
-                'closing_kernel': 0,
-                'opening_kernel': self.opening_kernel_size,
+            "morphology": {
+                "closing_kernel": 0,
+                "opening_kernel": self.opening_kernel_size,
             },
-            'mask': {
-                'dilate_offset': self.offset_px,
+            "mask": {
+                "dilate_offset": self.offset_px,
             },
-            'background': {
-                'method': 'rolling_ball',
-                'radius': self.rolling_ball_radius,
-                'sato_weight': self.sato_weight,
-                'sato_sigmas': (1.0, 2.0),
+            "background": {
+                "method": "rolling_ball",
+                "radius": self.rolling_ball_radius,
+                "sato_weight": self.sato_weight,
+                "sato_sigmas": (1.0, 2.0),
             },
-            'threshold': {
-                'use_full_roi': False,
+            "threshold": {
+                "use_full_roi": False,
             },
-            'normalization': {
-                'enabled': False,
-            }
+            "normalization": {
+                "enabled": False,
+            },
         }
 
         pipeline = SkinAnalysisPipeline(preprocessing_config)
@@ -148,10 +150,6 @@ class HierarchicalFragmentLinker:
 
         logger.info("  ✓ 預處理完成")
 
-        # CLAHE 均衡化用於種子點提取
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        equalized_img = clahe.apply(roi_image)
-
         # 2 + 3. 構建骨架圖並生成種子圖
         logger.info("2. 構建骨架圖...")
         logger.info("3. 構建種子圖...")
@@ -159,7 +157,7 @@ class HierarchicalFragmentLinker:
         topology_builder = TopologyBuilder(
             segment_length=self.segment_length,
         )
-        seed_graph = topology_builder.build_seed_graph(roi_annotation, equalized_img)
+        seed_graph = topology_builder.build_seed_graph(roi_annotation, roi_image)
 
         # 為種子圖的邊設置低成本
         for u, v, data in seed_graph.edges(data=True):

@@ -2,10 +2,11 @@
 純 MST 重建連接器 (Pure MST Reconstruction Linker)
 
 主控制器，協調完整的神經網路 MST 重建流程：
-1. 連通元件分析
-2. 骨架化與種子切分（TopologyBuilder + SeedGraphBuilder）
-3. 元件間連接路徑查找（PathFinder）
-4. MST 骨架萃取
+1. 預處理：ROI 提取、背景減除、偽標註生成
+2. 連通元件分析
+3. 骨架化與種子切分（TopologyBuilder + SeedGraphBuilder）
+4. 元件間連接路徑查找（PathFinder）
+5. MST 骨架萃取
 """
 
 import logging
@@ -14,9 +15,10 @@ from typing import Optional
 import numpy as np
 import networkx as nx
 from scipy.spatial import KDTree
-from skimage.measure import label, regionprops
+from skimage.measure import label
 
-from neural_reconstruction.core.topology import TopologyBuilder, SeedGraphBuilder
+from neural_reconstruction.core.preprocessing import SkinAnalysisPipeline
+from neural_reconstruction.core.topology import TopologyBuilder
 from neural_reconstruction.core.pathfinding import PathFinder
 
 logger = logging.getLogger(__name__)
@@ -24,115 +26,146 @@ logger = logging.getLogger(__name__)
 
 class PureMstLinker:
     """
-    純 MST 神經重建連接器
+    純 MST 神經重建連接器（含預處理）
 
     協調完整的 MST 神經纖維重建流程。
 
     Examples:
         >>> linker = PureMstLinker(segment_length=5.0, search_radius=50.0)
-        >>> mst_forest = linker.run(label_image, green_channel)
+        >>> mst_forest = linker.run(image, mask, annotation)
     """
 
     def __init__(
         self,
-        # 連通元件參數
-        connectivity: int = 4,
-        min_area: int = 0,
+        # 預處理參數
+        offset_px: int = 100,
+        rolling_ball_radius: int = 2,
+        sato_weight: float = 0.0,
+        opening_kernel_size: int = 3,
         # 元件分析參數
         segment_length: float = 5.0,
         min_edge_length: Optional[float] = None,
         # 路徑查找參數
         search_radius: float = 50.0,
         max_cost_threshold: float = 0.98,
-        intensity_weight: float = 0.6,
-        shape_weight: float = 0.4,
+        intensity_weight: float = 2.0,
     ):
-        self.connectivity = connectivity
-        self.min_area = min_area
+        # 預處理參數
+        self.offset_px = offset_px
+        self.rolling_ball_radius = rolling_ball_radius
+        self.sato_weight = sato_weight
+        self.opening_kernel_size = opening_kernel_size
+        # 重建參數
         self.segment_length = segment_length
-        self.min_edge_length = min_edge_length if min_edge_length is not None else segment_length
+        self.min_edge_length = (
+            min_edge_length if min_edge_length is not None else segment_length
+        )
         self.search_radius = search_radius
         self.max_cost_threshold = max_cost_threshold
         self.intensity_weight = intensity_weight
-        self.shape_weight = shape_weight
 
     def run(
         self,
-        label_image: np.ndarray,
-        green_channel: np.ndarray,
+        image: np.ndarray,
+        mask: np.ndarray,
+        annotation: np.ndarray,
     ) -> nx.Graph:
         """
-        運行完整的 MST 神經纖維重建流程
+        運行完整的 MST 神經纖維重建流程（含預處理）
 
         Args:
-            label_image: 二值化標註影像 (0/255 或 0/1)
-            green_channel: 綠色通道影像 (uint8, 0-255)
+            image: 原始圖像 (H, W) 或 (H, W, 3)
+            mask: 表皮遮罩 (H, W)
+            annotation: 手工標註 (H, W)
 
         Returns:
             MST 森林 (nx.Graph)
         """
-        if label_image is None or label_image.size == 0:
+        logger.info("1. 圖像預處理...")
+
+        preprocessing_config = {
+            "morphology": {
+                "closing_kernel": 0,
+                "opening_kernel": self.opening_kernel_size,
+            },
+            "mask": {
+                "dilate_offset": self.offset_px,
+            },
+            "background": {
+                "method": "rolling_ball",
+                "radius": self.rolling_ball_radius,
+                "sato_weight": self.sato_weight,
+                "sato_sigmas": (1.0, 2.0),
+            },
+            "threshold": {
+                "use_full_roi": False,
+            },
+            "normalization": {
+                "enabled": False,
+            },
+        }
+
+        pipeline = SkinAnalysisPipeline(preprocessing_config)
+
+        if len(image.shape) == 3:
+            orig_img = image[:, :, 1]  # 綠色通道
+        else:
+            orig_img = image
+
+        roi_annotation, roi_image = pipeline.run(annotation, mask, orig_img)
+
+        logger.info("  ✓ 預處理完成")
+
+        return self._run_reconstruction(roi_annotation, roi_image)
+
+    def _run_reconstruction(
+        self,
+        annotation: np.ndarray,
+        image: np.ndarray,
+    ) -> nx.Graph:
+        """
+        運行 MST 重建（不含預處理）
+
+        Args:
+            annotation: 二值化標註影像 (0/255 或 0/1)
+            image: 影像 (uint8, 0-255)
+
+        Returns:
+            MST 森林 (nx.Graph)
+        """
+        if annotation is None or annotation.size == 0:
             return nx.Graph()
-        if green_channel is None or green_channel.size == 0:
+        if image is None or image.size == 0:
             return nx.Graph()
 
-        # 1. 連通元件分析
-        binary = (label_image > 0).astype(np.uint8)
-        skimage_connectivity = 1 if self.connectivity == 4 else 2
-        labeled = label(binary, connectivity=skimage_connectivity)
-        regions = regionprops(labeled)
+        # 1. 連通元件標記（用於排除同元件連接，使用 8-connectivity）
+        binary = (annotation > 0).astype(np.uint8)
+        labeled = np.asarray(label(binary, connectivity=2))
 
-        if self.min_area > 0:
-            regions = [r for r in regions if r.area >= self.min_area]
-
-        if not regions:
-            return nx.Graph()
-
-        # 2. 骨架化 + 種子切分，轉換至全局座標
-        global_graph = self._build_global_graph(regions)
+        # 2. 骨架化 + 種子切分
+        topology_builder = TopologyBuilder(segment_length=self.segment_length)
+        global_graph = topology_builder.build_seed_graph(annotation, image)
 
         if global_graph.number_of_nodes() == 0:
             return nx.Graph()
 
+        # 從 labeled image 補上 component_id
+        for node in global_graph.nodes():
+            y, x = node
+            global_graph.nodes[node]["component_id"] = int(labeled[int(y), int(x)])
+
+        # 元件內邊設低成本
+        for u, v, data in global_graph.edges(data=True):
+            data["weight"] = 1e-5
+
         # 3. 元件間路徑查找
         cost_map = (
-            (255 - green_channel.astype(np.float64)) ** self.intensity_weight
-            / 255 ** self.intensity_weight
-        )
+            255 - image.astype(np.float64)
+        ) ** self.intensity_weight / 255**self.intensity_weight
         self._add_inter_component_edges(global_graph, cost_map)
 
         # 4. MST
         return self._extract_mst_forest(global_graph)
-
-    def _build_global_graph(self, regions) -> nx.MultiGraph:
-        """對每個元件骨架化、切分種子，合併到全局座標圖"""
-        topology_builder = TopologyBuilder()
-        seed_builder = SeedGraphBuilder(segment_length=self.segment_length)
-        global_graph = nx.MultiGraph()
-
-        for region in regions:
-            minr, minc, _, _ = region.bbox
-            component_mask = region.image.astype(np.uint8) * 255
-            component_id = region.label
-
-            skeleton = topology_builder.build_skeleton_graph(component_mask)
-            if skeleton.number_of_nodes() == 0:
-                continue
-
-            seed_graph = seed_builder.build(skeleton)
-
-            # 轉換至全局座標，標記 component_id
-            for node in seed_graph.nodes():
-                global_node = (node[0] + minr, node[1] + minc)
-                global_graph.add_node(global_node, component_id=component_id)
-
-            for u, v, data in seed_graph.edges(data=True):
-                gu = (u[0] + minr, u[1] + minc)
-                gv = (v[0] + minr, v[1] + minc)
-                gpath = [(p[0] + minr, p[1] + minc) for p in data.get("path", [])]
-                global_graph.add_edge(gu, gv, path=gpath, weight=1e-5)
-
-        return global_graph
 
     def _add_inter_component_edges(
         self, global_graph: nx.MultiGraph, cost_map: np.ndarray
