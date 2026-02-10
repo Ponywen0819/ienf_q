@@ -8,7 +8,7 @@ import pytest
 import numpy as np
 import networkx as nx
 
-from neural_reconstruction.core.construction.component_analyzer.seed_extraction import (
+from neural_reconstruction.algorithms.pure_mst.component_analyzer.seed_extraction import (
     EdgeSeedGenerator,
 )
 

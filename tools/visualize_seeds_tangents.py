@@ -21,7 +21,7 @@ from skimage import io
 import networkx as nx
 
 # 匯入本專案的模組
-from neural_reconstruction.core.construction.component_analyzer import ComponentAnalyzer
+from neural_reconstruction.algorithms.pure_mst.component_analyzer import ComponentAnalyzer
 from neural_reconstruction.core.preprocessing.pipeline import SkinAnalysisPipeline
 
 # 設定日誌

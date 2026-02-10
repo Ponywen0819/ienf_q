@@ -8,7 +8,7 @@ import pytest
 import numpy as np
 from skimage.measure import label, regionprops
 
-from neural_reconstruction.core.construction.component_analyzer import ComponentAnalyzer
+from neural_reconstruction.algorithms.pure_mst.component_analyzer import ComponentAnalyzer
 
 
 class TestEndToEndAnalysis:

@@ -128,7 +128,7 @@ def y_junction_region(y_junction_mask, mock_region_from_mask):
 @pytest.fixture
 def default_analyzer():
     """ComponentAnalyzer with default parameters"""
-    from neural_reconstruction.core.construction.component_analyzer import ComponentAnalyzer
+    from neural_reconstruction.algorithms.pure_mst.component_analyzer import ComponentAnalyzer
     return ComponentAnalyzer(
         segment_length=10.0,
         min_edge_length=10.0,
@@ -140,7 +140,7 @@ def default_analyzer():
 @pytest.fixture
 def small_segment_analyzer():
     """ComponentAnalyzer with small segment length for dense seeds"""
-    from neural_reconstruction.core.construction.component_analyzer import ComponentAnalyzer
+    from neural_reconstruction.algorithms.pure_mst.component_analyzer import ComponentAnalyzer
     return ComponentAnalyzer(
         segment_length=3.0,
         min_edge_length=3.0,
@@ -152,7 +152,7 @@ def small_segment_analyzer():
 @pytest.fixture
 def large_segment_analyzer():
     """ComponentAnalyzer with large segment length for sparse seeds"""
-    from neural_reconstruction.core.construction.component_analyzer import ComponentAnalyzer
+    from neural_reconstruction.algorithms.pure_mst.component_analyzer import ComponentAnalyzer
     return ComponentAnalyzer(
         segment_length=20.0,
         min_edge_length=20.0,
@@ -164,14 +164,14 @@ def large_segment_analyzer():
 @pytest.fixture
 def topology_builder():
     """ComponentTopologyBuilder with default parameters"""
-    from neural_reconstruction.core.construction.component_analyzer.topology import ComponentTopologyBuilder
+    from neural_reconstruction.algorithms.pure_mst.component_analyzer.topology import ComponentTopologyBuilder
     return ComponentTopologyBuilder(prune_threshold=5.0, spacing=1.0)
 
 
 @pytest.fixture
 def seed_generator():
     """EdgeSeedGenerator with default parameters"""
-    from neural_reconstruction.core.construction.component_analyzer.seed_extraction import EdgeSeedGenerator
+    from neural_reconstruction.algorithms.pure_mst.component_analyzer.seed_extraction import EdgeSeedGenerator
     return EdgeSeedGenerator(min_edge_length=10.0)
 
 

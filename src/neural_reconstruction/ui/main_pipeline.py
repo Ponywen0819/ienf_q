@@ -41,7 +41,7 @@ from neural_reconstruction.core.preprocessing.pipeline import (
     PipelineConfig as PreprocessingPipelineConfig,
 )
 
-from neural_reconstruction.core.construction.main import build_neural_network
+from neural_reconstruction.algorithms.pure_mst import PureMstLinker
 
 # 設定 logger
 logger = logging.getLogger(__name__)
@@ -134,8 +134,6 @@ class NeuralReconstructionPipeline:
             "min_area": 50,
             "segment_length": 5.0,
             "min_edge_length": None,
-            "prune_threshold": 5.0,
-            "spacing": 1.0,
             "search_radius": 50.0,
             "max_cost_threshold": 0.98,
             "intensity_weight": 0.6,
@@ -340,13 +338,8 @@ class NeuralReconstructionPipeline:
         self, label_image: np.ndarray, green_channel: np.ndarray
     ) -> nx.Graph:
         """執行神經重建"""
-        mst_forest = build_neural_network(
-            label_image=label_image,
-            green_channel=green_channel,
-            **self.reconstruction_config,
-        )
-
-        return mst_forest
+        linker = PureMstLinker(**self.reconstruction_config)
+        return linker.run(label_image, green_channel)
 
 
 __all__ = ["NeuralReconstructionPipeline", "PipelineResult"]

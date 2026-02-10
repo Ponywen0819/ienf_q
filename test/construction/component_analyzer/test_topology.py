@@ -9,7 +9,7 @@ import numpy as np
 import networkx as nx
 from skimage.measure import label
 
-from neural_reconstruction.core.construction.component_analyzer.topology import (
+from neural_reconstruction.algorithms.pure_mst.component_analyzer.topology import (
     ComponentTopologyBuilder,
 )
 

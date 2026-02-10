@@ -13,8 +13,8 @@ import numpy as np
 import networkx as nx
 from typing import List
 
-from neural_reconstruction.core.construction.connection_graph_builder.builder import NetworkBuilder
-from neural_reconstruction.core.construction.connection_graph_builder.path_finder import Pathfinder
+from neural_reconstruction.algorithms.pure_mst.connection_graph_builder.builder import NetworkBuilder
+from neural_reconstruction.algorithms.pure_mst.connection_graph_builder.path_finder import Pathfinder
 from neural_reconstruction.common.data_types import ComponentAnalysisResult
 
 

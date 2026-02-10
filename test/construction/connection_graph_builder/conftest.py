@@ -133,7 +133,7 @@ def create_mock_component_result():
 @pytest.fixture
 def default_pathfinder(simple_bright_image):
     """Pathfinder with default balanced weights"""
-    from neural_reconstruction.core.construction.connection_graph_builder.path_finder import Pathfinder
+    from neural_reconstruction.algorithms.pure_mst.connection_graph_builder.path_finder import Pathfinder
     return Pathfinder(
         image=simple_bright_image,
         intensity_weight=0.6,
@@ -144,7 +144,7 @@ def default_pathfinder(simple_bright_image):
 @pytest.fixture
 def intensity_focused_pathfinder(simple_bright_image):
     """Pathfinder with high intensity weight"""
-    from neural_reconstruction.core.construction.connection_graph_builder.path_finder import Pathfinder
+    from neural_reconstruction.algorithms.pure_mst.connection_graph_builder.path_finder import Pathfinder
     return Pathfinder(
         image=simple_bright_image,
         intensity_weight=0.9,
@@ -155,7 +155,7 @@ def intensity_focused_pathfinder(simple_bright_image):
 @pytest.fixture
 def shape_focused_pathfinder(simple_bright_image):
     """Pathfinder with high shape weight"""
-    from neural_reconstruction.core.construction.connection_graph_builder.path_finder import Pathfinder
+    from neural_reconstruction.algorithms.pure_mst.connection_graph_builder.path_finder import Pathfinder
     return Pathfinder(
         image=simple_bright_image,
         intensity_weight=0.1,
@@ -170,7 +170,7 @@ def shape_focused_pathfinder(simple_bright_image):
 @pytest.fixture
 def default_builder(simple_bright_image):
     """NetworkBuilder with default parameters"""
-    from neural_reconstruction.core.construction.connection_graph_builder.builder import NetworkBuilder
+    from neural_reconstruction.algorithms.pure_mst.connection_graph_builder.builder import NetworkBuilder
     return NetworkBuilder(
         image=simple_bright_image,
         search_radius=50.0,
@@ -183,7 +183,7 @@ def default_builder(simple_bright_image):
 @pytest.fixture
 def tight_threshold_builder(simple_bright_image):
     """NetworkBuilder with strict cost threshold"""
-    from neural_reconstruction.core.construction.connection_graph_builder.builder import NetworkBuilder
+    from neural_reconstruction.algorithms.pure_mst.connection_graph_builder.builder import NetworkBuilder
     return NetworkBuilder(
         image=simple_bright_image,
         search_radius=50.0,
@@ -196,7 +196,7 @@ def tight_threshold_builder(simple_bright_image):
 @pytest.fixture
 def large_radius_builder(simple_bright_image):
     """NetworkBuilder with large search radius"""
-    from neural_reconstruction.core.construction.connection_graph_builder.builder import NetworkBuilder
+    from neural_reconstruction.algorithms.pure_mst.connection_graph_builder.builder import NetworkBuilder
     return NetworkBuilder(
         image=simple_bright_image,
         search_radius=100.0,  # Larger radius

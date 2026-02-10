@@ -13,7 +13,7 @@ import pytest
 import numpy as np
 from typing import List, Tuple
 
-from neural_reconstruction.core.construction.connection_graph_builder.path_finder import Pathfinder
+from neural_reconstruction.algorithms.pure_mst.connection_graph_builder.path_finder import Pathfinder
 
 
 class TestPathfinderInit:
