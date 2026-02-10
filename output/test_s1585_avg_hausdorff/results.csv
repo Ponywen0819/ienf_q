@@ -1,2 +1,0 @@
-sample_id,status,hausdorff_distance,num_nodes_pred,num_nodes_gt,num_edges_pred,num_edges_gt,num_components_pred,error_message
-S1585-2_a,failed,,,,,,,pipeline_failed

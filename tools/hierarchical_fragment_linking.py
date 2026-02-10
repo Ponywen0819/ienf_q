@@ -59,8 +59,8 @@ def main():
       --output output/hierarchical_linking/S1585-2_a_result.pkl \\
       --offset-px 150 \\
       --segment-length 5.0 \\
-      --search-radius-phase1 15.0 \\
-      --search-radius-phase2 25.0 \\
+      --search-radius-endpoint-extension 15.0 \\
+      --search-radius-mst 25.0 \\
       --verbose
         """,
     )
@@ -125,42 +125,42 @@ def main():
     )
 
     parser.add_argument(
-        "--search-radius-phase1",
+        "--search-radius-endpoint-extension",
         type=float,
         default=10.0,
         help="階段1搜索半徑 (default: 10.0)",
     )
 
     parser.add_argument(
-        "--max-angle-phase1",
+        "--max-angle-endpoint-extension",
         type=float,
         default=75.0,
         help="階段1最大角度 (default: 75.0)",
     )
 
     parser.add_argument(
-        "--search-radius-phase2",
+        "--search-radius-mst",
         type=float,
         default=20.0,
         help="階段2搜索半徑 (default: 20.0)",
     )
 
     parser.add_argument(
-        "--max-angle-phase2",
+        "--max-angle-mst",
         type=float,
         default=90.0,
         help="階段2最大角度 (default: 90.0)",
     )
 
     parser.add_argument(
-        "--max-cost-threshold-phase2",
+        "--max-cost-threshold-mst",
         type=float,
         default=0.75,
         help="階段2成本閾值 (default: 0.75)",
     )
 
     parser.add_argument(
-        "--phase1-weight-discount",
+        "--endpoint-extension-weight-discount",
         type=float,
         default=0.5,
         help="階段1邊權重折扣 (default: 0.5)",
@@ -223,12 +223,12 @@ def main():
         # 重建參數
         segment_length=args.segment_length,
         search_radius_pathfinding=args.search_radius_pathfinding,
-        search_radius_phase1=args.search_radius_phase1,
-        max_angle_phase1=args.max_angle_phase1,
-        search_radius_phase2=args.search_radius_phase2,
-        max_angle_phase2=args.max_angle_phase2,
-        max_cost_threshold_phase2=args.max_cost_threshold_phase2,
-        phase1_weight_discount=args.phase1_weight_discount,
+        search_radius_endpoint_extension=args.search_radius_endpoint_extension,
+        max_angle_endpoint_extension=args.max_angle_endpoint_extension,
+        search_radius_mst=args.search_radius_mst,
+        max_angle_mst=args.max_angle_mst,
+        max_cost_threshold_mst=args.max_cost_threshold_mst,
+        endpoint_extension_weight_discount=args.endpoint_extension_weight_discount,
         verbose=args.verbose,
     )
 
