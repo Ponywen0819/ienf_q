@@ -170,7 +170,7 @@ class HierarchicalFragmentLinker:
         kdtree = KDTree(topology_points)
 
         # 構建成本地圖和種子地圖
-        cost_map = ((255 - roi_image.astype(np.float64)) / 255.0) ** 1.5
+        cost_map = ((255 - roi_image.astype(np.float64)) / 255.0) ** 2
         seed_map = np.zeros_like(cost_map, dtype=np.uint8)
         for p in topology_points:
             seed_map[p[0], p[1]] = True

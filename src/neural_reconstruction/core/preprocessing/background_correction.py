@@ -105,10 +105,9 @@ class BackgroundCorrection:
         if self.sato_weight > 0:
             sato_filtered = self._apply_sato_filter(corrected)
             # Blend corrected image with Sato result
-            corrected = (
-                (1 - self.sato_weight) * corrected.astype(np.float32)
-                + self.sato_weight * sato_filtered.astype(np.float32)
-            )
+            corrected = (1 - self.sato_weight) * corrected.astype(
+                np.float32
+            ) + self.sato_weight * sato_filtered.astype(np.float32)
             corrected = np.clip(corrected, 0, 255).astype(np.uint8)
 
         result = denormalize_image(corrected, was_float, original_dtype)
@@ -153,7 +152,7 @@ class BackgroundCorrection:
             image.astype(np.float32),
             sigmas=self.sato_sigmas,
             black_ridges=False,  # Detect bright structures (nerve fibers)
-            mode='reflect'
+            mode="reflect",
         )
 
         # Normalize to 0-1 range
@@ -177,7 +176,9 @@ class BackgroundCorrection:
             Estimated background image (uint8)
         """
         if self.method == "rolling_ball":
-            background = rolling_ball(image, radius=self.radius).astype(np.uint8)
+            bg_small = rolling_ball(image, radius=20).astype(np.uint8)
+            bg_tiny = rolling_ball(image, radius=self.radius).astype(np.uint8)
+            background = np.minimum(bg_small, bg_tiny)
         elif self.method == "morphology":
             kernel = self._create_filter_kernel(self.radius)
             background = cv2.morphologyEx(
