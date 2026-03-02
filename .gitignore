@@ -30,3 +30,5 @@ Neural_Connections/
 *.pth
 
 *.pkl
+
+*.psd

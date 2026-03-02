@@ -32,7 +32,8 @@ from tqdm import tqdm
 
 # 添加專案根目錄到 Python 路徑
 
-from neural_reconstruction.ui.main_pipeline import NeuralReconstructionPipeline
+from neural_reconstruction.algorithms.pure_mst.linker import PureMstLinker
+from neural_reconstruction.algorithms.fragment_linking.linker import HierarchicalFragmentLinker
 from neural_reconstruction.core.topology import TopologyBuilder
 
 # 使用新的評估模組
@@ -183,20 +184,12 @@ class TopologyExtractor:
     統一處理 GT 和 Pipeline 結果的拓樸建構。
     """
 
-    def __init__(
-        self,
-        preprocessing_config: Optional[Dict[str, Any]] = None,
-        reconstruction_config: Optional[Dict[str, Any]] = None,
-    ):
+    def __init__(self, linker: Any):
         """
         Args:
-            preprocessing_config: 前處理配置
-            reconstruction_config: 重建配置
+            linker: 實作 run(image, mask, annotation) -> nx.Graph 的 linker 實例
         """
-        self.pipeline = NeuralReconstructionPipeline(
-            preprocessing_config=preprocessing_config,
-            reconstruction_config=reconstruction_config,
-        )
+        self.linker = linker
         self.gt_builder = TopologyBuilder()
         self.logger = logging.getLogger(__name__)
 
@@ -215,13 +208,7 @@ class TopologyExtractor:
             NetworkX Graph，失敗則返回 None
         """
         try:
-            result = self.pipeline.run(
-                label_image=annotation,
-                mask_image=mask,
-                original_image=image,
-                debug=False,
-            )
-            return result.mst_forest
+            return self.linker.run(image, mask, annotation)
         except Exception as e:
             self.logger.error(f"Pipeline 執行失敗: {e}")
             return None
@@ -230,83 +217,21 @@ class TopologyExtractor:
         """
         從 GT 標註萃取拓樸
 
-        處理流程：
-        1. 識別所有連通分量
-        2. 對每個連通分量建構拓樸
-        3. 合併所有拓樸為單一圖
+        直接對整張 GT 影像呼叫 build_seed_graph，無需逐連通分量處理。
 
         Args:
             gt_label: GT 標註影像（二值，0 或 255）
 
         Returns:
-            NetworkX Graph，包含所有連通分量的拓樸節點
+            NetworkX Graph，失敗則返回 None
         """
         try:
-            from skimage.measure import label as measure_label, regionprops
-
-            # 轉換為二值影像 (0/1)
-            binary = (gt_label > 0).astype(np.uint8)
-
-            # 使用 skimage 標記連通分量
-            labeled = measure_label(binary, connectivity=2)  # 8-connectivity
-            regions = regionprops(labeled)
-
-            if len(regions) == 0:
-                self.logger.warning("GT 影像中沒有連通分量")
-                return nx.Graph()
-
-            self.logger.debug(f"GT 影像中找到 {len(regions)} 個連通分量")
-
-            # 建立合併的圖
-            merged_graph = nx.Graph()
-
-            # 對每個連通分量建構拓樸
-            for region in regions:
-                # 提取該分量的 mask
-                minr, minc, maxr, maxc = region.bbox
-                component_mask = labeled[minr:maxr, minc:maxc] == region.label
-                component_mask = (component_mask * 255).astype(np.uint8)
-
-                # 建構拓樸
-                try:
-                    topology = self.gt_builder.build_skeleton_graph(component_mask)
-
-                    # 將局部座標轉換為全局座標
-                    for node in list(topology.nodes()):
-                        # node 格式為 (y, x) 相對於裁切區域
-                        global_node = (node[0] + minr, node[1] + minc)
-
-                        # 複製節點屬性
-                        node_attrs = topology.nodes[node].copy()
-
-                        # 添加到合併圖
-                        merged_graph.add_node(global_node, **node_attrs)
-
-                    # 複製邊（需要轉換節點座標）
-                    for u, v, data in topology.edges(data=True):
-                        global_u = (u[0] + minr, u[1] + minc)
-                        global_v = (v[0] + minr, v[1] + minc)
-
-                        # 如果邊有 path 屬性，也需要轉換座標
-                        edge_attrs = data.copy()
-                        if "path-coordinates" in edge_attrs:
-                            path = edge_attrs["path-coordinates"]
-                            global_path = [(p[0] + minr, p[1] + minc) for p in path]
-                            edge_attrs["path-coordinates"] = global_path
-
-                        merged_graph.add_edge(global_u, global_v, **edge_attrs)
-
-                except Exception as e:
-                    self.logger.warning(f"分量 {region.label} 拓樸建構失敗: {e}")
-                    continue
-
+            graph = self.gt_builder.build_seed_graph(gt_label)
             self.logger.debug(
-                f"GT 拓樸建構完成: {merged_graph.number_of_nodes()} 節點, "
-                f"{merged_graph.number_of_edges()} 邊"
+                f"GT 拓樸建構完成: {graph.number_of_nodes()} 節點, "
+                f"{graph.number_of_edges()} 邊"
             )
-
-            return merged_graph
-
+            return graph
         except Exception as e:
             self.logger.error(f"GT 拓樸建構失敗: {e}", exc_info=True)
             return None
@@ -499,30 +424,24 @@ class DatasetEvaluator:
         self,
         data_dir: Path,
         output_dir: Path,
-        preprocessing_config: Optional[Dict[str, Any]] = None,
-        reconstruction_config: Optional[Dict[str, Any]] = None,
+        linker: Any,
     ):
         """
         Args:
             data_dir: 資料集目錄
             output_dir: 輸出目錄
-            preprocessing_config: 前處理配置
-            reconstruction_config: 重建配置
+            linker: 實作 run(image, mask, annotation) -> nx.Graph 的 linker 實例
         """
         self.data_dir = Path(data_dir)
         self.output_dir = Path(output_dir)
 
         # 建立元件
         self.loader = DatasetLoader(data_dir)
-        self.extractor = TopologyExtractor(preprocessing_config, reconstruction_config)
-        self.comparator = TopologyComparator()  # 使用新的評估模組
+        self.extractor = TopologyExtractor(linker)
+        self.comparator = TopologyComparator()
         self.reporter = EvaluationReporter(output_dir)
 
-        # 儲存配置
-        self.config = {
-            "preprocessing": preprocessing_config,
-            "reconstruction": reconstruction_config,
-        }
+        self.config = {"linker": type(linker).__name__, "params": vars(linker)}
 
         self.logger = logging.getLogger(__name__)
 
@@ -563,7 +482,16 @@ class DatasetEvaluator:
         Returns:
             評測結果
         """
-        # 檢查檔案完整性
+        # 必須有 label.png 才能計算 Hausdorff distance
+        if not sample.label_path or not sample.label_path.exists():
+            self.logger.info(f"樣本 {sample.sample_id} 跳過: 缺少 label.png")
+            return SampleResult(
+                sample_id=sample.sample_id,
+                status="skipped",
+                error_message="missing_label",
+            )
+
+        # 檢查其他必要檔案完整性
         is_complete, missing_reason = sample.is_complete()
         if not is_complete:
             self.logger.warning(f"樣本 {sample.sample_id} 跳過: {missing_reason}")
@@ -589,15 +517,13 @@ class DatasetEvaluator:
                     error_message="pipeline_failed",
                 )
 
-            # 萃取 GT 拓樸（目前預留）
-            graph_gt = None
-            if sample.label_path and sample.label_path.exists():
-                gt_label = np.array(Image.open(sample.label_path))
-                graph_gt = self.extractor.extract_from_gt(gt_label)
+            # 萃取 GT 拓樸
+            gt_label = np.array(Image.open(sample.label_path))
+            graph_gt = self.extractor.extract_from_gt(gt_label)
 
             # 計算 Hausdorff 距離
             hausdorff_dist = None
-            if graph_pred and graph_gt:
+            if graph_gt is not None:
                 result = self.comparator.compare(
                     graph_pred, graph_gt, label1="pred", label2="gt"
                 )
@@ -609,8 +535,8 @@ class DatasetEvaluator:
             num_edges_pred = graph_pred.number_of_edges()
             num_components_pred = nx.number_connected_components(graph_pred)
 
-            num_nodes_gt = graph_gt.number_of_nodes() if graph_gt else None
-            num_edges_gt = graph_gt.number_of_edges() if graph_gt else None
+            num_nodes_gt = graph_gt.number_of_nodes() if graph_gt is not None else None
+            num_edges_gt = graph_gt.number_of_edges() if graph_gt is not None else None
 
             return SampleResult(
                 sample_id=sample.sample_id,
@@ -673,7 +599,12 @@ def main():
         "--sample-ids", nargs="+", help="指定要評測的樣本 ID（可選，預設評測全部）"
     )
 
-    parser.add_argument("--config", type=Path, help="配置檔案路徑（YAML 格式，可選）")
+    parser.add_argument(
+        "--algorithm",
+        choices=["pure_mst", "hierarchical"],
+        default="pure_mst",
+        help="使用的重建演算法 (預設: pure_mst)",
+    )
 
     parser.add_argument("--verbose", action="store_true", help="啟用詳細日誌輸出")
 
@@ -691,43 +622,40 @@ def main():
     logger.info("=" * 80)
     logger.info(f"資料集目錄: {args.data_dir}")
     logger.info(f"輸出目錄: {args.output_dir}")
+    logger.info(f"演算法: {args.algorithm}")
 
-    # 載入配置（如果提供）
-    preprocessing_config = {
-        "morphology": {"closing_kernel": 0, "opening_kernel": 3},
-        "mask": {"dilate_offset": 50},
-        "background": {
-            "method": "rolling_ball",
-            "radius": 2,
-            "sigma": 0,
-            "light_background": True,
-        },
-        "threshold": {"method": "binary", "use_full_roi": False},
-        "normalization": {"enabled": False},
-    }
-    reconstruction_config = {
-        "connectivity": 4,
-        "min_area": 0,
-        "segment_length": 5.0,
-        "min_edge_length": None,
-        "prune_threshold": 5.0,
-        "spacing": 0,
-        "search_radius": 20.0,
-        "max_cost_threshold": 0.98,
-        "intensity_weight": 1,
-        "shape_weight": 0,
-    }
-    if args.config:
-        logger.info(f"載入配置檔案: {args.config}")
-        # TODO: 實作 YAML 配置載入
-        logger.warning("配置檔案載入尚未實作，使用預設配置")
+    # 建立 linker
+    if args.algorithm == "pure_mst":
+        linker = PureMstLinker(
+            offset_px=100,
+            rolling_ball_radius=2,
+            sato_weight=0.0,
+            opening_kernel_size=3,
+            segment_length=5.0,
+            search_radius=20.0,
+            max_cost_threshold=0.98,
+            intensity_weight=0.6,
+        )
+    else:  # hierarchical
+        linker = HierarchicalFragmentLinker(
+            offset_px=100,
+            rolling_ball_radius=2,
+            sato_weight=0.0,
+            opening_kernel_size=3,
+            segment_length=3.0,
+            search_radius_pathfinding=50.0,
+            search_radius_endpoint_extension=10.0,
+            max_angle_endpoint_extension=75.0,
+            search_radius_mst=20.0,
+            max_angle_mst=90.0,
+            max_cost_threshold_mst=0.75,
+        )
 
     # 建立評測器
     evaluator = DatasetEvaluator(
         data_dir=args.data_dir,
         output_dir=args.output_dir,
-        preprocessing_config=preprocessing_config,
-        reconstruction_config=reconstruction_config,
+        linker=linker,
     )
 
     # 執行評測

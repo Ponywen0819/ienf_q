@@ -16,6 +16,35 @@ from scipy.spatial.distance import cdist
 from typing import Tuple, Union
 
 
+def compute_point_min_distances(
+    points_a: np.ndarray,
+    points_b: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    計算兩點集間每個點到對方點集的最小距離
+
+    Args:
+        points_a: 點集 A，形狀 (M, 2)，每行為 [y, x]
+        points_b: 點集 B，形狀 (N, 2)，每行為 [y, x]
+
+    Returns:
+        (min_dist_a_to_b, min_dist_b_to_a)
+        - min_dist_a_to_b: 形狀 (M,)，points_a[i] 到 points_b 最近點的距離
+        - min_dist_b_to_a: 形狀 (N,)，points_b[j] 到 points_a 最近點的距離
+
+    Raises:
+        ValueError: 如果任一點集為空或形狀不正確
+    """
+    _validate_point_set(points_a, "points_a")
+    _validate_point_set(points_b, "points_b")
+
+    dist_matrix = cdist(points_a, points_b, metric='euclidean')  # (M, N)
+    min_dist_a_to_b = np.min(dist_matrix, axis=1)  # (M,)
+    min_dist_b_to_a = np.min(dist_matrix, axis=0)  # (N,)
+
+    return min_dist_a_to_b, min_dist_b_to_a
+
+
 def compute_average_hausdorff_distance(
     points_a: np.ndarray,
     points_b: np.ndarray,
@@ -58,21 +87,8 @@ def compute_average_hausdorff_distance(
         ...     points_a, points_b, return_components=True
         ... )
     """
-    # 驗證輸入
-    _validate_point_set(points_a, "points_a")
-    _validate_point_set(points_b, "points_b")
-
-    # 計算距離矩陣：dist_matrix[i, j] = distance(points_a[i], points_b[j])
-    # 形狀: (M, N)，其中 M = len(points_a), N = len(points_b)
-    dist_matrix = cdist(points_a, points_b, metric='euclidean')
-
-    # 對每個點在 A 中，找到它到 B 中所有點的最小距離
-    # min_dist_a_to_b[i] = min_j(dist_matrix[i, j])
-    min_dist_a_to_b = np.min(dist_matrix, axis=1)  # 形狀: (M,)
-
-    # 對每個點在 B 中，找到它到 A 中所有點的最小距離
-    # min_dist_b_to_a[j] = min_i(dist_matrix[i, j])
-    min_dist_b_to_a = np.min(dist_matrix, axis=0)  # 形狀: (N,)
+    # 取得每個點的最小距離陣列
+    min_dist_a_to_b, min_dist_b_to_a = compute_point_min_distances(points_a, points_b)
 
     # 計算雙向平均距離
     d_a_to_b = np.mean(min_dist_a_to_b)
@@ -113,12 +129,8 @@ def compute_directed_hausdorff_distance(
         >>> print(f"{dist:.4f}")
         0.1414
     """
-    _validate_point_set(points_a, "points_a")
-    _validate_point_set(points_b, "points_b")
-
-    dist_matrix = cdist(points_a, points_b, metric='euclidean')
-    min_distances = np.min(dist_matrix, axis=1)
-    return float(np.mean(min_distances))
+    min_dist_a_to_b, _ = compute_point_min_distances(points_a, points_b)
+    return float(np.mean(min_dist_a_to_b))
 
 
 def _validate_point_set(points: np.ndarray, name: str) -> None:

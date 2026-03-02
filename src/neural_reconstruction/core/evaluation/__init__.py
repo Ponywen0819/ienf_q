@@ -46,6 +46,7 @@ graph = loader.load(Path("topology.graphml"))
 
 # 核心度量函數
 from .metrics import (
+    compute_point_min_distances,
     compute_average_hausdorff_distance,
     compute_directed_hausdorff_distance,
 )
@@ -70,6 +71,7 @@ from .data_types import (
 
 __all__ = [
     # 度量函數
+    'compute_point_min_distances',
     'compute_average_hausdorff_distance',
     'compute_directed_hausdorff_distance',
     # 點集提取

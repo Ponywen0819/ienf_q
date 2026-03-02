@@ -3,9 +3,10 @@ from PIL import Image
 import numpy as np
 from pathlib import Path
 
-base_path = "/Users/ponywen/Downloads/20260202"
+base_path = "/home/pony/projects/ienf_q/label_0302"
+output_base = Path("./data_0320")
 # 設定要找的圖層名稱
-target_layer_name = "圖層 4"
+target_layer_name = "refine"
 
 # 1. 搜索所有 .psd 檔案
 psd_files = list(Path(base_path).glob("*.psd"))
@@ -39,11 +40,18 @@ for psd_file in psd_files:
                 image = layer.composite()
                 image = np.array(image).astype(np.uint8)
                 aplpha_channel = image[:, :, 3]  # 取得 alpha 通道
+
                 mask = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
-                mask[aplpha_channel > 0] = 255  # 取得非透明部分的像素
+                target_pixels = (
+                    (aplpha_channel > 0)
+                    & (image[:, :, 0] > 127)
+                    & (image[:, :, 1] > 127)
+                    & (image[:, :, 2] > 127)
+                )  # 非透明部分的像素位置
+                mask[target_pixels] = 255  # 取得非透明部分的像素
 
                 # 5. 建立輸出路徑並儲存
-                output_dir = Path("./data") / sample_id
+                output_dir = output_base / sample_id
                 output_dir.mkdir(parents=True, exist_ok=True)
                 output_path = output_dir / "label.png"
 
