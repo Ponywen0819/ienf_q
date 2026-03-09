@@ -17,8 +17,7 @@ from typing import Tuple, Union
 
 
 def compute_point_min_distances(
-    points_a: np.ndarray,
-    points_b: np.ndarray
+    points_a: np.ndarray, points_b: np.ndarray
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     計算兩點集間每個點到對方點集的最小距離
@@ -38,7 +37,7 @@ def compute_point_min_distances(
     _validate_point_set(points_a, "points_a")
     _validate_point_set(points_b, "points_b")
 
-    dist_matrix = cdist(points_a, points_b, metric='euclidean')  # (M, N)
+    dist_matrix = cdist(points_a, points_b, metric="euclidean")  # (M, N)
     min_dist_a_to_b = np.min(dist_matrix, axis=1)  # (M,)
     min_dist_b_to_a = np.min(dist_matrix, axis=0)  # (N,)
 
@@ -48,8 +47,7 @@ def compute_point_min_distances(
 def compute_average_hausdorff_distance(
     points_a: np.ndarray,
     points_b: np.ndarray,
-    return_components: bool = False
-) -> Union[float, Tuple[float, float, float]]:
+) -> Tuple[float, float, float]:
     """
     計算兩個點集之間的平均 Hausdorff 距離
 
@@ -97,14 +95,11 @@ def compute_average_hausdorff_distance(
     # 返回對稱的平均距離
     avg_distance = (d_a_to_b + d_b_to_a) / 2.0
 
-    if return_components:
-        return float(avg_distance), float(d_a_to_b), float(d_b_to_a)
-    return float(avg_distance)
+    return float(avg_distance), float(d_a_to_b), float(d_b_to_a)
 
 
 def compute_directed_hausdorff_distance(
-    points_a: np.ndarray,
-    points_b: np.ndarray
+    points_a: np.ndarray, points_b: np.ndarray
 ) -> float:
     """
     計算單向 Hausdorff 距離 d(A→B)
@@ -152,16 +147,11 @@ def _validate_point_set(points: np.ndarray, name: str) -> None:
         raise ValueError(f"{name} 不能為空")
 
     if points.ndim != 2 or points.shape[1] != 2:
-        raise ValueError(
-            f"{name} 應為形狀 (N, 2)，實際為 {points.shape}"
-        )
+        raise ValueError(f"{name} 應為形狀 (N, 2)，實際為 {points.shape}")
 
 
 # 未來可擴展的度量
-def compute_chamfer_distance(
-    points_a: np.ndarray,
-    points_b: np.ndarray
-) -> float:
+def compute_chamfer_distance(points_a: np.ndarray, points_b: np.ndarray) -> float:
     """
     計算 Chamfer Distance（未來實作）
 

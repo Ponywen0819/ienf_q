@@ -44,7 +44,7 @@ class TopologyComparator:
         graph2: nx.Graph,
         label1: str = "圖1",
         label2: str = "圖2",
-        return_directional: bool = False
+        return_directional: bool = False,
     ) -> ComparisonResult:
         """
         比對兩個拓樸圖
@@ -70,33 +70,27 @@ class TopologyComparator:
 
         try:
             # 提取點集
-            points1 = self.point_extractor.extract_points(graph1)
-            points2 = self.point_extractor.extract_points(graph2)
+            points1 = self.point_extractor.extract_points(graph1, include_nodes=False)
+            points2 = self.point_extractor.extract_points(graph2, include_nodes=False)
 
             result.num_points1 = len(points1)
             result.num_points2 = len(points2)
 
             # 檢查空點集
             if len(points1) == 0 or len(points2) == 0:
-                result.status = 'failed'
-                result.error = 'empty_point_set'
+                result.status = "failed"
+                result.error = "empty_point_set"
                 self.logger.warning(
-                    f"點集為空: {label1}={len(points1)}, "
-                    f"{label2}={len(points2)}"
+                    f"點集為空: {label1}={len(points1)}, {label2}={len(points2)}"
                 )
                 return result
 
             # 計算 Hausdorff 距離
-            if return_directional:
-                distance, d_a_to_b, d_b_to_a = compute_average_hausdorff_distance(
-                    points1, points2, return_components=True
-                )
-                result.hausdorff_a_to_b = d_a_to_b
-                result.hausdorff_b_to_a = d_b_to_a
-            else:
-                distance = compute_average_hausdorff_distance(
-                    points1, points2
-                )
+            distance, d_a_to_b, d_b_to_a = compute_average_hausdorff_distance(
+                points1, points2
+            )
+            result.hausdorff_a_to_b = d_a_to_b
+            result.hausdorff_b_to_a = d_b_to_a
 
             result.hausdorff_distance = distance
 
@@ -106,7 +100,7 @@ class TopologyComparator:
             )
 
         except Exception as e:
-            result.status = 'failed'
+            result.status = "failed"
             result.error = str(e)
             self.logger.error(f"比對失敗: {e}", exc_info=True)
 

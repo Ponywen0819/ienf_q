@@ -33,13 +33,36 @@ def load_sample(sample_dir: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         annotation : binary {0, 255}.
         label      : binary {0, 255} ground truth.
     """
-    bgr        = cv2.imread(str(sample_dir / "image.png"))
-    image      = bgr[:, :, 1]   # green channel (strongest nerve signal)
-    background = skimage.restoration.rolling_ball(image, radius=50)
-    image      = cv2.subtract(image, background.astype(np.uint8))
-    annotation = (cv2.imread(str(sample_dir / "annotation.png"), cv2.IMREAD_GRAYSCALE) > 127).astype(np.uint8) * 255
-    label      = (cv2.imread(str(sample_dir / "label.png"),      cv2.IMREAD_GRAYSCALE) > 127).astype(np.uint8) * 255
+    bgr = cv2.imread(str(sample_dir / "image.png"))
+    image = bgr[:, :, 1]  # green channel (strongest nerve signal)
+    # background = skimage.restoration.rolling_ball(image, radius=50)
+    # image      = cv2.subtract(image, background.astype(np.uint8))
+    annotation = (
+        cv2.imread(str(sample_dir / "annotation.png"), cv2.IMREAD_GRAYSCALE) > 127
+    ).astype(np.uint8) * 255
+    label = (
+        cv2.imread(str(sample_dir / "label.png"), cv2.IMREAD_GRAYSCALE) > 127
+    ).astype(np.uint8) * 255
     return image, annotation, label
+
+
+def load_image(sample_dir: Path) -> np.ndarray:
+    """Load and background-correct the green channel from a sample directory.
+
+    Applies rolling-ball background subtraction (radius=50) to improve fiber/background
+    contrast before inference.
+
+    Args:
+        sample_dir: Directory containing image.png.
+
+    Returns:
+        image: uint8 numpy array (H, W) of the background-corrected green channel.
+    """
+    bgr = cv2.imread(str(sample_dir / "image.png"))
+    image = bgr[:, :, 1]  # green channel (strongest nerve signal)
+    # background = skimage.restoration.rolling_ball(image, radius=50)
+    # image      = cv2.subtract(image, background.astype(np.uint8))
+    return image
 
 
 def get_patch_starts(total: int, patch: int, stride: int) -> list[int]:
@@ -92,7 +115,7 @@ def extract_patches(
 
             lbl_p = label[y0:y1, x0:x1]
             if lbl_p.max() == 0:
-                continue   # no label content → skip to avoid training on empty patches
+                continue  # no label content → skip to avoid training on empty patches
 
             img_p = image[y0:y1, x0:x1]
             ann_p = annotation[y0:y1, x0:x1]
@@ -113,7 +136,7 @@ class PatchDataset(Dataset):
     """Patch-based dataset for UNet training.
 
     Each item:
-      x : torch.Tensor (2, H, W) float32 — [green / 255, annotation / 255]
+      x : torch.Tensor (1, H, W) float32 — [green / 255]
       y : torch.Tensor (H, W)   int64    — binary label {0=BG, 1=FG}
 
     Augmentation (training only): random horizontal/vertical flip and 90° rotation.
@@ -131,24 +154,23 @@ class PatchDataset(Dataset):
         return len(self.patches)
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
-        img, ann, lbl = self.patches[idx]
+        img, _, lbl = self.patches[idx]
 
-        img_t = torch.from_numpy(img[None]).float() / 255.0   # (1, H, W)
-        ann_t = torch.from_numpy(ann[None]).float() / 255.0   # (1, H, W)
+        img_t = torch.from_numpy(img[None]).float() / 255.0  # (1, H, W)
         lbl_t = (torch.from_numpy(lbl.astype(np.int64)) > 127).long()  # (H, W)
 
-        x = torch.cat([img_t, ann_t], dim=0)   # (2, H, W)
+        x = img_t  # (1, H, W)
 
         if self.augment:
             if random.random() > 0.5:
-                x     = TF.hflip(x)
+                x = TF.hflip(x)
                 lbl_t = TF.hflip(lbl_t.unsqueeze(0)).squeeze(0)
             if random.random() > 0.5:
-                x     = TF.vflip(x)
+                x = TF.vflip(x)
                 lbl_t = TF.vflip(lbl_t.unsqueeze(0)).squeeze(0)
             k = random.randint(0, 3)
             if k > 0:
-                x     = torch.rot90(x,     k, dims=[1, 2])
+                x = torch.rot90(x, k, dims=[1, 2])
                 lbl_t = torch.rot90(lbl_t, k, dims=[0, 1])
 
         return x, lbl_t

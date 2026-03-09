@@ -32,3 +32,11 @@ Neural_Connections/
 *.pkl
 
 *.psd
+
+*.csv
+
+*.log
+
+output/
+
+data/

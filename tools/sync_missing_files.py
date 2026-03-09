@@ -1,7 +1,7 @@
-"""Sync missing image.png / annotation.png into data_0320 from data/.
+"""Sync missing image.png / annotation.png / mask.png into data_0320 from data/.
 
 For each sample directory in TARGET_DIR:
-  1. Check whether image.png and annotation.png exist.
+  1. Check whether image.png, annotation.png, and mask.png exist.
   2. If missing, locate the file in SOURCE_DIR under the same sample name.
   3. Copy the file, resizing it to match the label.png dimensions in TARGET_DIR
      if the sizes differ.
@@ -21,7 +21,7 @@ import cv2
 import numpy as np
 
 
-REQUIRED_FILES = ["image.png", "annotation.png"]
+REQUIRED_FILES = ["image.png", "annotation.png", "mask.png"]
 
 
 def parse_args() -> argparse.Namespace:

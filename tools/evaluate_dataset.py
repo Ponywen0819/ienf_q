@@ -24,6 +24,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Any
 import csv
+import cv2
 
 import numpy as np
 import networkx as nx
@@ -33,13 +34,23 @@ from tqdm import tqdm
 # 添加專案根目錄到 Python 路徑
 
 from neural_reconstruction.algorithms.pure_mst.linker import PureMstLinker
-from neural_reconstruction.algorithms.fragment_linking.linker import HierarchicalFragmentLinker
+from neural_reconstruction.algorithms.fragment_linking.linker import (
+    HierarchicalFragmentLinker,
+)
+from neural_reconstruction.algorithms.xgb_mst.linker import XgbMstLinker
+from neural_reconstruction.algorithms.unet_linker import UnetLinker
+
 from neural_reconstruction.core.topology import TopologyBuilder
+from neural_reconstruction.common.data_types import LinkerResult
+
 
 # 使用新的評估模組
 from neural_reconstruction.core.evaluation import (
-    TopologyComparator,
+    GraphPointExtractor,
     extract_graph_points,
+    TopologyComparator,
+    compute_average_hausdorff_distance,
+    compute_point_min_distances,
 )
 
 
@@ -82,6 +93,8 @@ class SampleResult:
     sample_id: str
     status: str  # success, skipped, failed
     hausdorff_distance: Optional[float] = None
+    hausdorff_distance_pred_to_gt: Optional[float] = None
+    hausdorff_distance_gt_to_pred: Optional[float] = None
     num_nodes_pred: Optional[int] = None
     num_nodes_gt: Optional[int] = None
     num_edges_pred: Optional[int] = None
@@ -195,7 +208,7 @@ class TopologyExtractor:
 
     def extract_from_pipeline(
         self, image: np.ndarray, mask: np.ndarray, annotation: np.ndarray
-    ) -> Optional[nx.Graph]:
+    ) -> Optional[LinkerResult]:
         """
         從 Pipeline 萃取拓樸
 
@@ -235,15 +248,6 @@ class TopologyExtractor:
         except Exception as e:
             self.logger.error(f"GT 拓樸建構失敗: {e}", exc_info=True)
             return None
-
-
-# ============================================================================
-# Hausdorff 距離計算器
-# ============================================================================
-
-
-# 已移至 neural_reconstruction.core.evaluation 模組
-# 使用 TopologyComparator 取代 HausdorffCalculator
 
 
 # ============================================================================
@@ -352,7 +356,6 @@ class EvaluationReporter:
             "summary": asdict(summary),
             "samples": samples_dict,
             "skipped_samples": skipped_samples,
-            "config": config,
         }
 
         with open(json_path, "w", encoding="utf-8") as f:
@@ -368,6 +371,8 @@ class EvaluationReporter:
             "sample_id",
             "status",
             "hausdorff_distance",
+            "hausdorff_distance_gt_to_pred",
+            "hausdorff_distance_pred_to_gt",
             "num_nodes_pred",
             "num_nodes_gt",
             "num_edges_pred",
@@ -439,6 +444,7 @@ class DatasetEvaluator:
         self.loader = DatasetLoader(data_dir)
         self.extractor = TopologyExtractor(linker)
         self.comparator = TopologyComparator()
+        self.builder = TopologyBuilder()
         self.reporter = EvaluationReporter(output_dir)
 
         self.config = {"linker": type(linker).__name__, "params": vars(linker)}
@@ -508,9 +514,11 @@ class DatasetEvaluator:
             annotation = np.array(Image.open(sample.annotation_path))
 
             # 萃取 Pipeline 拓樸
-            graph_pred = self.extractor.extract_from_pipeline(image, mask, annotation)
+            extract_result = self.extractor.extract_from_pipeline(
+                image, mask, annotation
+            )
 
-            if graph_pred is None:
+            if extract_result is None:
                 return SampleResult(
                     sample_id=sample.sample_id,
                     status="failed",
@@ -519,21 +527,22 @@ class DatasetEvaluator:
 
             # 萃取 GT 拓樸
             gt_label = np.array(Image.open(sample.label_path))
-            graph_gt = self.extractor.extract_from_gt(gt_label)
+            roi_label = cv2.bitwise_and(
+                gt_label, gt_label, mask=extract_result.mask
+            )  # 只保留遮罩區域內的 GT
+            graph_gt = self.builder.build_seed_graph(roi_label)
 
-            # 計算 Hausdorff 距離
-            hausdorff_dist = None
-            if graph_gt is not None:
-                result = self.comparator.compare(
-                    graph_pred, graph_gt, label1="pred", label2="gt"
-                )
-                if result.status == "success":
-                    hausdorff_dist = result.hausdorff_distance
+            pred_points = extract_graph_points(extract_result.graph)
+            gt_points = extract_graph_points(graph_gt)
+
+            avg_dist, d_pred_to_gt, d_gt_to_pred = compute_average_hausdorff_distance(
+                pred_points, gt_points
+            )
 
             # 收集統計資訊
-            num_nodes_pred = graph_pred.number_of_nodes()
-            num_edges_pred = graph_pred.number_of_edges()
-            num_components_pred = nx.number_connected_components(graph_pred)
+            num_nodes_pred = extract_result.graph.number_of_nodes()
+            num_edges_pred = extract_result.graph.number_of_edges()
+            num_components_pred = nx.number_connected_components(extract_result.graph)
 
             num_nodes_gt = graph_gt.number_of_nodes() if graph_gt is not None else None
             num_edges_gt = graph_gt.number_of_edges() if graph_gt is not None else None
@@ -541,7 +550,9 @@ class DatasetEvaluator:
             return SampleResult(
                 sample_id=sample.sample_id,
                 status="success",
-                hausdorff_distance=hausdorff_dist,
+                hausdorff_distance=avg_dist,
+                hausdorff_distance_pred_to_gt=d_pred_to_gt,
+                hausdorff_distance_gt_to_pred=d_gt_to_pred,
                 num_nodes_pred=num_nodes_pred,
                 num_nodes_gt=num_nodes_gt,
                 num_edges_pred=num_edges_pred,
@@ -601,7 +612,7 @@ def main():
 
     parser.add_argument(
         "--algorithm",
-        choices=["pure_mst", "hierarchical"],
+        choices=["pure_mst", "hierarchical", "xgb_mst", "unet"],
         default="pure_mst",
         help="使用的重建演算法 (預設: pure_mst)",
     )
@@ -636,7 +647,7 @@ def main():
             max_cost_threshold=0.98,
             intensity_weight=0.6,
         )
-    else:  # hierarchical
+    elif args.algorithm == "hierarchical":  # hierarchical
         linker = HierarchicalFragmentLinker(
             offset_px=100,
             rolling_ball_radius=2,
@@ -650,7 +661,26 @@ def main():
             max_angle_mst=90.0,
             max_cost_threshold_mst=0.75,
         )
-
+    elif args.algorithm == "xgb_mst":  # xgb_mst
+        linker = XgbMstLinker(
+            offset_px=100,
+            rolling_ball_radius=2,
+            opening_kernel_size=3,
+            segment_length=3.0,
+            search_radius=100.0,
+            xgb_proba_threshold=0.5,
+        )
+    elif args.algorithm == "unet":  # unet
+        linker = UnetLinker(
+            checkpoint_path="/home/pony/projects/ienf_q/output/unet_0320/unet_best.pth",
+            base_channels=32,
+            patch_size=512,
+            overlap=64,
+            threshold=0.5,
+            device="auto",
+        )
+    else:
+        raise ValueError(f"未知的演算法選項: {args.algorithm}")
     # 建立評測器
     evaluator = DatasetEvaluator(
         data_dir=args.data_dir,

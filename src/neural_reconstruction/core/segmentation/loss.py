@@ -45,7 +45,7 @@ class BCEDiceLoss(nn.Module):
 
         bce = F.binary_cross_entropy_with_logits(
             fg_logit, target_f,
-            pos_weight=self.pos_weight,
+            pos_weight=self.pos_weight.to(logits.device),
         )
 
         prob         = torch.sigmoid(fg_logit)

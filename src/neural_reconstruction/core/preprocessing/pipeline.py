@@ -66,7 +66,7 @@ class SkinAnalysisPipeline:
         annotation_image: np.ndarray,
         epidermis_mask: np.ndarray,
         original_image: np.ndarray,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Execute the complete skin analysis pipeline.
 
@@ -85,9 +85,10 @@ class SkinAnalysisPipeline:
 
         Returns:
             如果 debug=False:
-                Tuple of (final_label, roi_image):
+                Tuple of (final_label, roi_image, dilated_mask):
                     - final_label: Combined label image (uint8, 0 or 255)
                     - roi_image: Original image masked to epidermis region
+                    - dilated_mask: Dilated epidermis mask
             如果 debug=True:
                 Tuple of (final_label, roi_image, debug_output):
                     - final_label: Combined label image (uint8, 0 or 255)
@@ -138,7 +139,7 @@ class SkinAnalysisPipeline:
         # Step 4: Apply morphological operations to merged result
         final_label = self._process_merged_label(merged_label)
 
-        return final_label, roi_image
+        return final_label, roi_image, dilated_mask
 
     def _process_merged_label(self, merged_label: np.ndarray) -> np.ndarray:
         """

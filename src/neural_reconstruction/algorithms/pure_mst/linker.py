@@ -20,6 +20,7 @@ from skimage.measure import label
 from neural_reconstruction.core.preprocessing import SkinAnalysisPipeline
 from neural_reconstruction.core.topology import TopologyBuilder
 from neural_reconstruction.core.pathfinding import PathFinder
+from neural_reconstruction.common.data_types import LinkerResult
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ class PureMstLinker:
         image: np.ndarray,
         mask: np.ndarray,
         annotation: np.ndarray,
-    ) -> nx.Graph:
+    ) -> LinkerResult:
         """
         運行完整的 MST 神經纖維重建流程（含預處理）
 
@@ -79,7 +80,7 @@ class PureMstLinker:
             annotation: 手工標註 (H, W)
 
         Returns:
-            MST 森林 (nx.Graph)
+            LinkerResult
         """
         logger.info("1. 圖像預處理...")
 
@@ -112,11 +113,16 @@ class PureMstLinker:
         else:
             orig_img = image
 
-        roi_annotation, roi_image = pipeline.run(annotation, mask, orig_img)
+        roi_annotation, roi_image, roi_mask = pipeline.run(annotation, mask, orig_img)
 
         logger.info("  ✓ 預處理完成")
 
-        return self._run_reconstruction(roi_annotation, roi_image)
+        return LinkerResult(
+            annotation=roi_annotation,
+            image=roi_image,
+            mask=roi_mask,
+            graph=self._run_reconstruction(roi_annotation, roi_image),
+        )
 
     def _run_reconstruction(
         self,
@@ -165,7 +171,7 @@ class PureMstLinker:
         self._add_inter_component_edges(global_graph, cost_map)
 
         # 4. MST
-        return self._extract_mst_forest(global_graph)
+        return nx.minimum_spanning_tree(global_graph, weight="weight")
 
     def _add_inter_component_edges(
         self, global_graph: nx.MultiGraph, cost_map: np.ndarray
@@ -211,15 +217,3 @@ class PureMstLinker:
                 global_graph.add_edge(
                     tuple(source.astype(int)), target_pos, weight=cost, path=path
                 )
-
-    def _extract_mst_forest(self, graph: nx.MultiGraph) -> nx.Graph:
-        """對每個連通分量分別萃取 MST，合併為森林"""
-        forest = nx.MultiGraph()
-        for component_nodes in nx.connected_components(graph):
-            subgraph = graph.subgraph(component_nodes)
-            if subgraph.number_of_edges() == 0:
-                forest.add_nodes_from(subgraph.nodes(data=True))
-            else:
-                mst = nx.minimum_spanning_tree(subgraph, weight="weight")
-                forest = nx.compose(forest, mst)
-        return forest

@@ -32,7 +32,6 @@ def make_gaussian_weight(patch_size: int) -> np.ndarray:
 def predict_full_image(
     model: UNet,
     image: np.ndarray,
-    annotation: np.ndarray,
     patch_size: int = 512,
     stride: int = 480,
     device: str = "cpu",
@@ -42,7 +41,6 @@ def predict_full_image(
     Args:
         model:       Trained UNet (will be set to eval mode internally).
         image:       (H, W) uint8 — green channel of the microscopy image.
-        annotation:  (H, W) uint8 — sparse manual annotation.
         patch_size:  Patch size used during training (default 512).
         stride:      Sliding-window stride (default 480, i.e. 32 px overlap).
         device:      Torch device string (default "cpu").
@@ -65,15 +63,12 @@ def predict_full_image(
                 ph, pw = y1 - y0, x1 - x0
 
                 img_p = image[y0:y1, x0:x1]
-                ann_p = annotation[y0:y1, x0:x1]
 
                 if ph < patch_size or pw < patch_size:
                     img_p = np.pad(img_p, ((0, patch_size - ph), (0, patch_size - pw)), "reflect")
-                    ann_p = np.pad(ann_p, ((0, patch_size - ph), (0, patch_size - pw)), "reflect")
 
-                img_t = torch.from_numpy(img_p[None]).float() / 255.0
-                ann_t = torch.from_numpy(ann_p[None]).float() / 255.0
-                x_in  = torch.cat([img_t, ann_t], dim=0).unsqueeze(0).to(device)
+                x_in  = torch.from_numpy(img_p[None, None]).float() / 255.0  # (1, 1, H, W)
+                x_in  = x_in.to(device)
 
                 logits = model(x_in)
                 prob   = torch.softmax(logits, dim=1)[0, 1].cpu().numpy()

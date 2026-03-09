@@ -56,3 +56,21 @@ class ConnectionGraphBuilderResult:
 @dataclass
 class PathFindingResult:
     pass
+
+
+@dataclass
+class LinkerResult:
+    """
+    Linker.run() 的完整輸出結果
+
+    Attributes:
+        annotation: 預處理後的 ROI 標註影像 (H, W)
+        image: 預處理後的 ROI 影像 (H, W)
+        mask: 預處理後的 ROI 遮罩 (H, W)
+        graph: MST 重建圖 (nx.Graph)
+    """
+
+    annotation: np.ndarray
+    image: np.ndarray
+    mask: np.ndarray
+    graph: nx.Graph

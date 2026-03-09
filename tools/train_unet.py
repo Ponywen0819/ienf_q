@@ -27,11 +27,13 @@ Key options
     --seed            Random seed (default: 42)
     --device          'cuda', 'cpu', or 'auto' (default: auto)
     --resume          Path to a checkpoint .pth to resume from (optional)
+    --load-workers    Threads for parallel sample loading (default: 4)
 """
 
 import argparse
 import json
 import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import cv2
@@ -99,6 +101,12 @@ def parse_args() -> argparse.Namespace:
         metavar="CHECKPOINT",
         help="Path to a checkpoint .pth to resume training from",
     )
+    p.add_argument(
+        "--load-workers",
+        type=int,
+        default=4,
+        help="Threads for parallel sample loading / rolling-ball (default: 4)",
+    )
     return p.parse_args()
 
 
@@ -123,15 +131,28 @@ def compute_class_weights(patches: list) -> tuple[int, int]:
     return total_px - fg_px, fg_px
 
 
+def _load_one(sample_dir: Path, patch_size: int, stride: int) -> tuple[Path, list]:
+    """Load one sample and extract patches (runs in a thread)."""
+    patches = extract_patches(*load_sample(sample_dir), patch_size=patch_size, stride=stride)
+    return sample_dir, patches
+
+
 def extract_from_dirs(
-    sample_dirs: list[Path], patch_size: int, stride: int, tag: str
+    sample_dirs: list[Path], patch_size: int, stride: int, tag: str, num_workers: int = 4
 ) -> list:
-    patches = []
+    results: dict[Path, list] = {}
+    with ThreadPoolExecutor(max_workers=num_workers) as pool:
+        futures = {pool.submit(_load_one, d, patch_size, stride): d for d in sample_dirs}
+        for fut in as_completed(futures):
+            sample_dir, patches = fut.result()
+            results[sample_dir] = patches
+            print(f"  [{tag}] {sample_dir.name}: {len(patches)} patches")
+
+    # Return in original order so dataset ordering is deterministic
+    all_patches = []
     for d in sample_dirs:
-        p = extract_patches(*load_sample(d), patch_size=patch_size, stride=stride)
-        patches.extend(p)
-        print(f"  [{tag}] {d.name}: {len(p)} patches")
-    return patches
+        all_patches.extend(results[d])
+    return all_patches
 
 
 # ---------------------------------------------------------------------------
@@ -173,11 +194,13 @@ def main() -> None:
     print(f"Val   ({len(val_sample_dirs)}):   {[s.name for s in val_sample_dirs]}")
 
     # ── Patch extraction ───────────────────────────────────────────────────
-    print("\nExtracting patches...")
+    print(f"\nExtracting patches (load_workers={args.load_workers})...")
     train_patches = extract_from_dirs(
-        train_sample_dirs, args.patch_size, stride, "train"
+        train_sample_dirs, args.patch_size, stride, "train", args.load_workers
     )
-    val_patches = extract_from_dirs(val_sample_dirs, args.patch_size, stride, "val")
+    val_patches = extract_from_dirs(
+        val_sample_dirs, args.patch_size, stride, "val", args.load_workers
+    )
     print(f"\nTotal  train: {len(train_patches)}  |  val: {len(val_patches)}")
 
     # ── Class imbalance ────────────────────────────────────────────────────
@@ -207,7 +230,7 @@ def main() -> None:
     )
 
     # ── Model, loss, optimiser ─────────────────────────────────────────────
-    model = UNet(in_channels=2, out_channels=2, base_channels=args.base_channels).to(
+    model = UNet(in_channels=1, out_channels=2, base_channels=args.base_channels).to(
         device
     )
     criterion = BCEDiceLoss(bce_weight=0.5, dice_weight=0.5, pos_weight=pos_weight)
@@ -317,9 +340,9 @@ def main() -> None:
 
     all_dice, train_dice_vals, val_dice_vals = [], [], []
     for sample_dir in valid_samples:
-        img, ann, lbl = load_sample(sample_dir)
+        img, _, lbl = load_sample(sample_dir)
         prob_map = predict_full_image(
-            model, img, ann, patch_size=args.patch_size, stride=stride, device=device
+            model, img, patch_size=args.patch_size, stride=stride, device=device
         )
         pred_bin = prob_map > 0.5
         target_bin = lbl > 127

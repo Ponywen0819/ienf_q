@@ -77,7 +77,7 @@ class UNet(nn.Module):
                        Using 64 matches the original UNet paper; 32 halves memory.
     """
 
-    def __init__(self, in_channels: int = 2, out_channels: int = 2, base_channels: int = 32):
+    def __init__(self, in_channels: int = 1, out_channels: int = 2, base_channels: int = 32):
         super().__init__()
         b = base_channels
         self.inc   = DoubleConv(in_channels, b)

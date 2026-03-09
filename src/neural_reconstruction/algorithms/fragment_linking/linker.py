@@ -21,6 +21,7 @@ from skimage.measure import label
 from neural_reconstruction.core.preprocessing import SkinAnalysisPipeline
 from neural_reconstruction.core.topology import TopologyBuilder
 from neural_reconstruction.core.pathfinding import PathFinder
+from neural_reconstruction.common.data_types import LinkerResult
 from .endpoint_extension import extend_endpoints
 from .mst_candidates import generate_mst_candidates
 
@@ -90,7 +91,7 @@ class HierarchicalFragmentLinker:
 
     def run(
         self, image: np.ndarray, mask: np.ndarray, annotation: np.ndarray
-    ) -> nx.Graph:
+    ) -> LinkerResult:
         """
         運行完整的階層式片段連接算法（含預處理）
 
@@ -100,7 +101,7 @@ class HierarchicalFragmentLinker:
             annotation: 手工標註 (H, W)
 
         Returns:
-            MST 圖
+            LinkerResult
         """
         logger.info("=" * 60)
         logger.info("開始階層式片段連接（含預處理）")
@@ -146,7 +147,7 @@ class HierarchicalFragmentLinker:
         logger.info("  - 生成偽標註")
         logger.info("  - 形態學處理")
 
-        roi_annotation, roi_image = pipeline.run(annotation, mask, orig_img)
+        roi_annotation, roi_image, roi_mask = pipeline.run(annotation, mask, orig_img)
 
         logger.info("  ✓ 預處理完成")
 
@@ -177,7 +178,7 @@ class HierarchicalFragmentLinker:
 
         # 構建 label 圖（用於排除同一連通分量）
         binary = (roi_annotation > 0).astype(np.uint8)
-        label_img = label(binary, connectivity=2)
+        label_img = np.asarray(label(binary, connectivity=2))
 
         # 5. 路徑查找
         logger.info("5. 路徑查找...")
@@ -267,4 +268,9 @@ class HierarchicalFragmentLinker:
         logger.info(f"  - 最終端點數: {final_endpoints}")
         logger.info(f"  - 連通分量數: {nx.number_connected_components(mst_result)}")
 
-        return mst_result
+        return LinkerResult(
+            annotation=roi_annotation,
+            image=roi_image,
+            mask=roi_mask,
+            graph=mst_result,
+        )
