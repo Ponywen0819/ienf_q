@@ -1,0 +1,9 @@
+sudo mount -t cifs -o username=shaojie_wen,password=Pony6152340@ //140.112.27.135/jia/pony /mnt/nas
+
+//140.112.27.135/jia/pony /mnt/nas cifs credentials=/home/pony/.smbcredentials,iocharset=utf8,uid=1000,gid=1000 0 0
+
+sudo mount -t cifs -o username=shaojie_wen,password=Pony6152340@,uid=$(id -u),gid=$(id -g),vers=3.0 //140.112.27.135/jia/pony /mnt/nas
+
+
+//140.112.27.135/jia/pony /mnt/nas cifs credentials=/home/pony/.smbcredentials,uid=pony,gid=pony,iocharset=utf8,file_mode=0775,dir_mode=0775 0 0
+//140.112.27.135/neuroimages /mnt/nas/neuroimages cifs credentials=/home/pony/.smbcredentials,uid=pony,gid=pony,iocharset=utf8,file_mode=0775,dir_mode=0775 0 0

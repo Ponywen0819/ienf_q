@@ -36,17 +36,15 @@ import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-import cv2
 import numpy as np
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
 from neural_reconstruction.core.segmentation import (
-    BCEDiceLoss,
+    SegmentationLoss,
     PatchDataset,
     UNet,
-    dice_coeff,
     extract_patches,
     load_sample,
     train_epoch,
@@ -87,6 +85,12 @@ def parse_args() -> argparse.Namespace:
         default=32,
         help="Feature-map width at first encoder level (default: 32)",
     )
+    p.add_argument(
+        "--loss",
+        choices=["bce_dice", "hd", "bce_dice_hd", "bce_dice_topo"],
+        default="bce_dice_topo",
+        help="Loss function (default: bce_dice_topo)",
+    )
     p.add_argument("--seed", type=int, default=42)
     p.add_argument(
         "--device",
@@ -107,6 +111,7 @@ def parse_args() -> argparse.Namespace:
         default=4,
         help="Threads for parallel sample loading / rolling-ball (default: 4)",
     )
+
     return p.parse_args()
 
 
@@ -133,16 +138,24 @@ def compute_class_weights(patches: list) -> tuple[int, int]:
 
 def _load_one(sample_dir: Path, patch_size: int, stride: int) -> tuple[Path, list]:
     """Load one sample and extract patches (runs in a thread)."""
-    patches = extract_patches(*load_sample(sample_dir), patch_size=patch_size, stride=stride)
+    patches = extract_patches(
+        *load_sample(sample_dir), patch_size=patch_size, stride=stride
+    )
     return sample_dir, patches
 
 
 def extract_from_dirs(
-    sample_dirs: list[Path], patch_size: int, stride: int, tag: str, num_workers: int = 4
+    sample_dirs: list[Path],
+    patch_size: int,
+    stride: int,
+    tag: str,
+    num_workers: int = 4,
 ) -> list:
     results: dict[Path, list] = {}
     with ThreadPoolExecutor(max_workers=num_workers) as pool:
-        futures = {pool.submit(_load_one, d, patch_size, stride): d for d in sample_dirs}
+        futures = {
+            pool.submit(_load_one, d, patch_size, stride): d for d in sample_dirs
+        }
         for fut in as_completed(futures):
             sample_dir, patches = fut.result()
             results[sample_dir] = patches
@@ -218,14 +231,14 @@ def main() -> None:
         train_ds,
         batch_size=args.batch_size,
         shuffle=True,
-        num_workers=2,
+        num_workers=12,
         pin_memory=(device == "cuda"),
     )
     val_loader = DataLoader(
         val_ds,
         batch_size=args.batch_size,
         shuffle=False,
-        num_workers=2,
+        num_workers=12,
         pin_memory=(device == "cuda"),
     )
 
@@ -233,7 +246,17 @@ def main() -> None:
     model = UNet(in_channels=1, out_channels=2, base_channels=args.base_channels).to(
         device
     )
-    criterion = BCEDiceLoss(bce_weight=0.5, dice_weight=0.5, pos_weight=pos_weight)
+    loss_kwargs = dict(pos_weight=pos_weight)
+    if args.loss == "bce_dice":
+        loss_kwargs.update(bce_weight=0.5, dice_weight=0.5)
+    elif args.loss == "hd":
+        loss_kwargs.update(bce_weight=0.0, dice_weight=0.0, hd_weight=1.0)
+    elif args.loss == "bce_dice_hd":
+        loss_kwargs.update(bce_weight=0.4, dice_weight=0.4, hd_weight=0.2)
+    else:  # bce_dice_topo
+        loss_kwargs.update(bce_weight=0.4, dice_weight=0.4, topo_weight=0.2)
+
+    criterion = SegmentationLoss(**loss_kwargs).to(device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=0.5, patience=5
@@ -249,7 +272,7 @@ def main() -> None:
     # ── Resume from checkpoint (optional) ────────────────────────────────
     checkpoint_path = args.output_dir / "unet_best.pth"
     history = {"train_loss": [], "val_loss": [], "val_dice": []}
-    best_dice = 0.0
+    best_loss = np.inf
     start_epoch = 0  # 0-based; training runs [start_epoch+1 .. start_epoch+epochs]
 
     if args.resume is not None:
@@ -259,11 +282,11 @@ def main() -> None:
             optimizer.load_state_dict(ckpt["optimizer_state_dict"])
             scheduler.load_state_dict(ckpt["scheduler_state_dict"])
             start_epoch = ckpt["epoch"]
-            best_dice = ckpt.get("best_dice", 0.0)
+            best_loss = ckpt.get("best_dice", 0.0)
             history = ckpt.get("history", history)
             print(
                 f"Resumed from {args.resume}  "
-                f"(epoch {start_epoch}, best Dice {best_dice:.4f})"
+                f"(epoch {start_epoch}, best Dice {best_loss:.4f})"
             )
         else:
             # Legacy checkpoint: plain state_dict
@@ -287,12 +310,12 @@ def main() -> None:
         history["val_loss"].append(v_loss)
         history["val_dice"].append(v_dice)
 
-        if v_dice > best_dice:
-            best_dice = v_dice
+        if v_loss < best_loss:
+            best_loss = v_loss
             torch.save(
                 {
                     "epoch": epoch,
-                    "best_dice": best_dice,
+                    "best_dice": best_loss,
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                     "scheduler_state_dict": scheduler.state_dict(),
@@ -313,7 +336,7 @@ def main() -> None:
                 f"Dice {v_dice:.4f} | LR {lr:.2e}{marker}"
             )
 
-    print(f"\nBest Val Dice : {best_dice:.4f}")
+    print(f"\nBest Val Dice : {best_loss:.4f}")
     print(f"Checkpoint    : {checkpoint_path}")
 
     # ── Save training history ──────────────────────────────────────────────

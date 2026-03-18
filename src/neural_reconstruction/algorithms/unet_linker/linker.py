@@ -100,6 +100,7 @@ class UnetLinker:
         logger.info("1. 圖像預處理...")
 
         pipeline = SkinAnalysisPipeline()
+        pipeline.config.mask.dilate_offset = 1  # 擴張遮罩以包含邊緣纖維
         orig_img = image[:, :, 1]  # 綠色通道
         roi_mask = pipeline._create_dilated_mask(mask)
         roi_image = cv2.bitwise_and(orig_img, orig_img, mask=roi_mask)

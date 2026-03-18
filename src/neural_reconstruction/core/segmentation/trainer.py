@@ -48,10 +48,10 @@ def train_epoch(
     """
     model.train()
     total_loss = 0.0
-    for x, y in loader:
-        x, y = x.to(device), y.to(device)
+    for x, y, skel in loader:
+        x, y, skel = x.to(device), y.to(device), skel.to(device)
         optimizer.zero_grad()
-        loss = criterion(model(x), y)
+        loss = criterion(model(x), y, skel)
         loss.backward()
         optimizer.step()
         total_loss += loss.item() * x.size(0)
@@ -78,10 +78,10 @@ def val_epoch(
     model.eval()
     total_loss, total_dice = 0.0, 0.0
     with torch.no_grad():
-        for x, y in loader:
-            x, y = x.to(device), y.to(device)
+        for x, y, skel in loader:
+            x, y, skel = x.to(device), y.to(device), skel.to(device)
             logits = model(x)
-            total_loss += criterion(logits, y).item() * x.size(0)
+            total_loss += criterion(logits, y, skel).item() * x.size(0)
             total_dice += dice_coeff(logits, y) * x.size(0)
     n = len(loader.dataset)
     return total_loss / n, total_dice / n

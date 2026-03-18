@@ -25,7 +25,7 @@ Training
 """
 
 from .model import UNet, DoubleConv, Down, Up
-from .loss import BCEDiceLoss
+from .loss import SoftDiceLoss, HDLoss, SegmentationLoss
 from .dataset import PatchDataset, load_sample, extract_patches, get_patch_starts
 from .inference import predict_full_image, make_gaussian_weight
 from .trainer import train_epoch, val_epoch, dice_coeff
@@ -34,7 +34,7 @@ __all__ = [
     # model
     "UNet", "DoubleConv", "Down", "Up",
     # loss
-    "BCEDiceLoss",
+    "SoftDiceLoss", "HDLoss", "SegmentationLoss",
     # dataset
     "PatchDataset", "load_sample", "extract_patches", "get_patch_starts",
     # inference

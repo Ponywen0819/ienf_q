@@ -638,7 +638,7 @@ def main():
     # 建立 linker
     if args.algorithm == "pure_mst":
         linker = PureMstLinker(
-            offset_px=100,
+            offset_px=1,
             rolling_ball_radius=2,
             sato_weight=0.0,
             opening_kernel_size=3,
@@ -649,7 +649,7 @@ def main():
         )
     elif args.algorithm == "hierarchical":  # hierarchical
         linker = HierarchicalFragmentLinker(
-            offset_px=100,
+            offset_px=1,
             rolling_ball_radius=2,
             sato_weight=0.0,
             opening_kernel_size=3,
@@ -663,7 +663,7 @@ def main():
         )
     elif args.algorithm == "xgb_mst":  # xgb_mst
         linker = XgbMstLinker(
-            offset_px=100,
+            offset_px=1,
             rolling_ball_radius=2,
             opening_kernel_size=3,
             segment_length=3.0,

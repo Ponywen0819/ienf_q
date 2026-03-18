@@ -1,4 +1,4 @@
-"""Sync missing image.png / annotation.png / mask.png into data_0320 from data/.
+"""Sync missing image.png / annotation.png / mask.png / waka.png into data_0320 from data/.
 
 For each sample directory in TARGET_DIR:
   1. Check whether image.png, annotation.png, and mask.png exist.
@@ -21,19 +21,28 @@ import cv2
 import numpy as np
 
 
-REQUIRED_FILES = ["image.png", "annotation.png", "mask.png"]
+REQUIRED_FILES = ["image.png", "annotation.png", "mask.png", "weka.png"]
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Sync missing image/annotation files from source into target."
     )
-    p.add_argument("--source", type=Path, default=Path("data"),
-                   help="Source data directory (default: data)")
-    p.add_argument("--target", type=Path, default=Path("data_0320"),
-                   help="Target data directory (default: data_0320)")
-    p.add_argument("--dry-run", action="store_true",
-                   help="Print actions without writing any files")
+    p.add_argument(
+        "--source",
+        type=Path,
+        default=Path("data"),
+        help="Source data directory (default: data)",
+    )
+    p.add_argument(
+        "--target",
+        type=Path,
+        default=Path("data_0320"),
+        help="Target data directory (default: data_0320)",
+    )
+    p.add_argument(
+        "--dry-run", action="store_true", help="Print actions without writing any files"
+    )
     return p.parse_args()
 
 
@@ -86,10 +95,10 @@ def main() -> None:
     print(f"Samples: {len(sample_dirs)}")
     print("-" * 60)
 
-    total_copied   = 0
-    total_resized  = 0
-    total_skipped  = 0
-    errors         = []
+    total_copied = 0
+    total_resized = 0
+    total_skipped = 0
+    errors = []
 
     for sample_dir in sample_dirs:
         name = sample_dir.name
@@ -179,8 +188,10 @@ def main() -> None:
                 total_copied += 1
 
     print("-" * 60)
-    print(f"Done.  copied/added: {total_copied}  resized: {total_resized}  "
-          f"already OK: {total_skipped}  errors: {len(errors)}")
+    print(
+        f"Done.  copied/added: {total_copied}  resized: {total_resized}  "
+        f"already OK: {total_skipped}  errors: {len(errors)}"
+    )
 
     if errors:
         print("\nErrors:")

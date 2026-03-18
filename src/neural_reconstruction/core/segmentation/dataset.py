@@ -7,15 +7,16 @@ Utilities:
   - PatchDataset       : PyTorch Dataset with optional augmentation
 """
 
-import random
 from pathlib import Path
 
 import cv2
 import numpy as np
 import skimage.restoration
 import torch
+from skimage.morphology import skeletonize
 from torch.utils.data import Dataset
-import torchvision.transforms.functional as TF
+
+from .augmentation import SegmentationAugment
 
 
 def load_sample(sample_dir: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -114,8 +115,8 @@ def extract_patches(
             x1 = min(x0 + patch_size, w)
 
             lbl_p = label[y0:y1, x0:x1]
-            if lbl_p.max() == 0:
-                continue  # no label content → skip to avoid training on empty patches
+            # if lbl_p.max() == 0:
+            #     continue  # no label content → skip to avoid training on empty patches
 
             img_p = image[y0:y1, x0:x1]
             ann_p = annotation[y0:y1, x0:x1]
@@ -148,29 +149,24 @@ class PatchDataset(Dataset):
 
     def __init__(self, patches: list, augment: bool = False):
         self.patches = patches
-        self.augment = augment
+        self._aug = SegmentationAugment() if augment else None
 
     def __len__(self) -> int:
         return len(self.patches)
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         img, _, lbl = self.patches[idx]
 
+        lbl_bin = lbl > 127
         img_t = torch.from_numpy(img[None]).float() / 255.0  # (1, H, W)
-        lbl_t = (torch.from_numpy(lbl.astype(np.int64)) > 127).long()  # (H, W)
+        lbl_t = torch.from_numpy(lbl_bin.astype(np.int64)).long()  # (H, W)
+        skel_t = torch.from_numpy(
+            skeletonize(lbl_bin).astype(np.int64)
+        ).long()  # (H, W)
 
         x = img_t  # (1, H, W)
 
-        if self.augment:
-            if random.random() > 0.5:
-                x = TF.hflip(x)
-                lbl_t = TF.hflip(lbl_t.unsqueeze(0)).squeeze(0)
-            if random.random() > 0.5:
-                x = TF.vflip(x)
-                lbl_t = TF.vflip(lbl_t.unsqueeze(0)).squeeze(0)
-            k = random.randint(0, 3)
-            if k > 0:
-                x = torch.rot90(x, k, dims=[1, 2])
-                lbl_t = torch.rot90(lbl_t, k, dims=[0, 1])
+        if self._aug is not None:
+            x, lbl_t, skel_t = self._aug(x, lbl_t, skel_t)
 
-        return x, lbl_t
+        return x, lbl_t, skel_t
