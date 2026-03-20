@@ -7,10 +7,10 @@
 
 建構流程：
 1. 空骨架 / 錯誤保護
-2. 二值化和骨架化（Zhang-Suen）
-3. skan 建圖
-4. MultiGraph → Graph（平行邊以路徑中點節點拆分）
-5. 過濾短邊（path 長度 <= 2 且兩端均非端點的邊視為雜訊）
+2. 二值化
+3. Zhang-Suen 骨架化
+4. skan 建圖 → 節點重標籤為 (y, x) 座標
+5. MultiGraph → Graph（自環跳過；平行邊：短邊過濾 + 中點拆分）
 6. 合併 degree-2 中間點（消除骨架線段上的冗餘中繼節點）
 7. 補齊缺失的孤立節點（equalized_img=None 時降級為質心）
 8. 計算 branch-distance 邊屬性（沿 path 的累積歐式距離）
@@ -53,7 +53,6 @@ class TopologyBuilder:
 
     Attributes:
         segment_length (float): 種子圖分段長度（像素）。
-        verbose (bool): 是否於標準輸出列印建構摘要。
 
     Examples:
         >>> builder = TopologyBuilder(segment_length=3.0)
@@ -68,17 +67,14 @@ class TopologyBuilder:
         >>> skeleton = builder.build_skeleton_graph(component_mask)
     """
 
-    def __init__(self, segment_length: float = 3.0, verbose: bool = False):
+    def __init__(self, segment_length: float = 3.0):
         """初始化 TopologyBuilder。
 
         Args:
             segment_length (float): 種子圖的分段長度（像素），
                 供 :meth:`build_seed_graph` 使用。預設值為 ``3.0``。
-            verbose (bool): 若為 ``True``，建構完成後會於標準輸出列印
-                節點數與邊數摘要。預設值為 ``False``。
         """
         self.segment_length = segment_length
-        self.verbose = verbose
 
     def build_skeleton_graph(
         self,
@@ -87,8 +83,9 @@ class TopologyBuilder:
     ) -> nx.Graph:
         """從二值標注建構骨架圖。
 
-        執行流程：二值化 → Zhang-Suen 骨架化 → skan 建圖 → MultiGraph 轉 Graph
-        → 短邊過濾 → degree-2 中間點合併 → 孤立節點補齊 → branch-distance 計算。
+        執行流程：二值化 → Zhang-Suen 骨架化 → skan 建圖 → 節點重標籤
+        → MultiGraph 轉 Graph → degree-2 中間點合併 → 孤立節點補齊
+        → branch-distance 計算。
 
         Args:
             annotation (np.ndarray): 二值標注圖像，shape ``(H, W)``，
@@ -106,23 +103,19 @@ class TopologyBuilder:
 
             若輸入圖像過小或骨架化失敗，返回空的 ``nx.Graph()``。
         """
-        # 1. 二值化
+        # 1. 空骨架 / 錯誤保護
         binary = (annotation > 0).astype(np.uint8)
-
-        # 2. 骨架化前保護：空或過小的骨架
-        skeleton_pixels = np.sum(binary)
-        if skeleton_pixels < 2:
-            logger.debug(f"二值圖太小（{skeleton_pixels} 像素），返回空圖")
+        if np.sum(binary) < 2:
+            logger.debug(f"二值圖太小（{np.sum(binary)} 像素），返回空圖")
             return nx.Graph()
 
-        # 3. 骨架化（Zhang-Suen）
+        # 2 & 3. 二值化 → Zhang-Suen 骨架化
         skeleton = morphology.skeletonize(binary).astype(np.uint8)
-
         if np.sum(skeleton) < 2:
             logger.debug("骨架化後像素太少，返回空圖")
             return nx.Graph()
 
-        # 4. 使用 skan 建圖
+        # 4. skan 建圖 → 節點重標籤為 (y, x) 座標
         try:
             skel_obj = Skeleton(skeleton, keep_images=False)
         except (ValueError, IndexError) as e:
@@ -131,40 +124,30 @@ class TopologyBuilder:
 
         summary = summarize(skel_obj)
         skeleton_graph = skeleton_to_nx(skel_obj, summary=summary)
-
         mapping = {
             i: tuple(skel_obj.coordinates[i].astype(int))
             for i in skeleton_graph.nodes()
         }
         coordinate_graph = nx.relabel_nodes(skeleton_graph, mapping)
 
-        # 6. 過濾短邊（保留長邊或端點邊）
-        # filtered_graph = nx.MultiGraph()
-        # for u, v, data in coordinate_graph.edges(data=True):
-        #     path = data.get("path", [])
-        #     is_endpoint_edge = (
-        #         coordinate_graph.degree(u) == 1 or coordinate_graph.degree(v) == 1
-        #     )
-        #     if len(path) > 2 or not is_endpoint_edge:
-        #         filtered_graph.add_edge(u, v, **data)
+        # 5. MultiGraph → Graph（自環跳過；平行邊：短邊過濾 + 中點拆分）
+        graph = self.to_simple_graph(coordinate_graph)
 
-        filtered_graph = self.to_simple_graph(coordinate_graph)
-        # return filtered_graph
-        # 7. 合併 degree-2 中間點
-        filtered_graph = self._merge_middle_points(filtered_graph)
+        # 6. 合併 degree-2 中間點
+        graph = self._merge_middle_points(graph)
 
-        # 8. 補齊缺失節點
-        filtered_graph = self._fill_missing_nodes(filtered_graph, binary, equalized_img)
+        # 7. 補齊缺失節點
+        graph = self._fill_missing_nodes(graph, binary, equalized_img)
 
-        # 9. 計算並加入 branch-distance 屬性
-        filtered_graph = self._compute_branch_distances(filtered_graph)
+        # 8. 計算並加入 branch-distance 屬性
+        graph = self._compute_branch_distances(graph)
 
         logger.debug(
-            f"骨架圖構建完成: {filtered_graph.number_of_nodes()} 節點, "
-            f"{filtered_graph.number_of_edges()} 邊"
+            f"骨架圖構建完成: {graph.number_of_nodes()} 節點, "
+            f"{graph.number_of_edges()} 邊"
         )
 
-        return filtered_graph
+        return graph
 
     def build_seed_graph(
         self,
@@ -189,9 +172,7 @@ class TopologyBuilder:
         """
         skeleton_graph = self.build_skeleton_graph(annotation, equalized_img)
         seed_graph = nx.Graph()
-
-        for u in skeleton_graph.nodes():
-            seed_graph.add_node(u)
+        seed_graph.add_nodes_from(skeleton_graph.nodes())
 
         for u, v, data in skeleton_graph.edges(data=True):
             path = data["path"]
@@ -256,14 +237,14 @@ class TopologyBuilder:
         """將 MultiGraph 轉換為 Graph，平行邊以路徑中點節點拆分。
 
         對於兩節點間只有單一邊的情況，直接複製到新圖；
-        若兩節點間存在複數平行邊，則對每條邊於其 ``path`` 中點插入一個新節點，
-        並將原邊拆為兩段（端點 → 中點、中點 → 端點），消除平行邊。
+        若兩節點間存在複數平行邊，先捨棄 path 長度 < 5 的短邊（全捨棄時保留最長者），
+        剩餘每條邊於其 ``path`` 中點插入一個新節點，並將原邊拆為兩段，消除平行邊。
 
         Args:
-            multigraph (nx.MultiGraph): 來源骨架圖或種子圖。
+            multigraph (nx.MultiGraph): 來源骨架圖（skan 輸出）。
 
         Returns:
-            nx.Graph: 不含平行邊的簡單圖，節點為 ``(y, x)`` 整數座標元組；
+            nx.Graph: 不含平行邊與自環的簡單圖，節點為 ``(y, x)`` 整數座標元組；
             邊資料保留 ``path`` 與 ``branch-distance`` 屬性。
         """
         graph = nx.Graph()
@@ -285,23 +266,23 @@ class TopologyBuilder:
                 graph.add_edge(u, v, **parallel_edges[0])
             else:
                 # 複數平行邊：捨棄 path 長度 < 5 的短邊
-                parallel_edges = [
+                long_edges = [
                     e
                     for e in parallel_edges
                     if self._path_length(e.get("path", [])) >= 5
                 ]
-                if len(parallel_edges) == 0:
+                if len(long_edges) == 0:
                     # 全部都是短邊：保留最長的一條
-                    parallel_edges = [
+                    long_edges = [
                         max(
-                            multigraph[u][v].values(),
+                            parallel_edges,
                             key=lambda e: self._path_length(e.get("path", [])),
                         )
                     ]
-                if len(parallel_edges) == 1:
-                    graph.add_edge(u, v, **parallel_edges[0])
+                if len(long_edges) == 1:
+                    graph.add_edge(u, v, **long_edges[0])
                     continue
-                for edge_data in parallel_edges:
+                for edge_data in long_edges:
                     path = edge_data.get("path", [])
                     if len(path) >= 3:
                         mid_idx = len(path) // 2
@@ -424,14 +405,9 @@ class TopologyBuilder:
                 continue
 
             if equalized_img is not None:
-                # 找區域中最亮的像素
-                brightest_pixel = None
-                brightest_value = -1
-                for r in range(min_row, max_row):
-                    for c in range(min_col, max_col):
-                        if equalized_img[r, c] > brightest_value:
-                            brightest_value = equalized_img[r, c]
-                            brightest_pixel = (r, c)
+                roi = equalized_img[min_row:max_row, min_col:max_col]
+                local_idx = np.unravel_index(np.argmax(roi), roi.shape)
+                brightest_pixel = (min_row + local_idx[0], min_col + local_idx[1])
             else:
                 # 降級：使用區域質心
                 brightest_pixel = (
@@ -439,8 +415,7 @@ class TopologyBuilder:
                     (min_col + max_col) // 2,
                 )
 
-            if brightest_pixel is not None:
-                graph.add_node(brightest_pixel)
+            graph.add_node(brightest_pixel)
 
         return graph
 
