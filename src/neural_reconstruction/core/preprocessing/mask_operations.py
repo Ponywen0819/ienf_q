@@ -14,17 +14,23 @@ from .utils import validate_image
 
 def dilate_epidermis_vertically(mask: np.ndarray, offset_px: int) -> np.ndarray:
     """
-    Dilate a binary mask in the vertical (y-axis) direction only.
+    Dilate a binary mask using a circular SE, constrained to regions above
+    the bottommost mask pixel in each column.
 
-    This is useful for extending epidermis boundaries downward to capture
-    boundary-crossing neural fibers.
+    For each column x, the topmost (smallest y) mask pixel defines the upper
+    boundary of the epidermis. An auxiliary mask is built where every pixel
+    at or below that boundary (y >= min_y[x]) is 255, representing the region
+    that lies within or beneath the epidermis top edge. The original mask is
+    dilated with a circular SE of radius offset_px, then intersected with the
+    auxiliary mask so the dilation extends downward only and cannot bleed
+    upward above the epidermis top boundary.
 
     Args:
         mask: Binary mask image (uint8 with values 0 or 255, or bool)
-        offset_px: Number of pixels to dilate in the vertical direction
+        offset_px: Radius of the circular structuring element
 
     Returns:
-        Dilated mask in the same format as input
+        Dilated mask intersected with the auxiliary mask, same format as input
 
     Raises:
         ValueError: If mask is invalid or offset_px is non-positive
@@ -33,40 +39,52 @@ def dilate_epidermis_vertically(mask: np.ndarray, offset_px: int) -> np.ndarray:
         >>> mask = np.zeros((100, 100), dtype=np.uint8)
         >>> mask[40:60, 40:60] = 255
         >>> dilated = dilate_epidermis_vertically(mask, offset_px=10)
-        >>> # The mask is now extended 10 pixels downward
     """
     validate_image(mask)
 
     if offset_px <= 0:
         raise ValueError(f"offset_px must be positive, got {offset_px}")
 
-    # Remember original dtype
     original_dtype = mask.dtype
     was_bool = mask.dtype == bool
 
-    # Convert to uint8 if needed
     if was_bool:
         mask_uint8 = mask.astype(np.uint8) * 255
     else:
         mask_uint8 = mask.astype(np.uint8)
 
-    # Create vertical structuring element (1 pixel wide, offset_px tall)
-    # This ensures dilation only happens in the y-direction
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, offset_px))
+    H, W = mask_uint8.shape
+    binary = mask_uint8 > 0  # (H, W)
 
-    # Set anchor to BOTTOM of kernel so dilation only extends downward
-    # anchor = (x, y) where y = offset_px - 1 is the last row of kernel
-    # This makes the kernel extend from current pixel downward (positive y direction)
-    anchor = (0, offset_px - 1)
+    # For each column, find the topmost (min y) mask pixel.
+    # argmax on binary finds the first True from the top = min y with mask.
+    col_has_mask = binary.any(axis=0)  # (W,)
+    min_y = np.where(
+        col_has_mask,
+        np.argmax(binary, axis=0),
+        H,  # sentinel: no mask → nothing in aux_mask for this column
+    )  # (W,)
 
-    # Perform dilation with bottom anchor - only extends downward (positive y direction)
-    dilated = cv2.dilate(mask_uint8, kernel, anchor=anchor, iterations=1)
+    # Auxiliary mask: pixel (y, x) is 255 if y >= min_y[x]
+    # i.e. there exists a mask pixel ABOVE this pixel (at smaller y) in the same column,
+    # meaning this pixel is at or below the top edge of the epidermis → allow downward dilation
+    y_indices = np.arange(H).reshape(-1, 1)  # (H, 1)
+    aux_mask = np.where(
+        y_indices >= min_y[np.newaxis, :], np.uint8(255), np.uint8(0)
+    ).astype(np.uint8)
 
-    # Convert back to original format
+    # Dilate original mask with circular (ellipse) SE of radius offset_px
+    d = 2 * offset_px + 1
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (d, d))
+    dilated = cv2.dilate(mask_uint8, kernel, iterations=1)
+
+    # Intersect: keep only dilation results that lie within the auxiliary mask
+    result = cv2.bitwise_and(dilated, aux_mask)
+
     if was_bool:
-        return dilated.astype(bool)
+        return result.astype(bool)
     else:
-        return dilated.astype(original_dtype)
+        return result.astype(original_dtype)
 
 
 def apply_mask(image: np.ndarray, mask: np.ndarray) -> np.ndarray:

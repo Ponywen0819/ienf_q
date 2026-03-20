@@ -5,7 +5,6 @@
 
 核心類別：
     - TopologyBuilder: 骨架圖建構器，同時提供 build_seed_graph() 組合方法
-    - SeedGraphBuilder: 種子圖建構器，將骨架圖切分為均勻的種子片段
 
 使用範例：
 ---------
@@ -25,8 +24,7 @@ skeleton = builder.build_skeleton_graph(component_mask)
 """
 
 from .topology_builder import TopologyBuilder
-from .seed_graph import SeedGraphBuilder
 
-__all__ = ['TopologyBuilder', 'SeedGraphBuilder']
+__all__ = ['TopologyBuilder']
 
 __version__ = '1.0.0'

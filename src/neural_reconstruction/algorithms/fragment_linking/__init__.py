@@ -7,8 +7,7 @@
     - HierarchicalFragmentLinker: 完整流程控制器
 
 算法元件：
-    - TopologyBuilder: 從標注圖像構建骨架圖
-    - SeedGraphBuilder: 將骨架圖轉換為種子圖
+    - TopologyBuilder: 從標注圖像構建骨架圖與種子圖
     - extend_endpoints: 階段1 高信心端點延伸（嚴格約束）
     - generate_mst_candidates: 階段2 MST 候選邊生成（寬鬆約束）
 
@@ -32,7 +31,7 @@ result_graph = linker.run(image, mask, annotation)
 """
 
 from .linker import HierarchicalFragmentLinker
-from neural_reconstruction.core.topology import TopologyBuilder, SeedGraphBuilder
+from neural_reconstruction.core.topology import TopologyBuilder
 from .endpoint_extension import extend_endpoints
 from .mst_candidates import generate_mst_candidates
 from .utils import compute_vector_angle, is_direction_too_similar
@@ -42,7 +41,6 @@ __all__ = [
     'HierarchicalFragmentLinker',
     # 算法元件
     'TopologyBuilder',
-    'SeedGraphBuilder',
     'extend_endpoints',
     'generate_mst_candidates',
     # 工具函數
