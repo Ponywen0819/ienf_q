@@ -192,16 +192,11 @@ class PathFinder:
                 global_start = (int(u[0]), int(u[1]))
                 global_target = (int(target_global[0]), int(target_global[1]))
 
-                # 若反向已存在，保留較小成本
-                if (global_target, global_start) in path_lookup:
-                    existing_cost = path_lookup[(global_target, global_start)][1]
-                    if cost < existing_cost:
-                        path_lookup[(global_target, global_start)] = (global_path, cost)
-                else:
-                    path_lookup[(global_start, global_target)] = (global_path, cost)
+                path_lookup[(global_start, global_target)] = (global_path, cost)
+                path_lookup[(global_target, global_start)] = (global_path[::-1], cost)
 
         if verbose:
-            print(f"✓ 路徑查找完成: {len(path_lookup)} 條路徑")
+            print(f"✓ 路徑查找完成: {len(path_lookup) / 2} 條路徑")
 
         return path_lookup
 

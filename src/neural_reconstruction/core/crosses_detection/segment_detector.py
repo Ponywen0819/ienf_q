@@ -75,6 +75,9 @@ class SegmentDetector:
                 graph.nodes[node_id]["node_type"] = "endpoint"
             elif degree >= 3:
                 graph.nodes[node_id]["node_type"] = "branchpoint"
+            else:
+                # degree 0 or 2：清除前次執行殘留的 node_type，避免重新執行時誤判邊界
+                graph.nodes[node_id].pop("node_type", None)
 
     @classmethod
     def _identify_segment_nodes(cls, graph: nx.Graph) -> None:
