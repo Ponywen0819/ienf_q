@@ -5,7 +5,7 @@ Identifies discrete segments of neural fibers. A segment is defined as a path
 from one boundary node (endpoint or branchpoint) to another boundary node.
 """
 
-from typing import Set, Tuple
+from typing import Set, Tuple, FrozenSet
 import logging
 import networkx as nx
 
@@ -44,10 +44,8 @@ class SegmentDetector:
             ``node_type`` on boundary nodes.
         """
         res_graph = graph.copy()
-        nodes = res_graph.nodes(data=True)
-        edges = res_graph.edges(data=True)
 
-        if not nodes or not edges:
+        if res_graph.number_of_nodes() == 0 or res_graph.number_of_edges() == 0:
             logger.warning("Topology graph is empty")
             return res_graph
 
@@ -92,7 +90,7 @@ class SegmentDetector:
                 nodes. Edges are annotated in-place with ``segment_id``.
         """
         segment_id = 0
-        visited_edges: Set[Tuple] = set()
+        visited_edges: Set[FrozenSet] = set()
 
         boundary_nodes = [
             node
@@ -104,20 +102,15 @@ class SegmentDetector:
 
         for boundary_node in boundary_nodes:
             for neighbor in list(graph.neighbors(boundary_node)):
-                for key in list(graph[boundary_node][neighbor].keys()):
-                    edge_id = (boundary_node, neighbor, key)
+                edge_id = frozenset({boundary_node, neighbor})
+                if edge_id in visited_edges:
+                    continue
 
-                    if (
-                        edge_id in visited_edges
-                        or (neighbor, boundary_node, key) in visited_edges
-                    ):
-                        continue
-
-                    cls._trace_and_label_segment(
-                        graph, boundary_node, neighbor, key, segment_id, visited_edges
-                    )
-                    logger.debug(f"Labeled segment {segment_id}")
-                    segment_id += 1
+                cls._trace_and_label_segment(
+                    graph, boundary_node, neighbor, segment_id, visited_edges
+                )
+                logger.debug(f"Labeled segment {segment_id}")
+                segment_id += 1
 
         logger.info(f"Segment detection complete: {segment_id} segments found")
 
@@ -125,51 +118,45 @@ class SegmentDetector:
     def _trace_and_label_segment(
         cls,
         graph: nx.Graph,
-        from_node: Tuple[int, int],
-        current_node: Tuple[int, int],
-        edge_key,
+        start_from: Tuple[int, int],
+        start_to: Tuple[int, int],
         segment_id: int,
-        visited_edges: Set[Tuple],
+        visited_edges: Set[FrozenSet],
     ) -> None:
         """
-        Recursively trace and label all edges belonging to a segment.
+        Iteratively trace and label all edges belonging to a segment.
 
-        Starting from the edge (``from_node`` → ``current_node``), this method
+        Starting from the edge (``start_from`` → ``start_to``), this method
         follows degree-2 intermediate nodes until a boundary node is reached,
         assigning ``segment_id`` to every traversed edge.
 
         Args:
             graph: NetworkX Graph to annotate in-place.
-            from_node: The previously visited node (used to avoid backtracking).
-            current_node: The node currently being processed.
-            edge_key: The multi-edge key for the edge between ``from_node`` and
-                ``current_node``.
+            start_from: The entry node of the first edge.
+            start_to: The exit node of the first edge.
             segment_id: The segment ID to assign to each traversed edge.
-            visited_edges: Set of already-visited ``(u, v, key)`` tuples,
-                updated in-place to prevent revisiting edges.
+            visited_edges: Set of already-visited ``frozenset({u, v})`` edge
+                identifiers, updated in-place to prevent revisiting edges.
         """
-        edge_id = (from_node, current_node, edge_key)
+        stack = [(start_from, start_to)]
 
-        if (
-            edge_id in visited_edges
-            or (current_node, from_node, edge_key) in visited_edges
-        ):
-            return
+        while stack:
+            from_node, current_node = stack.pop()
+            edge_id = frozenset({from_node, current_node})
 
-        graph[from_node][current_node][edge_key]["segment_id"] = segment_id
-        visited_edges.add(edge_id)
-        visited_edges.add((current_node, from_node, edge_key))
+            if edge_id in visited_edges:
+                continue
 
-        # Stop at boundary nodes
-        if graph.nodes[current_node].get("node_type") in ["endpoint", "branchpoint"]:
-            return
+            graph[from_node][current_node]["segment_id"] = segment_id
+            visited_edges.add(edge_id)
 
-        # current_node is a degree-2 intermediate node; continue traversal
-        for next_node in graph.neighbors(current_node):
-            if next_node == from_node:
-                continue  # avoid backtracking
+            # Stop at boundary nodes
+            if graph.nodes[current_node].get("node_type") in ["endpoint", "branchpoint"]:
+                continue
 
-            for next_key in graph[current_node][next_node].keys():
-                cls._trace_and_label_segment(
-                    graph, current_node, next_node, next_key, segment_id, visited_edges
-                )
+            # degree-2 中繼節點：繼續向前走訪
+            for next_node in graph.neighbors(current_node):
+                if next_node == from_node:
+                    continue
+                if frozenset({current_node, next_node}) not in visited_edges:
+                    stack.append((current_node, next_node))
