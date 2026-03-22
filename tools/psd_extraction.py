@@ -3,10 +3,10 @@ from PIL import Image
 import numpy as np
 from pathlib import Path
 
-base_path = "/home/pony/projects/ienf_q/label_0302"
-output_base = Path("./data_0320")
+base_path = "/home/pony/projects/ienf_q/nas/jia/neuro_psd"
+output_base = Path("./data_0322")
 # 設定要找的圖層名稱
-target_layer_name = "refine"
+target_layer_name = "圖層 4"
 
 # 1. 搜索所有 .psd 檔案
 psd_files = list(Path(base_path).glob("*.psd"))
@@ -43,10 +43,10 @@ for psd_file in psd_files:
 
                 mask = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
                 target_pixels = (
-                    (aplpha_channel > 0)
-                    & (image[:, :, 0] > 127)
-                    & (image[:, :, 1] > 127)
-                    & (image[:, :, 2] > 127)
+                    aplpha_channel > 0
+                    # & (image[:, :, 0] > 127)
+                    # & (image[:, :, 1] > 127)
+                    # & (image[:, :, 2] > 127)
                 )  # 非透明部分的像素位置
                 mask[target_pixels] = 255  # 取得非透明部分的像素
 
