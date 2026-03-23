@@ -11,8 +11,11 @@ from typing import List, Tuple, Dict
 import numpy as np
 import networkx as nx
 from scipy.spatial import KDTree
+import logging
 
 from .utils import compute_vector_angle
+
+logger = logging.getLogger(__name__)
 
 
 def generate_mst_candidates(
@@ -45,11 +48,11 @@ def generate_mst_candidates(
     Returns:
         [(endpoint, target_node, cost, path), ...]
     """
-    endpoints = [node for node in graph.nodes() if graph.degree(node) == 1]
-    isolated = [node for node in graph.nodes() if not any(True for _ in graph.neighbors(node))]
+    nodes = list(graph.nodes())
+    endpoints = [node for node in nodes if graph.degree(node) == 1]
+    isolated = [node for node in nodes if graph.degree(node) == 0]
 
-    if verbose:
-        print(f"階段2：找到 {len(endpoints)} 個端點, {len(isolated)} 個孤立節點")
+    logger.info(f"階段2：找到 {len(endpoints)} 個端點, {len(isolated)} 個孤立節點")
 
     candidate_edges = []
 
@@ -71,6 +74,13 @@ def generate_mst_candidates(
             if target_node == endpoint or target_node == neighbor:
                 continue
 
+            if (endpoint, target_node) in path_lookup:
+                path, base_cost = path_lookup[(endpoint, target_node)]
+            elif (target_node, endpoint) in path_lookup:
+                path, base_cost = path_lookup[(target_node, endpoint)]
+            else:
+                continue
+
             if graph.has_edge(endpoint, target_node):
                 continue
 
@@ -81,17 +91,6 @@ def generate_mst_candidates(
             if angle > max_angle_degrees:
                 continue
 
-            # 查找路徑
-            path = None
-            base_cost = None
-
-            if (endpoint, target_node) in path_lookup:
-                path, base_cost = path_lookup[(endpoint, target_node)]
-            elif (target_node, endpoint) in path_lookup:
-                path, base_cost = path_lookup[(target_node, endpoint)]
-            else:
-                continue
-
             # 計算路徑長度
             path_arr = np.array(path)
             diffs = np.diff(path_arr, axis=0)
@@ -99,17 +98,11 @@ def generate_mst_candidates(
             path_length = np.sum(segment_dists)
 
             # 計算最終成本
-            distance_penalty = distance / search_radius
-            normalized_cost = (
-                1 - distance_weight
-            ) * base_cost / path_length + distance_weight * distance_penalty
-            angle_penalty = angle_penalty_weight * (angle / 180.0)
+            distance_penalty = distance_weight * (distance / search_radius)
+            angle_penalty = angle_penalty_weight * (angle / max_angle_degrees)
+            final_cost = base_cost * (1 + angle_penalty) * (1 + distance_penalty)
 
-            final_cost = (
-                normalized_cost * (1 + angle_penalty) / (1 + angle_penalty_weight)
-            )
-
-            if final_cost <= max_cost_threshold:
+            if final_cost <= max_cost_threshold * path_length:
                 candidate_edges.append((endpoint, target_node, final_cost, path))
 
     # --- 孤立節點延伸（無方向資訊，搜尋半徑減半，不做角度限制）---
@@ -128,19 +121,15 @@ def generate_mst_candidates(
             if graph.has_edge(node, target_node):
                 continue
 
-            ac_vector = np.array(target_node) - node_arr
-            distance = np.linalg.norm(ac_vector)
-
-            # 查找路徑
-            path = None
-            base_cost = None
-
             if (node, target_node) in path_lookup:
                 path, base_cost = path_lookup[(node, target_node)]
             elif (target_node, node) in path_lookup:
                 path, base_cost = path_lookup[(target_node, node)]
             else:
                 continue
+
+            ac_vector = np.array(target_node) - node_arr
+            distance = np.linalg.norm(ac_vector)
 
             # 計算路徑長度
             path_arr = np.array(path)
@@ -149,28 +138,19 @@ def generate_mst_candidates(
             path_length = np.sum(segment_dists)
 
             # 無角度懲罰
-            distance_penalty = distance / isolated_search_radius
-            final_cost = (
-                (1 - distance_weight) * base_cost / path_length
-                + distance_weight * distance_penalty
-            )
-
-            if final_cost <= max_cost_threshold:
+            distance_penalty = distance_weight * (distance / isolated_search_radius)
+            final_cost = base_cost * (1 + distance_penalty)
+            if final_cost <= max_cost_threshold * path_length:
                 candidate_edges.append((node, target_node, final_cost, path))
 
-    if verbose:
-        target_endpoints = sum(
-            1 for _, target, _, _ in candidate_edges if graph.degree(target) == 1
-        )
-        target_isolated = sum(
-            1 for _, target, _, _ in candidate_edges if graph.degree(target) == 0
-        )
-        target_middle = sum(
-            1 for _, target, _, _ in candidate_edges if graph.degree(target) >= 2
-        )
-        print(f"✓ 階段2完成: 生成 {len(candidate_edges)} 條候選邊")
-        print(f"  - 端點→端點: {target_endpoints}")
-        print(f"  - 端點→孤立節點: {target_isolated}")
-        print(f"  - 端點→中間節點: {target_middle}")
-
+    logger.info(f"✓ 階段2完成: 生成 {len(candidate_edges)} 條候選邊")
+    logger.info(
+        f"  - 端點→端點: {sum(1 for _, target, _, _ in candidate_edges if graph.degree(target) == 1)}"
+    )
+    logger.info(
+        f"  - 端點→孤立節點: {sum(1 for _, target, _, _ in candidate_edges if graph.degree(target) == 0)}"
+    )
+    logger.info(
+        f"  - 端點→中間節點: {sum(1 for _, target, _, _ in candidate_edges if graph.degree(target) >= 2)}"
+    )
     return candidate_edges

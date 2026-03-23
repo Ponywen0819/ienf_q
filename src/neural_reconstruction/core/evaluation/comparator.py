@@ -70,8 +70,8 @@ class TopologyComparator:
 
         try:
             # 提取點集
-            points1 = self.point_extractor.extract_points(graph1, include_nodes=False)
-            points2 = self.point_extractor.extract_points(graph2, include_nodes=False)
+            points1 = self.point_extractor.extract_points(graph1)
+            points2 = self.point_extractor.extract_points(graph2)
 
             result.num_points1 = len(points1)
             result.num_points2 = len(points2)

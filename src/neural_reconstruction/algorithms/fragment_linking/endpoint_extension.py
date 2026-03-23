@@ -7,12 +7,15 @@
 """
 
 from typing import List, Tuple, Dict
+import logging
 
 import numpy as np
 import networkx as nx
 from scipy.spatial import KDTree
 
 from .utils import compute_vector_angle, is_direction_too_similar
+
+logger = logging.getLogger(__name__)
 
 
 def extend_endpoints(
@@ -24,7 +27,6 @@ def extend_endpoints(
     max_angle_degrees: float = 75.0,
     max_angle_penalty: float = 0.5,
     direction_threshold: float = 5.0,
-    verbose: bool = False,
 ) -> List[Tuple]:
     """
     對 graph 中所有端點（degree == 1）進行延伸
@@ -46,8 +48,7 @@ def extend_endpoints(
     # 找出所有端點
     endpoints = {node for node in graph.nodes() if graph.degree(node) == 1}
 
-    if verbose:
-        print(f"階段1：找到 {len(endpoints)} 個端點")
+    logger.info(f"  ✓ 找到 {len(endpoints)} 個端點")
 
     new_edges = []
 
@@ -87,6 +88,16 @@ def extend_endpoints(
         best_path = None
 
         for candidate, dist, idx in candidates_with_dist:
+            key1 = (endpoint, candidate)
+            key2 = (candidate, endpoint)
+
+            if key1 in path_lookup:
+                path, base_cost = path_lookup[key1]
+            elif key2 in path_lookup:
+                path, base_cost = path_lookup[key2]
+            else:
+                continue
+
             # 4.1 計算 AC 向量
             ac_vector = np.array(candidate) - endpoint_arr
 
@@ -105,31 +116,9 @@ def extend_endpoints(
             if angle > max_angle_degrees:
                 continue
 
-            # 4.5 從 path_lookup 取得成本
-            key1 = (endpoint, candidate)
-            key2 = (candidate, endpoint)
-
-            if key1 in path_lookup:
-                path, base_cost = path_lookup[key1]
-            elif key2 in path_lookup:
-                path, base_cost = path_lookup[key2]
-            else:
-                continue
-
-            # 計算路徑長度
-            path_arr = np.array(path)
-            diffs = np.diff(path_arr, axis=0)
-            segment_dists = np.linalg.norm(diffs, axis=1)
-            path_length = np.sum(segment_dists)
-
-            # 歸一化成本
-            normalized_cost = 0.8 * base_cost / path_length + 0.2 * (
-                dist / search_radius
-            )
-
             # 角度懲罰
             penalty = max_angle_penalty * (angle / max_angle_degrees)
-            final_cost = normalized_cost * (1 + penalty) / (1 + max_angle_penalty)
+            final_cost = base_cost * (1 + penalty)
 
             # 更新最佳候選
             if final_cost < best_cost:
@@ -141,7 +130,6 @@ def extend_endpoints(
         if best_candidate is not None:
             new_edges.append((endpoint, best_candidate, best_cost, best_path))
 
-    if verbose:
-        print(f"✓ 階段1完成: 找到 {len(new_edges)} 個可延伸的端點")
+    logger.info(f"✓ 階段1完成: 找到 {len(new_edges)} 個可延伸的端點")
 
     return new_edges

@@ -17,22 +17,26 @@
 """
 
 import argparse
+import copy
+import concurrent.futures
 import json
 import logging
+import os
 import sys
+import threading
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Any
 import csv
 import cv2
+from scipy.stats import pearsonr, spearmanr
 
 import numpy as np
 import networkx as nx
 from PIL import Image
 from tqdm import tqdm
 
-# 添加專案根目錄到 Python 路徑
-
+from neural_reconstruction.dataset import SampleFiles, DatasetLoader
 from neural_reconstruction.algorithms.pure_mst.linker import PureMstLinker
 from neural_reconstruction.algorithms.fragment_linking.linker import (
     HierarchicalFragmentLinker,
@@ -60,33 +64,6 @@ from neural_reconstruction.core.evaluation import (
 
 
 @dataclass
-class SampleFiles:
-    """樣本檔案路徑"""
-
-    sample_id: str
-    image_path: Path
-    mask_path: Path
-    annotation_path: Path
-    label_path: Optional[Path] = None  # GT，目前預留
-
-    def is_complete(self) -> Tuple[bool, str]:
-        """
-        檢查必要檔案是否完整
-
-        Returns:
-            (is_complete, missing_reason)
-        """
-        if not self.image_path.exists():
-            return False, "missing_image"
-        if not self.mask_path.exists():
-            return False, "missing_mask"
-        if not self.annotation_path.exists():
-            return False, "missing_annotation"
-        # label_path 目前是可選的
-        return True, ""
-
-
-@dataclass
 class SampleResult:
     """單一樣本的評測結果"""
 
@@ -100,6 +77,9 @@ class SampleResult:
     num_edges_pred: Optional[int] = None
     num_edges_gt: Optional[int] = None
     num_components_pred: Optional[int] = None
+    valid_count_pred: Optional[int] = None
+    gt_count: Optional[int] = None
+    count_error: Optional[float] = None  # |pred - gt|
     error_message: Optional[str] = None
 
 
@@ -116,73 +96,14 @@ class EvaluationSummary:
     hausdorff_std: Optional[float] = None
     hausdorff_min: Optional[float] = None
     hausdorff_max: Optional[float] = None
-
-
-# ============================================================================
-# 資料集載入器
-# ============================================================================
-
-
-class DatasetLoader:
-    """
-    資料集載入器
-
-    掃描資料集目錄，驗證檔案完整性，返回樣本列表。
-    """
-
-    def __init__(self, data_dir: Path):
-        """
-        Args:
-            data_dir: 資料集根目錄
-        """
-        self.data_dir = Path(data_dir)
-        self.logger = logging.getLogger(__name__)
-
-    def load_samples(self, sample_ids: Optional[List[str]] = None) -> List[SampleFiles]:
-        """
-        載入資料集樣本
-
-        Args:
-            sample_ids: 指定要載入的樣本 ID，None 則載入全部
-
-        Returns:
-            樣本檔案列表
-        """
-        self.logger.info(f"掃描資料集目錄: {self.data_dir}")
-
-        # 獲取所有樣本目錄
-        if sample_ids:
-            sample_dirs = [
-                self.data_dir / sid
-                for sid in sample_ids
-                if (self.data_dir / sid).is_dir()
-            ]
-        else:
-            sample_dirs = [d for d in self.data_dir.iterdir() if d.is_dir()]
-
-        self.logger.info(f"找到 {len(sample_dirs)} 個樣本目錄")
-
-        samples = []
-        for sample_dir in sorted(sample_dirs):
-            sample_id = sample_dir.name
-
-            # 檢查 GT 檔案（支援 label.png 和 lable.png 兩種拼法）
-            label_path = None
-            if (sample_dir / "label.png").exists():
-                label_path = sample_dir / "label.png"
-            elif (sample_dir / "lable.png").exists():
-                label_path = sample_dir / "lable.png"
-
-            sample_files = SampleFiles(
-                sample_id=sample_id,
-                image_path=sample_dir / "image.png",
-                mask_path=sample_dir / "mask.png",
-                annotation_path=sample_dir / "annotation.png",
-                label_path=label_path,
-            )
-            samples.append(sample_files)
-
-        return samples
+    count_mae_mean: Optional[float] = None
+    count_mae_median: Optional[float] = None
+    count_mae_std: Optional[float] = None
+    count_pearson_r: Optional[float] = None
+    count_pearson_p: Optional[float] = None
+    count_spearman_r: Optional[float] = None
+    count_spearman_p: Optional[float] = None
+    count_n: int = 0
 
 
 # ============================================================================
@@ -307,13 +228,12 @@ class EvaluationReporter:
         skipped = sum(1 for r in results if r.status == "skipped")
         failed = sum(1 for r in results if r.status == "failed")
 
-        # 收集所有有效的 Hausdorff 距離
+        # Hausdorff
         valid_distances = [
             r.hausdorff_distance
             for r in results
             if r.status == "success" and r.hausdorff_distance is not None
         ]
-
         if valid_distances:
             hausdorff_mean = float(np.mean(valid_distances))
             hausdorff_median = float(np.median(valid_distances))
@@ -321,11 +241,36 @@ class EvaluationReporter:
             hausdorff_min = float(np.min(valid_distances))
             hausdorff_max = float(np.max(valid_distances))
         else:
-            hausdorff_mean = None
-            hausdorff_median = None
-            hausdorff_std = None
-            hausdorff_min = None
-            hausdorff_max = None
+            hausdorff_mean = hausdorff_median = hausdorff_std = None
+            hausdorff_min = hausdorff_max = None
+
+        # Count MAE + correlation
+        count_pairs = [
+            (r.valid_count_pred, r.gt_count)
+            for r in results
+            if r.status == "success"
+            and r.valid_count_pred is not None
+            and r.gt_count is not None
+        ]
+        count_mae_mean = count_mae_median = count_mae_std = None
+        count_pearson_r = count_pearson_p = None
+        count_spearman_r = count_spearman_p = None
+        count_n = len(count_pairs)
+
+        if count_pairs:
+            preds, gts = zip(*count_pairs)
+            errors = np.abs(np.array(preds, dtype=float) - np.array(gts, dtype=float))
+            count_mae_mean = float(np.mean(errors))
+            count_mae_median = float(np.median(errors))
+            count_mae_std = float(np.std(errors))
+
+            if count_n >= 2:
+                pr, pp = pearsonr(preds, gts)
+                sr, sp = spearmanr(preds, gts)
+                count_pearson_r = float(pr)
+                count_pearson_p = float(pp)
+                count_spearman_r = float(sr)
+                count_spearman_p = float(sp)
 
         return EvaluationSummary(
             total_samples=total,
@@ -337,6 +282,14 @@ class EvaluationReporter:
             hausdorff_std=hausdorff_std,
             hausdorff_min=hausdorff_min,
             hausdorff_max=hausdorff_max,
+            count_mae_mean=count_mae_mean,
+            count_mae_median=count_mae_median,
+            count_mae_std=count_mae_std,
+            count_pearson_r=count_pearson_r,
+            count_pearson_p=count_pearson_p,
+            count_spearman_r=count_spearman_r,
+            count_spearman_p=count_spearman_p,
+            count_n=count_n,
         )
 
     def _save_json_report(
@@ -378,6 +331,9 @@ class EvaluationReporter:
             "num_edges_pred",
             "num_edges_gt",
             "num_components_pred",
+            "valid_count_pred",
+            "gt_count",
+            "count_error",
             "error_message",
         ]
 
@@ -401,14 +357,31 @@ class EvaluationReporter:
         print("-" * 80)
 
         if summary.hausdorff_mean is not None:
-            print("平均 Hausdorff 距離統計:")
-            print(f"  平均值:     {summary.hausdorff_mean:.4f}")
-            print(f"  中位數:     {summary.hausdorff_median:.4f}")
-            print(f"  標準差:     {summary.hausdorff_std:.4f}")
-            print(f"  最小值:     {summary.hausdorff_min:.4f}")
-            print(f"  最大值:     {summary.hausdorff_max:.4f}")
+            print("Hausdorff Distance:")
+            print(f"  Mean:       {summary.hausdorff_mean:.4f}")
+            print(f"  Median:     {summary.hausdorff_median:.4f}")
+            print(f"  Std:        {summary.hausdorff_std:.4f}")
+            print(f"  Min:        {summary.hausdorff_min:.4f}")
+            print(f"  Max:        {summary.hausdorff_max:.4f}")
         else:
-            print("平均 Hausdorff 距離: 無有效數據")
+            print("Hausdorff Distance: no valid data")
+
+        print("-" * 80)
+
+        if summary.count_n > 0:
+            print(f"Valid Count  (n={summary.count_n}):")
+            print(f"  MAE Mean:   {summary.count_mae_mean:.4f}")
+            print(f"  MAE Median: {summary.count_mae_median:.4f}")
+            print(f"  MAE Std:    {summary.count_mae_std:.4f}")
+            if summary.count_pearson_r is not None:
+                print(
+                    f"  Pearson r:  {summary.count_pearson_r:.4f}  (p={summary.count_pearson_p:.4f})"
+                )
+                print(
+                    f"  Spearman r: {summary.count_spearman_r:.4f}  (p={summary.count_spearman_p:.4f})"
+                )
+        else:
+            print("Valid Count: no GT data (count.json missing or no matching samples)")
 
         print("=" * 80 + "\n")
 
@@ -430,26 +403,57 @@ class DatasetEvaluator:
         data_dir: Path,
         output_dir: Path,
         linker: Any,
+        num_workers: int = os.cpu_count() or 1,
     ):
         """
         Args:
             data_dir: 資料集目錄
             output_dir: 輸出目錄
             linker: 實作 run(image, mask, annotation) -> nx.Graph 的 linker 實例
+            num_workers: 平行處理的執行緒數量（預設 1，即單線程）
         """
         self.data_dir = Path(data_dir)
         self.output_dir = Path(output_dir)
+        self.num_workers = num_workers
+        self._linker = linker
 
         # 建立元件
         self.loader = DatasetLoader(data_dir)
-        self.extractor = TopologyExtractor(linker)
         self.comparator = TopologyComparator()
-        self.builder = TopologyBuilder()
         self.reporter = EvaluationReporter(output_dir)
 
+        # Thread-local storage：每個執行緒各自的 extractor / builder
+        self._thread_local = threading.local()
+
         self.config = {"linker": type(linker).__name__, "params": vars(linker)}
+        self.gt_counts = self._load_gt_counts(data_dir)
 
         self.logger = logging.getLogger(__name__)
+
+    def _get_extractor(self) -> TopologyExtractor:
+        """取得當前執行緒專用的 TopologyExtractor（含獨立 linker 副本）"""
+        if not hasattr(self._thread_local, "extractor"):
+            self._thread_local.extractor = TopologyExtractor(
+                copy.deepcopy(self._linker)
+            )
+        return self._thread_local.extractor
+
+    def _get_builder(self) -> TopologyBuilder:
+        """取得當前執行緒專用的 TopologyBuilder"""
+        if not hasattr(self._thread_local, "builder"):
+            self._thread_local.builder = TopologyBuilder()
+        return self._thread_local.builder
+
+    @staticmethod
+    def _load_gt_counts(data_dir: Path) -> Dict[str, int]:
+        count_path = Path(data_dir) / "count.json"
+        if not count_path.exists():
+            logging.getLogger(__name__).warning(
+                f"count.json not found at {count_path} — count metrics will be skipped"
+            )
+            return {}
+        with open(count_path, encoding="utf-8") as f:
+            return json.load(f)
 
     def evaluate(self, sample_ids: Optional[List[str]] = None) -> EvaluationSummary:
         """
@@ -462,15 +466,29 @@ class DatasetEvaluator:
             評測統計摘要
         """
         self.logger.info("開始資料集評測...")
+        self.logger.info(f"平行執行緒數: {self.num_workers}")
 
         # 載入樣本
         samples = self.loader.load_samples(sample_ids)
 
         # 處理每個樣本
         results = []
-        for sample in tqdm(samples, desc="評測進度"):
-            result = self._evaluate_sample(sample)
-            results.append(result)
+        if self.num_workers <= 1:
+            for sample in tqdm(samples, desc="評測進度"):
+                result = self._evaluate_sample(sample)
+                results.append(result)
+        else:
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=self.num_workers
+            ) as executor:
+                futures = {
+                    executor.submit(self._evaluate_sample, sample): sample
+                    for sample in samples
+                }
+                with tqdm(total=len(futures), desc="評測進度") as pbar:
+                    for future in concurrent.futures.as_completed(futures):
+                        results.append(future.result())
+                        pbar.update(1)
 
         # 生成報告
         summary = self.reporter.generate_report(results, self.config)
@@ -488,16 +506,21 @@ class DatasetEvaluator:
         Returns:
             評測結果
         """
-        # 必須有 label.png 才能計算 Hausdorff distance
-        if not sample.label_path or not sample.label_path.exists():
-            self.logger.info(f"樣本 {sample.sample_id} 跳過: 缺少 label.png")
+        has_label = sample.label_path is not None and sample.label_path.exists()
+        has_count = sample.sample_id in self.gt_counts
+
+        # 至少需要一種 GT 來源才有意義執行
+        if not has_label and not has_count:
+            self.logger.info(
+                f"樣本 {sample.sample_id} 跳過: 無 label.png 也無 count.json 條目"
+            )
             return SampleResult(
                 sample_id=sample.sample_id,
                 status="skipped",
-                error_message="missing_label",
+                error_message="missing_gt",
             )
 
-        # 檢查其他必要檔案完整性
+        # 檢查輸入檔案完整性
         is_complete, missing_reason = sample.is_complete()
         if not is_complete:
             self.logger.warning(f"樣本 {sample.sample_id} 跳過: {missing_reason}")
@@ -513,8 +536,8 @@ class DatasetEvaluator:
             mask = np.array(Image.open(sample.mask_path))
             annotation = np.array(Image.open(sample.annotation_path))
 
-            # 萃取 Pipeline 拓樸
-            extract_result = self.extractor.extract_from_pipeline(
+            # 萃取 Pipeline 拓樸（使用執行緒專用 extractor）
+            extract_result = self._get_extractor().extract_from_pipeline(
                 image, mask, annotation
             )
 
@@ -525,27 +548,34 @@ class DatasetEvaluator:
                     error_message="pipeline_failed",
                 )
 
-            # 萃取 GT 拓樸
-            gt_label = np.array(Image.open(sample.label_path))
-            roi_label = cv2.bitwise_and(
-                gt_label, gt_label, mask=extract_result.mask
-            )  # 只保留遮罩區域內的 GT
-            graph_gt = self.builder.build_seed_graph(roi_label)
+            # --- Hausdorff ---
+            avg_dist = d_pred_to_gt = d_gt_to_pred = None
+            num_nodes_gt = num_edges_gt = None
 
-            pred_points = extract_graph_points(extract_result.graph)
-            gt_points = extract_graph_points(graph_gt)
+            if has_label:
+                gt_label = np.array(Image.open(sample.label_path))
+                roi_label = cv2.bitwise_and(
+                    gt_label, gt_label, mask=extract_result.mask
+                )
+                graph_gt = self._get_builder().build_seed_graph(roi_label)
 
-            avg_dist, d_pred_to_gt, d_gt_to_pred = compute_average_hausdorff_distance(
-                pred_points, gt_points
+                pred_points = extract_graph_points(extract_result.graph)
+                gt_points = extract_graph_points(graph_gt)
+
+                avg_dist, d_pred_to_gt, d_gt_to_pred = (
+                    compute_average_hausdorff_distance(pred_points, gt_points)
+                )
+                num_nodes_gt = graph_gt.number_of_nodes()
+                num_edges_gt = graph_gt.number_of_edges()
+
+            # --- Count ---
+            gt_count = self.gt_counts.get(sample.sample_id)
+            valid_count_pred = extract_result.valid_count
+            count_error = (
+                float(abs(valid_count_pred - gt_count))
+                if gt_count is not None
+                else None
             )
-
-            # 收集統計資訊
-            num_nodes_pred = extract_result.graph.number_of_nodes()
-            num_edges_pred = extract_result.graph.number_of_edges()
-            num_components_pred = nx.number_connected_components(extract_result.graph)
-
-            num_nodes_gt = graph_gt.number_of_nodes() if graph_gt is not None else None
-            num_edges_gt = graph_gt.number_of_edges() if graph_gt is not None else None
 
             return SampleResult(
                 sample_id=sample.sample_id,
@@ -553,11 +583,16 @@ class DatasetEvaluator:
                 hausdorff_distance=avg_dist,
                 hausdorff_distance_pred_to_gt=d_pred_to_gt,
                 hausdorff_distance_gt_to_pred=d_gt_to_pred,
-                num_nodes_pred=num_nodes_pred,
+                num_nodes_pred=extract_result.graph.number_of_nodes(),
                 num_nodes_gt=num_nodes_gt,
-                num_edges_pred=num_edges_pred,
+                num_edges_pred=extract_result.graph.number_of_edges(),
                 num_edges_gt=num_edges_gt,
-                num_components_pred=num_components_pred,
+                num_components_pred=nx.number_connected_components(
+                    extract_result.graph
+                ),
+                valid_count_pred=valid_count_pred,
+                gt_count=gt_count,
+                count_error=count_error,
             )
 
         except Exception as e:
@@ -617,6 +652,13 @@ def main():
         help="使用的重建演算法 (預設: pure_mst)",
     )
 
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=os.cpu_count(),
+        help=f"平行處理的執行緒數量（預設: CPU 核心數 {os.cpu_count()}）",
+    )
+
     parser.add_argument("--verbose", action="store_true", help="啟用詳細日誌輸出")
 
     args = parser.parse_args()
@@ -638,28 +680,26 @@ def main():
     # 建立 linker
     if args.algorithm == "pure_mst":
         linker = PureMstLinker(
-            offset_px=1,
-            rolling_ball_radius=2,
-            sato_weight=0.0,
+            offset_px=50,
+            rolling_ball_radius=50,
             opening_kernel_size=3,
             segment_length=5.0,
-            search_radius=20.0,
-            max_cost_threshold=0.98,
-            intensity_weight=0.6,
+            search_radius=50.0,
+            intensity_weight=2,
         )
     elif args.algorithm == "hierarchical":  # hierarchical
         linker = HierarchicalFragmentLinker(
-            offset_px=1,
-            rolling_ball_radius=2,
-            sato_weight=0.0,
+            offset_px=50,
+            rolling_ball_radius=50,
             opening_kernel_size=3,
             segment_length=3.0,
-            search_radius_pathfinding=50.0,
-            search_radius_endpoint_extension=10.0,
+            search_radius_endpoint_extension=20.0,
             max_angle_endpoint_extension=75.0,
-            search_radius_mst=20.0,
+            search_radius_mst=50.0,
             max_angle_mst=90.0,
-            max_cost_threshold_mst=0.75,
+            max_cost_threshold_mst=0.5,
+            distance_weight_mst=0.3,
+            min_component_length=3.0,
         )
     elif args.algorithm == "xgb_mst":  # xgb_mst
         linker = XgbMstLinker(
@@ -686,6 +726,7 @@ def main():
         data_dir=args.data_dir,
         output_dir=args.output_dir,
         linker=linker,
+        num_workers=args.workers,
     )
 
     # 執行評測

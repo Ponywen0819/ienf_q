@@ -140,15 +140,18 @@ class PathFinder:
             u = topology_points[u_idx]
 
             neighbor_indices = kdtree.query_ball_point(u, r=search_radius)
-            targets = [topology_points[v_idx] for v_idx in neighbor_indices]
-
-            # 過濾自身
-            targets = [t for t in targets if tuple(t) != tuple(u)]
+            targets = [
+                topology_points[v_idx] for v_idx in neighbor_indices if v_idx != u_idx
+            ]
 
             # 過濾同一連通元件
             if label_img is not None:
-                current_label = label_img[u[0], u[1]]
-                targets = [t for t in targets if label_img[t[0], t[1]] != current_label]
+                current_label = label_img[int(u[0]), int(u[1])]
+                targets = [
+                    t
+                    for t in targets
+                    if label_img[int(t[0]), int(t[1])] != current_label
+                ]
 
             # 過濾已計算的點對（雙向去重）
             targets = [

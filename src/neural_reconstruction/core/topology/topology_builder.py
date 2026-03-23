@@ -172,7 +172,7 @@ class TopologyBuilder:
         """
         skeleton_graph = self.build_skeleton_graph(annotation, equalized_img)
         seed_graph = nx.Graph()
-        seed_graph.add_nodes_from(skeleton_graph.nodes())
+        seed_graph.add_nodes_from(skeleton_graph.nodes(data=True))
 
         for u, v, data in skeleton_graph.edges(data=True):
             path = data["path"]
@@ -248,7 +248,7 @@ class TopologyBuilder:
             邊資料保留 ``path`` 與 ``branch-distance`` 屬性。
         """
         graph = nx.Graph()
-        graph.add_nodes_from(multigraph.nodes(data=True))
+        # graph.add_nodes_from(multigraph.nodes(data=True))
 
         processed_pairs: set = set()
 
@@ -265,7 +265,6 @@ class TopologyBuilder:
             if len(parallel_edges) == 1:
                 graph.add_edge(u, v, **parallel_edges[0])
             else:
-                # 複數平行邊：捨棄 path 長度 < 5 的短邊
                 long_edges = [
                     e
                     for e in parallel_edges
@@ -307,7 +306,20 @@ class TopologyBuilder:
                         path=path2,
                         **{"branch-distance": self._path_length(path2)},
                     )
-
+        # 迭代移除短 hang edge：每輪移除後 degree 更新，直到收斂
+        changed = True
+        while changed:
+            changed = False
+            to_remove = [
+                (u, v)
+                for u, v, data in graph.edges(data=True)
+                if (graph.degree(u) == 1 or graph.degree(v) == 1)
+                and self._path_length(data.get("path", [])) < 5
+            ]
+            for u, v in to_remove:
+                graph.remove_edge(u, v)
+                changed = True
+        graph.remove_nodes_from(list(nx.isolates(graph)))
         return graph
 
     # ========== 私有輔助方法 ==========

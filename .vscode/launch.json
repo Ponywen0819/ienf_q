@@ -12,12 +12,13 @@
       "console": "integratedTerminal",
       "args": [
         "--data-dir",
-        "data_0302",
+        "nas/jia/data",
         "--output-dir",
         "output/test",
+        "--algorithm",
+        "hierarchical",
         "--sample-id",
-        "S1585-2_a",
-        "--verbose"
+        "S1585-2_a"
       ]
     }
   ]

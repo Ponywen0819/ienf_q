@@ -16,11 +16,18 @@ import numpy as np
 import networkx as nx
 from scipy.spatial import KDTree
 from skimage.measure import label
+import cv2
 
-from neural_reconstruction.core.preprocessing import SkinAnalysisPipeline
 from neural_reconstruction.core.topology import TopologyBuilder
 from neural_reconstruction.core.pathfinding import PathFinder
 from neural_reconstruction.common.data_types import LinkerResult
+from neural_reconstruction.core.preprocessing import dilate_epidermis_vertically
+from neural_reconstruction.core.crosses_detection import (
+    RegionLabeler,
+    SegmentDetector,
+    CrossingCounter,
+)
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
@@ -39,31 +46,26 @@ class PureMstLinker:
     def __init__(
         self,
         # 預處理參數
-        offset_px: int = 100,
-        rolling_ball_radius: int = 2,
-        sato_weight: float = 0.0,
+        offset_px: int = 50,
+        rolling_ball_radius: int = 50,
         opening_kernel_size: int = 3,
         # 元件分析參數
         segment_length: float = 5.0,
-        min_edge_length: Optional[float] = None,
         # 路徑查找參數
         search_radius: float = 50.0,
-        max_cost_threshold: float = 0.98,
         intensity_weight: float = 2.0,
+        min_component_length: float = 10.0,
     ):
         # 預處理參數
         self.offset_px = offset_px
         self.rolling_ball_radius = rolling_ball_radius
-        self.sato_weight = sato_weight
         self.opening_kernel_size = opening_kernel_size
         # 重建參數
         self.segment_length = segment_length
-        self.min_edge_length = (
-            min_edge_length if min_edge_length is not None else segment_length
-        )
+
         self.search_radius = search_radius
-        self.max_cost_threshold = max_cost_threshold
         self.intensity_weight = intensity_weight
+        self.min_component_length = min_component_length
 
     def run(
         self,
@@ -84,44 +86,43 @@ class PureMstLinker:
         """
         logger.info("1. 圖像預處理...")
 
-        preprocessing_config = {
-            "morphology": {
-                "closing_kernel": 0,
-                "opening_kernel": self.opening_kernel_size,
-            },
-            "mask": {
-                "dilate_offset": self.offset_px,
-            },
-            "background": {
-                "method": "rolling_ball",
-                "radius": self.rolling_ball_radius,
-                "sato_weight": self.sato_weight,
-                "sato_sigmas": (1.0, 2.0),
-            },
-            "threshold": {
-                "use_full_roi": False,
-            },
-            "normalization": {
-                "enabled": False,
-            },
-        }
-
-        pipeline = SkinAnalysisPipeline(preprocessing_config)
-
         if len(image.shape) == 3:
-            orig_img = image[:, :, 1]  # 綠色通道
-        else:
-            orig_img = image
+            image = image[:, :, 1]  # 綠色通道
 
-        roi_annotation, roi_image, roi_mask = pipeline.run(annotation, mask, orig_img)
+        roi_mask = dilate_epidermis_vertically(mask, offset_px=self.offset_px)
 
-        logger.info("  ✓ 預處理完成")
+        kernal_size = self.rolling_ball_radius * 2 + 1
+        kernel = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE, (kernal_size, kernal_size)
+        )
+        background = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel)
+        image = cv2.subtract(image, background)
+
+        roi_image = cv2.bitwise_and(image, image, mask=roi_mask)
+        roi_annotation = cv2.bitwise_and(annotation, annotation, mask=roi_mask)
+
+        # apply opening to roi_annotation to remove small noise
+        kernel = cv2.getStructuringElement(
+            cv2.MORPH_RECT, (self.opening_kernel_size, self.opening_kernel_size)
+        )
+
+        roi_annotation = cv2.morphologyEx(roi_annotation, cv2.MORPH_OPEN, kernel)
+
+        # apply closing to roi_annotation to fill small holes
+        roi_annotation = cv2.morphologyEx(roi_annotation, cv2.MORPH_CLOSE, kernel)
+
+        reconstruction_graph = self._run_reconstruction(roi_annotation, roi_image)
+
+        valid_count, labeled_graph = self._run_crossing_analysis(
+            mask, reconstruction_graph
+        )
 
         return LinkerResult(
             annotation=roi_annotation,
             image=roi_image,
             mask=roi_mask,
-            graph=self._run_reconstruction(roi_annotation, roi_image),
+            graph=labeled_graph,
+            valid_count=valid_count,
         )
 
     def _run_reconstruction(
@@ -161,59 +162,133 @@ class PureMstLinker:
             global_graph.nodes[node]["component_id"] = int(labeled[int(y), int(x)])
 
         # 元件內邊設低成本
-        for u, v, data in global_graph.edges(data=True):
+        for _, _, data in global_graph.edges(data=True):
             data["weight"] = 1e-5
 
         # 3. 元件間路徑查找
-        cost_map = (
-            255 - image.astype(np.float64)
-        ) ** self.intensity_weight / 255**self.intensity_weight
-        self._add_inter_component_edges(global_graph, cost_map)
+        cost_map = ((255 - image.astype(np.float64)) / 255) ** self.intensity_weight
 
-        # 4. MST
-        return nx.minimum_spanning_tree(global_graph, weight="weight")
-
-    def _add_inter_component_edges(
-        self, global_graph: nx.MultiGraph, cost_map: np.ndarray
-    ) -> None:
-        """使用 PathFinder 在不同元件的節點間建立連接邊"""
         path_finder = PathFinder(cost_map)
         topology_points = np.array(list(global_graph.nodes()))
+
         kdtree = KDTree(topology_points)
-        component_ids = np.array(
-            [global_graph.nodes[tuple(p)]["component_id"] for p in topology_points]
+        seed_map = np.zeros_like(cost_map, dtype=bool)
+        for p in topology_points:
+            seed_map[p[0], p[1]] = True
+
+        path_finder = PathFinder(cost_map)
+        topology_points = np.array(list(global_graph.nodes()))
+        path_lookup = path_finder.find_paths_from_seeds(
+            topology_points=topology_points,
+            kdtree=kdtree,
+            search_radius=self.search_radius,
+            seed_map=seed_map,
+            label_img=labeled,
         )
 
-        processed_pairs: set = set()
-        for i, source in enumerate(topology_points):
-            source_comp = component_ids[i]
-            neighbor_indices = np.array(
-                kdtree.query_ball_point(source, r=self.search_radius), dtype=np.int32
+        for (source, target), (path, cost) in path_lookup.items():
+            if global_graph.has_edge(tuple(source), tuple(target)):
+                continue
+            global_graph.add_edge(tuple(source), tuple(target), weight=cost, path=path)
+
+        # 4. MST
+        mst_forest = nx.minimum_spanning_tree(global_graph, weight="weight")
+
+        nodes_to_remove = []
+        for component_nodes in nx.connected_components(mst_forest):
+            subgraph = mst_forest.subgraph(component_nodes)
+            total_length = 0.0
+            for u, v, data in subgraph.edges(data=True):
+                path = data.get("path", [])
+                if len(path) >= 2:
+                    pts = np.array(path)
+                    total_length += float(
+                        np.sum(np.linalg.norm(np.diff(pts, axis=0), axis=1))
+                    )
+                else:
+                    total_length += float(np.linalg.norm(np.array(u) - np.array(v)))
+            if total_length < self.min_component_length:
+                nodes_to_remove.extend(component_nodes)
+
+        filtered = mst_forest.copy()
+        filtered.remove_nodes_from(nodes_to_remove)
+
+        return filtered
+
+    def _run_crossing_analysis(
+        self,
+        mask: np.ndarray,
+        graph: nx.Graph,
+    ) -> tuple[int, nx.Graph]:
+        """
+        交叉點分析
+
+        Args:
+            mask: 二值化遮罩影像 (0/255 或 0/1)
+            graph: MST 重建圖 (nx.Graph)
+
+        Returns:
+            {component_id: crossing_count}
+        """
+
+        region_labeler = RegionLabeler()
+        segment_detector = SegmentDetector()
+        crossing_counter = CrossingCounter()
+
+        # Step 1: Detect segments (must run before RegionLabeler — segment_id is needed by label_topology)
+        segmented_graph = segment_detector.detect_segments(graph)
+
+        # Step 1b: Remove short stub segments (total path length < 5 px, with at least one endpoint)
+        def _path_length(data, u, v):
+            path = data.get("path", [u, v])
+            return len(path) - 1  # number of pixel steps
+
+        seg_edges = defaultdict(list)
+        for u, v, data in segmented_graph.edges(data=True):
+            seg_id = data.get("segment_id")
+            if seg_id is not None:
+                seg_edges[seg_id].append((u, v, data))
+
+        edges_to_remove = []
+        for seg_id, edges in seg_edges.items():
+            # Collect boundary nodes of this segment
+            boundary_nodes = set()
+            for u, v, _ in edges:
+                if segmented_graph.nodes[u].get("node_type") in (
+                    "endpoint",
+                    "branchpoint",
+                ):
+                    boundary_nodes.add(u)
+                if segmented_graph.nodes[v].get("node_type") in (
+                    "endpoint",
+                    "branchpoint",
+                ):
+                    boundary_nodes.add(v)
+
+            # Only prune if at least one boundary node is an endpoint (dangling stub)
+            has_endpoint = any(
+                segmented_graph.nodes[n].get("node_type") == "endpoint"
+                for n in boundary_nodes
             )
-
-            # 過濾：排除自己與同元件
-            mask = (neighbor_indices != i) & (
-                component_ids[neighbor_indices] != source_comp
-            )
-            valid_indices = neighbor_indices[mask]
-
-            targets = []
-            for j in valid_indices:
-                pair = (min(i, j), max(i, j))
-                if pair not in processed_pairs:
-                    processed_pairs.add(pair)
-                    targets.append(tuple(topology_points[j].astype(int)))
-
-            if not targets:
+            if not has_endpoint:
                 continue
 
-            paths = path_finder.find_paths_from_source(
-                tuple(source.astype(int)), targets
-            )
-            for target_pos, result in paths.items():
-                if result is None:
-                    continue
-                path, cost = result
-                global_graph.add_edge(
-                    tuple(source.astype(int)), target_pos, weight=cost, path=path
-                )
+            total_length = sum(_path_length(data, u, v) for u, v, data in edges)
+            if total_length < 5:
+                edges_to_remove.extend((u, v) for u, v, _ in edges)
+
+        segmented_graph.remove_edges_from(edges_to_remove)
+        segmented_graph.remove_nodes_from(list(nx.isolates(segmented_graph)))
+        logger.info(
+            f"Pruned {len(edges_to_remove)} stub edges → "
+            f"{segmented_graph.number_of_nodes()} nodes, {segmented_graph.number_of_edges()} edges"
+        )
+
+        segmented_graph = segment_detector.detect_segments(segmented_graph)
+        # Step 2: Label regions and mark crossing edges
+        labeled_graph, _ = region_labeler.label_topology(segmented_graph, mask)
+
+        # Step 3: Count effective crossings
+        result = crossing_counter.count_effective_crossings(labeled_graph)
+
+        return result["effective_crossing_count"], labeled_graph

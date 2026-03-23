@@ -24,6 +24,14 @@ from neural_reconstruction.core.pathfinding import PathFinder
 from neural_reconstruction.common.data_types import LinkerResult
 from .endpoint_extension import extend_endpoints
 from .mst_candidates import generate_mst_candidates
+from neural_reconstruction.core.preprocessing import dilate_epidermis_vertically
+from neural_reconstruction.core.crosses_detection import (
+    RegionLabeler,
+    SegmentDetector,
+    CrossingCounter,
+)
+from collections import defaultdict
+
 
 logger = logging.getLogger(__name__)
 
@@ -42,37 +50,38 @@ class HierarchicalFragmentLinker:
     def __init__(
         self,
         # 預處理參數
-        offset_px: int = 100,
-        rolling_ball_radius: int = 2,
-        sato_weight: float = 0.0,
+        offset_px: int = 50,
+        rolling_ball_radius: int = 50,
         opening_kernel_size: int = 3,
         # 種子圖參數
         segment_length: float = 3.0,
-        # 路徑查找參數
-        search_radius_pathfinding: float = 50.0,
+        intensity_power: float = 2.0,
         # 階段1參數
-        search_radius_endpoint_extension: float = 10.0,
+        search_radius_endpoint_extension: float = 20.0,
         max_angle_endpoint_extension: float = 75.0,
         angle_penalty_endpoint_extension: float = 0.5,
         direction_threshold_endpoint_extension: float = 5.0,
         # 階段2參數
-        search_radius_mst: float = 20.0,
+        search_radius_mst: float = 50.0,
         max_angle_mst: float = 90.0,
         angle_penalty_mst: float = 0.5,
         distance_weight_mst: float = 0.2,
         max_cost_threshold_mst: float = 0.75,
         # MST參數
         endpoint_extension_weight_discount: float = 0.5,
+        min_component_length: float = 10.0,
     ):
         # 預處理參數
         self.offset_px = offset_px
         self.rolling_ball_radius = rolling_ball_radius
-        self.sato_weight = sato_weight
         self.opening_kernel_size = opening_kernel_size
 
         # 重建參數
         self.segment_length = segment_length
-        self.search_radius_pathfinding = search_radius_pathfinding
+        self.intensity_power = intensity_power
+        self.search_radius_pathfinding = max(
+            search_radius_endpoint_extension, search_radius_mst
+        )
 
         self.search_radius_endpoint_extension = search_radius_endpoint_extension
         self.max_angle_endpoint_extension = max_angle_endpoint_extension
@@ -88,6 +97,7 @@ class HierarchicalFragmentLinker:
         self.max_cost_threshold_mst = max_cost_threshold_mst
 
         self.endpoint_extension_weight_discount = endpoint_extension_weight_discount
+        self.min_component_length = min_component_length
 
     def run(
         self, image: np.ndarray, mask: np.ndarray, annotation: np.ndarray
@@ -103,57 +113,33 @@ class HierarchicalFragmentLinker:
         Returns:
             LinkerResult
         """
+        # 提取綠色通道
+        if len(image.shape) == 3:
+            image = image[:, :, 1]  # 綠色通道
+
         logger.info("=" * 60)
         logger.info("開始階層式片段連接（含預處理）")
         logger.info("=" * 60)
 
         # 1. 預處理
         logger.info("1. 圖像預處理...")
+        roi_mask = dilate_epidermis_vertically(mask, offset_px=50)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (51, 51))
+        background = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel)
+        image = cv2.subtract(image, background)
 
-        preprocessing_config = {
-            "morphology": {
-                "closing_kernel": 0,
-                "opening_kernel": self.opening_kernel_size,
-            },
-            "mask": {
-                "dilate_offset": self.offset_px,
-            },
-            "background": {
-                "method": "rolling_ball",
-                "radius": self.rolling_ball_radius,
-                "sato_weight": self.sato_weight,
-                "sato_sigmas": (1.0, 2.0),
-            },
-            "threshold": {
-                "use_full_roi": False,
-            },
-            "normalization": {
-                "enabled": False,
-            },
-        }
+        roi_image = cv2.bitwise_and(image, image, mask=roi_mask)
+        roi_annotation = cv2.bitwise_and(annotation, annotation, mask=roi_mask)
 
-        pipeline = SkinAnalysisPipeline(preprocessing_config)
+        # apply opening to roi_annotation to remove small noise
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        roi_annotation = cv2.morphologyEx(roi_annotation, cv2.MORPH_OPEN, kernel)
 
-        # 提取綠色通道
-        if len(image.shape) == 3:
-            orig_img = image[:, :, 1]  # 綠色通道
-        else:
-            orig_img = image
-
-        logger.info("  - 提取綠色通道")
-        logger.info("  - 構建 ROI mask")
-        logger.info("  - 背景減除")
-        logger.info("  - 提取 ROI")
-        logger.info("  - 生成偽標註")
-        logger.info("  - 形態學處理")
-
-        roi_annotation, roi_image, roi_mask = pipeline.run(annotation, mask, orig_img)
+        # apply closing to roi_annotation to fill small holes
+        roi_annotation = cv2.morphologyEx(roi_annotation, cv2.MORPH_CLOSE, kernel)
+        roi_annotation[roi_annotation > 0] = 255
 
         logger.info("  ✓ 預處理完成")
-
-        # 2 + 3. 構建骨架圖並生成種子圖
-        logger.info("2. 構建骨架圖...")
-        logger.info("3. 構建種子圖...")
 
         topology_builder = TopologyBuilder(
             segment_length=self.segment_length,
@@ -171,10 +157,15 @@ class HierarchicalFragmentLinker:
         kdtree = KDTree(topology_points)
 
         # 構建成本地圖和種子地圖
-        cost_map = ((255 - roi_image.astype(np.float64)) / 255.0) ** 2
+        cost_map = (
+            (255 - roi_image.astype(np.float64)) / 255.0
+        ) ** self.intensity_power
+
         seed_map = np.zeros_like(cost_map, dtype=np.uint8)
-        for p in topology_points:
-            seed_map[p[0], p[1]] = True
+        for _, _, data in seed_graph.edges(data=True):
+            path = data.get("path", [])
+            for p in path:
+                seed_map[int(p[0]), int(p[1])] = True
 
         # 構建 label 圖（用於排除同一連通分量）
         binary = (roi_annotation > 0).astype(np.uint8)
@@ -212,13 +203,13 @@ class HierarchicalFragmentLinker:
         for endpoint, target, cost, path in phase1_edges:
             if not extended_graph.has_edge(endpoint, target):
                 extended_graph.add_edge(
-                    endpoint, target, weight=cost, path=path, phase=1
+                    endpoint,
+                    target,
+                    weight=cost * self.endpoint_extension_weight_discount,
+                    path=path,
+                    phase=1,
                 )
-
-        endpoints_after_extension = sum(
-            1 for n in extended_graph.nodes() if extended_graph.degree(n) == 1
-        )
-        logger.info(f"  延伸後端點數: {endpoints_after_extension}")
+        extended_graph = nx.minimum_spanning_tree(extended_graph, weight="weight")
 
         # 7. 生成 MST 候選邊
         logger.info("7. 生成 MST 候選邊...")
@@ -240,10 +231,6 @@ class HierarchicalFragmentLinker:
 
         # 複製圖並對階段1的邊打折
         mst_tree = extended_graph.copy()
-        for u, v, data in mst_tree.edges(data=True):
-            data["weight"] = data["weight"] * self.endpoint_extension_weight_discount
-            data["phase"] = 1
-
         # 添加階段2候選邊
         for endpoint, target, cost, path in phase2_candidates:
             if not mst_tree.has_edge(endpoint, target):
@@ -252,25 +239,108 @@ class HierarchicalFragmentLinker:
         # 執行 MST
         mst_result = nx.minimum_spanning_tree(mst_tree, weight="weight")
 
-        endpoint_extension_in_mst = sum(
-            1 for u, v in mst_result.edges() if mst_result[u][v].get("phase") == 1
-        )
-        mst_candidates_in_mst = sum(
-            1 for u, v in mst_result.edges() if mst_result[u][v].get("phase") == 2
-        )
-        final_endpoints = sum(
-            1 for n in mst_result.nodes() if mst_result.degree(n) == 1
-        )
-        logger.info("✓ MST 結果:")
-        logger.info(f"  - 總邊數: {mst_result.number_of_edges()}")
-        logger.info(f"  - 來自 endpoint_extension: {endpoint_extension_in_mst}")
-        logger.info(f"  - 來自 mst_candidates: {mst_candidates_in_mst}")
-        logger.info(f"  - 最終端點數: {final_endpoints}")
-        logger.info(f"  - 連通分量數: {nx.number_connected_components(mst_result)}")
+        nodes_to_remove = []
+        for component_nodes in nx.connected_components(mst_result):
+            subgraph = mst_result.subgraph(component_nodes)
+            total_length = 0.0
+            for u, v, data in subgraph.edges(data=True):
+                path = data.get("path", [])
+                if len(path) >= 2:
+                    pts = np.array(path)
+                    total_length += float(
+                        np.sum(np.linalg.norm(np.diff(pts, axis=0), axis=1))
+                    )
+                else:
+                    total_length += float(np.linalg.norm(np.array(u) - np.array(v)))
+            if total_length < self.min_component_length:
+                nodes_to_remove.extend(component_nodes)
 
+        filtered = mst_result.copy()
+        filtered.remove_nodes_from(nodes_to_remove)
+
+        valid_count, labeled_graph = self._run_crossing_analysis(mask, filtered)
         return LinkerResult(
             annotation=roi_annotation,
             image=roi_image,
             mask=roi_mask,
-            graph=mst_result,
+            graph=labeled_graph,
+            valid_count=valid_count,
         )
+
+    def _run_crossing_analysis(
+        self,
+        mask: np.ndarray,
+        graph: nx.Graph,
+    ) -> tuple[int, nx.Graph]:
+        """
+        交叉點分析
+
+        Args:
+            mask: 二值化遮罩影像 (0/255 或 0/1)
+            graph: MST 重建圖 (nx.Graph)
+
+        Returns:
+            {component_id: crossing_count}
+        """
+
+        region_labeler = RegionLabeler()
+        segment_detector = SegmentDetector()
+        crossing_counter = CrossingCounter()
+
+        # Step 1: Detect segments (must run before RegionLabeler — segment_id is needed by label_topology)
+        segmented_graph = segment_detector.detect_segments(graph)
+
+        # Step 1b: Remove short stub segments (total path length < 5 px, with at least one endpoint)
+        def _path_length(data, u, v):
+            path = data.get("path", [u, v])
+            return len(path) - 1  # number of pixel steps
+
+        seg_edges = defaultdict(list)
+        for u, v, data in segmented_graph.edges(data=True):
+            seg_id = data.get("segment_id")
+            if seg_id is not None:
+                seg_edges[seg_id].append((u, v, data))
+
+        edges_to_remove = []
+        for seg_id, edges in seg_edges.items():
+            # Collect boundary nodes of this segment
+            boundary_nodes = set()
+            for u, v, _ in edges:
+                if segmented_graph.nodes[u].get("node_type") in (
+                    "endpoint",
+                    "branchpoint",
+                ):
+                    boundary_nodes.add(u)
+                if segmented_graph.nodes[v].get("node_type") in (
+                    "endpoint",
+                    "branchpoint",
+                ):
+                    boundary_nodes.add(v)
+
+            # Only prune if at least one boundary node is an endpoint (dangling stub)
+            has_endpoint = any(
+                segmented_graph.nodes[n].get("node_type") == "endpoint"
+                for n in boundary_nodes
+            )
+            if not has_endpoint:
+                continue
+
+            total_length = sum(_path_length(data, u, v) for u, v, data in edges)
+            if total_length < 5:
+                edges_to_remove.extend((u, v) for u, v, _ in edges)
+
+        segmented_graph.remove_edges_from(edges_to_remove)
+        segmented_graph.remove_nodes_from(list(nx.isolates(segmented_graph)))
+        logger.info(
+            f"Pruned {len(edges_to_remove)} stub edges → "
+            f"{segmented_graph.number_of_nodes()} nodes, {segmented_graph.number_of_edges()} edges"
+        )
+
+        segmented_graph = segment_detector.detect_segments(segmented_graph)
+        # Step 2: Label regions and mark crossing edges
+        labeled_graph, _ = region_labeler.label_topology(segmented_graph, mask)
+
+        # Step 3: Count effective crossings
+        result = crossing_counter.count_effective_crossings(labeled_graph)
+
+        return result["effective_crossing_count"], labeled_graph

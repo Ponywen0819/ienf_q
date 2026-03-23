@@ -74,3 +74,4 @@ class LinkerResult:
     image: np.ndarray
     mask: np.ndarray
     graph: nx.Graph
+    valid_count: int = 0
