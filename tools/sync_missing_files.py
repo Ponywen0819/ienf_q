@@ -21,7 +21,7 @@ import cv2
 import numpy as np
 
 
-REQUIRED_FILES = ["image.png", "annotation.png", "mask.png", "weka.png"]
+REQUIRED_FILES = ["image.png", "mask.png", "weka.png"]
 
 
 def parse_args() -> argparse.Namespace:

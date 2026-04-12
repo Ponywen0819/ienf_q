@@ -102,14 +102,13 @@ class PureMstLinker:
         roi_annotation = cv2.bitwise_and(annotation, annotation, mask=roi_mask)
 
         # apply opening to roi_annotation to remove small noise
-        kernel = cv2.getStructuringElement(
-            cv2.MORPH_RECT, (self.opening_kernel_size, self.opening_kernel_size)
-        )
-
-        roi_annotation = cv2.morphologyEx(roi_annotation, cv2.MORPH_OPEN, kernel)
-
-        # apply closing to roi_annotation to fill small holes
-        roi_annotation = cv2.morphologyEx(roi_annotation, cv2.MORPH_CLOSE, kernel)
+        if self.opening_kernel_size > 0:
+            # roi_annotation = cv2.morphologyEx(roi_annotation, cv2.MORPH_OPEN, kernel)
+            kernel = cv2.getStructuringElement(
+                cv2.MORPH_RECT, (self.opening_kernel_size, self.opening_kernel_size)
+            )
+            # apply closing to roi_annotation to fill small holes
+            roi_annotation = cv2.morphologyEx(roi_annotation, cv2.MORPH_CLOSE, kernel)
 
         reconstruction_graph = self._run_reconstruction(roi_annotation, roi_image)
 
@@ -289,6 +288,8 @@ class PureMstLinker:
         labeled_graph, _ = region_labeler.label_topology(segmented_graph, mask)
 
         # Step 3: Count effective crossings
-        result = crossing_counter.count_effective_crossings(labeled_graph)
+        result = crossing_counter.count_effective_crossings(
+            labeled_graph, epidermis_mask=mask
+        )
 
         return result["effective_crossing_count"], labeled_graph

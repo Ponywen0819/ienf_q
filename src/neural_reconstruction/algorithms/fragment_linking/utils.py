@@ -4,11 +4,13 @@
 提供階層式片段連接算法所需的幾何計算輔助函數：
 - 向量夾角計算
 - 方向相似度檢查
+- Hessian-based 纖維方向場計算
 """
 
-from typing import List
+from typing import List, Tuple
 
 import numpy as np
+from skimage.feature import hessian_matrix
 
 
 def compute_vector_angle(v1: np.ndarray, v2: np.ndarray) -> float:
@@ -67,3 +69,60 @@ def is_direction_too_similar(
             return True
 
     return False
+
+
+def compute_fiber_orientation_field(
+    image: np.ndarray, sigma: float = 2.0
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    計算 Hessian-based 纖維方向場。
+
+    對亮纖維、暗背景的圖像：Hessian 的較大特徵值 λ2 對應沿纖維方向，
+    其特徵向量 v ∝ [Hrc, λ2 − Hrr]（以 (y, x) 座標表示）。
+
+    Args:
+        image: 灰階輸入影像 (H, W)，uint8 或 float。
+        sigma: Gaussian 平滑 sigma，控制偵測纖維的尺度（預設 2.0）。
+
+    Returns:
+        orient_y: (H, W) 單位向量的 y 分量。
+        orient_x: (H, W) 單位向量的 x 分量。
+
+    Examples:
+        >>> oy, ox = compute_fiber_orientation_field(roi_image, sigma=2.0)
+        >>> direction = np.array([oy[y, x], ox[y, x]])   # unit vector at (y, x)
+    """
+    img_float = image.astype(np.float64)
+    Hrr, Hrc, Hcc = hessian_matrix(
+        img_float, sigma=sigma, order="rc", use_gaussian_derivatives=False
+    )
+
+    discriminant = np.sqrt(((Hrr - Hcc) / 2) ** 2 + Hrc ** 2)
+    lam2 = (Hrr + Hcc) / 2 + discriminant   # larger eigenvalue → along-fiber direction
+
+    fiber_vy = Hrc
+    fiber_vx = lam2 - Hrr
+    fiber_norm = np.sqrt(fiber_vy ** 2 + fiber_vx ** 2)
+    fiber_norm = np.where(fiber_norm < 1e-10, 1.0, fiber_norm)
+
+    orient_y = fiber_vy / fiber_norm
+    orient_x = fiber_vx / fiber_norm
+    return orient_y, orient_x
+
+
+def get_point_orientation(
+    orient_y: np.ndarray, orient_x: np.ndarray, pt: Tuple[float, float]
+) -> np.ndarray:
+    """
+    從預先計算的方向場中取得單一點的纖維方向單位向量。
+
+    Args:
+        orient_y: compute_fiber_orientation_field 回傳的 y 分量場 (H, W)。
+        orient_x: compute_fiber_orientation_field 回傳的 x 分量場 (H, W)。
+        pt: 查詢點座標 (y, x)。
+
+    Returns:
+        形狀 (2,) 的單位向量 [dy, dx]。
+    """
+    y, x = int(pt[0]), int(pt[1])
+    return np.array([orient_y[y, x], orient_x[y, x]])

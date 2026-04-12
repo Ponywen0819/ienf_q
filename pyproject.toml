@@ -28,6 +28,10 @@ dependencies = [
     "gudhi>=3.11.0",
     "timm>=1.0.25",
     "read-roi>=1.6.0",
+    "transformers>=5.5.1",
+    "torchmetrics>=1.9.0",
+    "termcolor>=3.3.0",
+    "omegaconf>=2.3.0",
 ]
 
 [tool.setuptools]

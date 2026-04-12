@@ -36,12 +36,10 @@ class GraphPointExtractor:
     """
 
     # 支援的邊路徑屬性名稱（按優先順序）
-    EDGE_PATH_ATTRIBUTES = ['path', 'path-coordinates']
+    EDGE_PATH_ATTRIBUTES = ["path", "path-coordinates"]
 
     def __init__(
-        self,
-        logger: Optional[logging.Logger] = None,
-        remove_duplicates: bool = True
+        self, logger: Optional[logging.Logger] = None, remove_duplicates: bool = True
     ):
         """
         Args:
@@ -55,7 +53,7 @@ class GraphPointExtractor:
         self,
         graph: nx.Graph,
         include_nodes: bool = True,
-        include_edge_paths: bool = True
+        include_edge_paths: bool = True,
     ) -> np.ndarray:
         """
         從圖中提取所有點
@@ -77,25 +75,25 @@ class GraphPointExtractor:
 
         points = []
         stats = {
-            'num_nodes': 0,
-            'num_edges': 0,
-            'edges_with_path': 0,
-            'num_path_points': 0
+            "num_nodes": 0,
+            "num_edges": 0,
+            "edges_with_path": 0,
+            "num_path_points": 0,
         }
 
         # 提取節點
         if include_nodes:
             nodes = list(graph.nodes())
             points.extend(nodes)
-            stats['num_nodes'] = len(nodes)
+            stats["num_nodes"] = len(nodes)
 
         # 提取邊路徑點
         if include_edge_paths:
             path_points, edge_stats = self._extract_edge_paths(graph)
             points.extend(path_points)
-            stats['num_edges'] = edge_stats['total_edges']
-            stats['edges_with_path'] = edge_stats['edges_with_path']
-            stats['num_path_points'] = edge_stats['num_path_points']
+            stats["num_edges"] = edge_stats["total_edges"]
+            stats["edges_with_path"] = edge_stats["edges_with_path"]
+            stats["num_path_points"] = edge_stats["num_path_points"]
 
         # 記錄統計資訊
         self._log_extraction_stats(stats)
@@ -113,8 +111,7 @@ class GraphPointExtractor:
         return points_array
 
     def _extract_edge_paths(
-        self,
-        graph: nx.Graph
+        self, graph: nx.Graph
     ) -> Tuple[List[Tuple[float, float]], dict]:
         """
         提取所有邊上的路徑點
@@ -136,9 +133,9 @@ class GraphPointExtractor:
                 edges_with_path += 1
 
         stats = {
-            'total_edges': graph.number_of_edges(),
-            'edges_with_path': edges_with_path,
-            'num_path_points': num_path_points
+            "total_edges": graph.number_of_edges(),
+            "edges_with_path": edges_with_path,
+            "num_path_points": num_path_points,
         }
 
         return path_points, stats
@@ -166,18 +163,17 @@ class GraphPointExtractor:
         num_duplicates = len(points) - len(points_unique)
         if num_duplicates > 0:
             self.logger.debug(
-                f"去除 {num_duplicates} 個重複點，"
-                f"剩餘 {len(points_unique)} 個唯一點"
+                f"去除 {num_duplicates} 個重複點，剩餘 {len(points_unique)} 個唯一點"
             )
 
         return points_unique
 
     def _log_extraction_stats(self, stats: dict) -> None:
         """記錄提取統計資訊"""
-        num_nodes = stats['num_nodes']
-        num_edges = stats['num_edges']
-        edges_with_path = stats['edges_with_path']
-        num_path_points = stats['num_path_points']
+        num_nodes = stats["num_nodes"]
+        num_edges = stats["num_edges"]
+        edges_with_path = stats["edges_with_path"]
+        num_path_points = stats["num_path_points"]
         total_points = num_nodes + num_path_points
 
         if num_edges > 0:
@@ -189,10 +185,7 @@ class GraphPointExtractor:
             self.logger.debug(f"提取點集: {num_nodes} 節點（無邊）")
 
 
-def extract_graph_points(
-    graph: nx.Graph,
-    remove_duplicates: bool = True
-) -> np.ndarray:
+def extract_graph_points(graph: nx.Graph, remove_duplicates: bool = True) -> np.ndarray:
     """
     便捷函數：從圖中提取所有點
 

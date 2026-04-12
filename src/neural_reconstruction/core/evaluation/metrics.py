@@ -12,7 +12,10 @@
 """
 
 import numpy as np
+import networkx as nx
 from scipy.spatial.distance import cdist
+from scipy.ndimage import binary_dilation
+from skimage.morphology import skeletonize, disk
 from typing import Tuple, Union
 
 
@@ -148,6 +151,88 @@ def _validate_point_set(points: np.ndarray, name: str) -> None:
 
     if points.ndim != 2 or points.shape[1] != 2:
         raise ValueError(f"{name} 應為形狀 (N, 2)，實際為 {points.shape}")
+
+
+def compute_cldice(
+    pred_graph: nx.Graph,
+    gt_label: np.ndarray,
+    tolerance_px: int = 3,
+) -> Tuple[float, float, float]:
+    """
+    計算 clDice（Centerline Dice）
+
+    針對圖結構預測的 clDice 實作：
+      - Pred skeleton  = 預測圖的所有點（節點 + 邊路徑），直接作為中心線
+      - GT skeleton    = skimage.skeletonize(gt_label > 0) 的骨架像素
+      - tolerance_px   = 膨脹半徑（像素），允許些微偏移
+
+    公式：
+      Tprec  = |skel_pred  ∩  dilate(gt_mask,   tol)| / |skel_pred|
+      Tsens  = |skel_gt    ∩  dilate(pred_mask, tol)| / |skel_gt|
+      clDice = 2 × Tprec × Tsens / (Tprec + Tsens)
+
+    Args:
+        pred_graph:   NetworkX 圖，節點為 (y, x)，邊可帶 'path' 屬性
+        gt_label:     GT 二值遮罩 (H, W)，0 = 背景，>0 = 纖維
+        tolerance_px: 膨脹半徑（預設 3 px），增大可寬容空間偏移
+
+    Returns:
+        (clDice, Tprec, Tsens)  — 均為 0.0–1.0 之間的浮點數
+
+    Examples:
+        >>> cld, tprec, tsens = compute_cldice(pred_graph, gt_label, tolerance_px=3)
+        >>> print(f"clDice={cld:.4f}  Tprec={tprec:.4f}  Tsens={tsens:.4f}")
+    """
+    H, W = gt_label.shape
+
+    # ── Step 1: 取得預測骨架點（graph points），rasterize 成二值遮罩 ──────────
+    pred_pts: list[tuple[int, int]] = []
+    for node in pred_graph.nodes():
+        y, x = int(round(node[0])), int(round(node[1]))
+        if 0 <= y < H and 0 <= x < W:
+            pred_pts.append((y, x))
+
+    for u, v, data in pred_graph.edges(data=True):
+        path = data.get("path")
+        if path is None:
+            path = data.get("path-coordinates")
+        if path is not None and len(path) > 0:
+            for pt in path:
+                y, x = int(round(pt[0])), int(round(pt[1]))
+                if 0 <= y < H and 0 <= x < W:
+                    pred_pts.append((y, x))
+
+    if not pred_pts:
+        return 0.0, 0.0, 0.0
+
+    skel_pred_mask = np.zeros((H, W), dtype=bool)
+    ys, xs = zip(*pred_pts)
+    skel_pred_mask[list(ys), list(xs)] = True
+
+    # ── Step 2: GT 骨架 ────────────────────────────────────────────────────────
+    gt_binary = gt_label > 0
+    skel_gt_mask: np.ndarray = skeletonize(gt_binary)
+
+    if not skel_gt_mask.any():
+        return 0.0, 0.0, 0.0
+
+    # ── Step 3: 膨脹（tolerance）─────────────────────────────────────────────
+    structuring_element = disk(tolerance_px)
+    dilated_gt = binary_dilation(gt_binary, structure=structuring_element)
+    dilated_pred = binary_dilation(skel_pred_mask, structure=structuring_element)
+
+    # ── Step 4: Tprec / Tsens ─────────────────────────────────────────────────
+    n_skel_pred = int(skel_pred_mask.sum())
+    n_skel_gt = int(skel_gt_mask.sum())
+
+    tprec = float((skel_pred_mask & dilated_gt).sum()) / n_skel_pred
+    tsens = float((skel_gt_mask & dilated_pred).sum()) / n_skel_gt
+
+    # ── Step 5: clDice ────────────────────────────────────────────────────────
+    denom = tprec + tsens
+    cldice = (2.0 * tprec * tsens / denom) if denom > 0.0 else 0.0
+
+    return cldice, tprec, tsens
 
 
 # 未來可擴展的度量

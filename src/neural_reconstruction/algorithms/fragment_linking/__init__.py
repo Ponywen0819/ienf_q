@@ -34,7 +34,12 @@ from .linker import HierarchicalFragmentLinker
 from neural_reconstruction.core.topology import TopologyBuilder
 from .endpoint_extension import extend_endpoints
 from .mst_candidates import generate_mst_candidates
-from .utils import compute_vector_angle, is_direction_too_similar
+from .utils import (
+    compute_vector_angle,
+    is_direction_too_similar,
+    compute_fiber_orientation_field,
+    get_point_orientation,
+)
 
 __all__ = [
     # 主控制器
@@ -46,6 +51,8 @@ __all__ = [
     # 工具函數
     'compute_vector_angle',
     'is_direction_too_similar',
+    'compute_fiber_orientation_field',
+    'get_point_orientation',
 ]
 
 __version__ = '1.0.0'
