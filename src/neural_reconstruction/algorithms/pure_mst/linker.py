@@ -22,6 +22,10 @@ from neural_reconstruction.core.topology import TopologyBuilder
 from neural_reconstruction.core.pathfinding import PathFinder
 from neural_reconstruction.common.data_types import LinkerResult
 from neural_reconstruction.core.preprocessing import dilate_epidermis_vertically
+from neural_reconstruction.algorithms.annotation_grow.cost_map import (
+    build_enhanced_image,
+    build_cost_map,
+)
 from neural_reconstruction.core.crosses_detection import (
     RegionLabeler,
     SegmentDetector,
@@ -49,6 +53,10 @@ class PureMstLinker:
         offset_px: int = 50,
         rolling_ball_radius: int = 50,
         opening_kernel_size: int = 3,
+        clahe_clip: float = 20.0,
+        clahe_grid: tuple[int, int] = (16, 16),
+        sato_sigmas_start: int = 3,
+        sato_sigmas_stop: int = 8,
         # 元件分析參數
         segment_length: float = 5.0,
         # 路徑查找參數
@@ -60,9 +68,12 @@ class PureMstLinker:
         self.offset_px = offset_px
         self.rolling_ball_radius = rolling_ball_radius
         self.opening_kernel_size = opening_kernel_size
+        self.clahe_clip = clahe_clip
+        self.clahe_grid = clahe_grid
+        self.sato_sigmas_start = sato_sigmas_start
+        self.sato_sigmas_stop = sato_sigmas_stop
         # 重建參數
         self.segment_length = segment_length
-
         self.search_radius = search_radius
         self.intensity_weight = intensity_weight
         self.min_component_length = min_component_length
@@ -91,14 +102,15 @@ class PureMstLinker:
 
         roi_mask = dilate_epidermis_vertically(mask, offset_px=self.offset_px)
 
-        kernal_size = self.rolling_ball_radius * 2 + 1
-        kernel = cv2.getStructuringElement(
-            cv2.MORPH_ELLIPSE, (kernal_size, kernal_size)
+        roi_image = build_enhanced_image(
+            green=image,
+            roi_mask=roi_mask,
+            bg_kernel_size=self.rolling_ball_radius * 2 + 1,
+            clahe_clip=self.clahe_clip,
+            clahe_grid=self.clahe_grid,
+            sato_sigmas=range(self.sato_sigmas_start, self.sato_sigmas_stop),
         )
-        background = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel)
-        image = cv2.subtract(image, background)
 
-        roi_image = cv2.bitwise_and(image, image, mask=roi_mask)
         roi_annotation = cv2.bitwise_and(annotation, annotation, mask=roi_mask)
 
         # apply opening to roi_annotation to remove small noise
@@ -165,7 +177,7 @@ class PureMstLinker:
             data["weight"] = 1e-5
 
         # 3. 元件間路徑查找
-        cost_map = ((255 - image.astype(np.float64)) / 255) ** self.intensity_weight
+        cost_map = build_cost_map(image)
 
         path_finder = PathFinder(cost_map)
         topology_points = np.array(list(global_graph.nodes()))

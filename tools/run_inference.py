@@ -35,6 +35,7 @@ from neural_reconstruction.algorithms.fragment_linking.linker import (
 from neural_reconstruction.algorithms.xgb_mst.linker import XgbMstLinker
 from neural_reconstruction.algorithms.unet_linker import UnetLinker
 from neural_reconstruction.algorithms.dbscan_linker import DbscanLinker
+from neural_reconstruction.algorithms.annotation_grow import AnnotationGrowLinker
 from neural_reconstruction.common.data_types import LinkerResult
 
 
@@ -129,13 +130,12 @@ class DatasetInferencer:
             return "skipped", sample.sample_id
 
         try:
+            linker = self._get_linker()
+
             image = np.array(Image.open(sample.image_path))
             mask = np.array(Image.open(sample.mask_path))
             annotation = np.array(Image.open(sample.annotation_path))
-
-            result: Optional[LinkerResult] = self._get_linker().run(
-                image, mask, annotation
-            )
+            result = linker.run(image, mask, annotation)
 
             if result is None:
                 self.logger.error(f"樣本 {sample.sample_id} 推論失敗: 返回 None")
@@ -236,6 +236,16 @@ def build_linker(algorithm: str) -> Any:
             extend_radius=30.0,
             min_component_length=10.0,
         )
+    elif algorithm == "annotation_grow":
+        return AnnotationGrowLinker(
+            offset_px=50,
+            bg_kernel_size=51,
+            clahe_grid=(16, 16),
+            sato_sigmas_start=3,
+            sato_sigmas_stop=8,
+            clahe_clip=20.0,
+            prune_threshold=20.0,
+        )
     else:
         raise ValueError(f"未知的演算法選項: {algorithm}")
 
@@ -253,7 +263,14 @@ def main():
     )
     parser.add_argument(
         "--algorithm",
-        choices=["pure_mst", "hierarchical", "composit", "unet", "dbscan"],
+        choices=[
+            "pure_mst",
+            "hierarchical",
+            "composit",
+            "unet",
+            "dbscan",
+            "annotation_grow",
+        ],
         default="pure_mst",
         help="使用的重建演算法 (預設: pure_mst)",
     )

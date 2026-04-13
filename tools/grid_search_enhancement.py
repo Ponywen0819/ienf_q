@@ -55,10 +55,10 @@ from neural_reconstruction.dataset import DatasetLoader, SampleFiles
 # ============================================================================
 
 DEFAULT_PARAM_GRID: Dict[str, List[Any]] = {
-    "clip_limit": [2.0, 10.0, 20.0, 40.0],
-    "tile_size":  [4, 8, 16],
-    "sigma_min":  [1, 2, 3, 4],
-    "sigma_max":  [5, 8, 12],
+    "clip_limit": [10.0, 20.0, 40.0],
+    "tile_size": [8, 16, 24, 32],
+    "sigma_min": [2, 3, 4],
+    "sigma_max": [5, 8, 12],
 }
 
 
@@ -84,7 +84,7 @@ def compute_fisher_score(
         Fisher Score, or None if either class has no pixels.
     """
     fiber_mask = roi_label > 0
-    bg_mask    = (roi_label == 0) & (roi_mask > 0)
+    bg_mask = (roi_label == 0) & (roi_mask > 0)
 
     if fiber_mask.sum() == 0 or bg_mask.sum() == 0:
         return None
@@ -95,7 +95,7 @@ def compute_fisher_score(
     mu_f, sig_f = vals_f.mean(), vals_f.std()
     mu_b, sig_b = vals_b.mean(), vals_b.std()
 
-    denom = sig_f ** 2 + sig_b ** 2
+    denom = sig_f**2 + sig_b**2
     if denom < 1e-8:
         return None
 
@@ -123,7 +123,7 @@ def base_preprocess(
     """
     try:
         image = np.array(Image.open(image_path).convert("RGB"))[:, :, 1]
-        mask  = np.array(Image.open(mask_path).convert("L"))
+        mask = np.array(Image.open(mask_path).convert("L"))
         label = np.array(Image.open(label_path).convert("L"))
     except Exception:
         return None
@@ -133,11 +133,11 @@ def base_preprocess(
     kernel = cv2.getStructuringElement(
         cv2.MORPH_ELLIPSE, (bg_kernel_size, bg_kernel_size)
     )
-    bg    = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel)
+    bg = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel)
     image = cv2.subtract(image, bg)
 
     roi_image_base = cv2.bitwise_and(image, image, mask=roi_mask)
-    roi_label      = cv2.bitwise_and(label, label, mask=roi_mask)
+    roi_label = cv2.bitwise_and(label, label, mask=roi_mask)
 
     return roi_image_base, roi_mask, roi_label
 
@@ -155,7 +155,7 @@ def apply_enhancement(
     Returns:
         Enhanced image (H, W) uint8, normalised to [0, 255].
     """
-    clahe    = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(tile_size, tile_size))
+    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(tile_size, tile_size))
     enhanced = clahe.apply(roi_image_base)
 
     enhanced = ski.filters.sato(
@@ -184,8 +184,8 @@ class GridSearchResult:
     fisher_std: Optional[float]
     fisher_min: Optional[float]
     fisher_max: Optional[float]
-    baseline_mean: Optional[float]    # Fisher without any enhancement
-    improvement_mean: Optional[float] # fisher_mean - baseline_mean
+    baseline_mean: Optional[float]  # Fisher without any enhancement
+    improvement_mean: Optional[float]  # fisher_mean - baseline_mean
     num_success: int
     num_skipped: int
     num_failed: int
@@ -240,7 +240,9 @@ class EnhancementEvaluator:
                 self._baselines[sid] = None
             else:
                 roi_base, roi_mask, roi_label = cached
-                self._baselines[sid] = compute_fisher_score(roi_base, roi_mask, roi_label)
+                self._baselines[sid] = compute_fisher_score(
+                    roi_base, roi_mask, roi_label
+                )
 
         valid_baselines = [v for v in self._baselines.values() if v is not None]
         if valid_baselines:
@@ -252,23 +254,28 @@ class EnhancementEvaluator:
 
     def evaluate(self, params: Dict[str, Any]) -> GridSearchResult:
         clip_limit = params["clip_limit"]
-        tile_size  = params["tile_size"]
-        sigma_min  = params["sigma_min"]
-        sigma_max  = params["sigma_max"]
+        tile_size = params["tile_size"]
+        sigma_min = params["sigma_min"]
+        sigma_max = params["sigma_max"]
 
         if sigma_min >= sigma_max:
             return GridSearchResult(
                 params=params,
-                fisher_mean=None, fisher_std=None,
-                fisher_min=None, fisher_max=None,
-                baseline_mean=None, improvement_mean=None,
-                num_success=0, num_skipped=0, num_failed=0,
+                fisher_mean=None,
+                fisher_std=None,
+                fisher_min=None,
+                fisher_max=None,
+                baseline_mean=None,
+                improvement_mean=None,
+                num_success=0,
+                num_skipped=0,
+                num_failed=0,
             )
 
-        fisher_list: List[float]   = []
+        fisher_list: List[float] = []
         baseline_list: List[float] = []
         num_skipped = 0
-        num_failed  = 0
+        num_failed = 0
 
         def _run(sid: str) -> Optional[Tuple[Optional[float], Optional[float]]]:
             cached = self._cache.get(sid)
@@ -276,7 +283,9 @@ class EnhancementEvaluator:
                 return None  # skipped
             roi_base, roi_mask, roi_label = cached
             try:
-                enhanced = apply_enhancement(roi_base, clip_limit, tile_size, sigma_min, sigma_max)
+                enhanced = apply_enhancement(
+                    roi_base, clip_limit, tile_size, sigma_min, sigma_max
+                )
                 score = compute_fisher_score(enhanced, roi_mask, roi_label)
                 return score, self._baselines.get(sid)
             except Exception as e:
@@ -284,9 +293,7 @@ class EnhancementEvaluator:
                 return (None, None)  # failed
 
         with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
-            futures = {
-                executor.submit(_run, sid): sid for sid in self._cache
-            }
+            futures = {executor.submit(_run, sid): sid for sid in self._cache}
             for future in as_completed(futures):
                 result = future.result()
                 if result is None:
@@ -303,10 +310,15 @@ class EnhancementEvaluator:
             if not values:
                 return None, None, None, None
             arr = np.array(values, dtype=float)
-            return float(arr.mean()), float(arr.std()), float(arr.min()), float(arr.max())
+            return (
+                float(arr.mean()),
+                float(arr.std()),
+                float(arr.min()),
+                float(arr.max()),
+            )
 
         f_mean, f_std, f_min, f_max = _stats(fisher_list)
-        b_mean, *_                  = _stats(baseline_list)
+        b_mean, *_ = _stats(baseline_list)
         improvement = (
             float(f_mean - b_mean)
             if f_mean is not None and b_mean is not None
@@ -348,7 +360,7 @@ class GridSearchRunner:
         self.param_grid = param_grid
         self.logger = logging.getLogger(__name__)
 
-        loader  = DatasetLoader(data_dir)
+        loader = DatasetLoader(data_dir)
         samples = loader.load_samples(sample_ids)
 
         self.evaluator = EnhancementEvaluator(
@@ -360,8 +372,7 @@ class GridSearchRunner:
 
     def run(self) -> List[GridSearchResult]:
         combinations = [
-            p for p in self._iter_combinations()
-            if p["sigma_min"] < p["sigma_max"]
+            p for p in self._iter_combinations() if p["sigma_min"] < p["sigma_max"]
         ]
         self.logger.info(f"Grid search: {len(combinations)} valid combinations")
 
@@ -384,23 +395,33 @@ class GridSearchRunner:
     def _log_combination(self, r: GridSearchResult):
         grid_keys = list(self.param_grid.keys())
         param_str = ", ".join(f"{k}={r.params[k]}" for k in grid_keys)
-        f   = f"{r.fisher_mean:.4f}"       if r.fisher_mean is not None else "N/A"
+        f = f"{r.fisher_mean:.4f}" if r.fisher_mean is not None else "N/A"
         imp = f"{r.improvement_mean:+.4f}" if r.improvement_mean is not None else "N/A"
         self.logger.debug(f"  [{param_str}] fisher={f}  improvement={imp}")
 
     def _save_results(self, results: List[GridSearchResult]):
-        grid_keys   = list(self.param_grid.keys())
+        grid_keys = list(self.param_grid.keys())
         metric_keys = [
-            "fisher_mean", "fisher_std", "fisher_min", "fisher_max",
-            "baseline_mean", "improvement_mean",
-            "num_success", "num_skipped", "num_failed",
+            "fisher_mean",
+            "fisher_std",
+            "fisher_min",
+            "fisher_max",
+            "baseline_mean",
+            "improvement_mean",
+            "num_success",
+            "num_skipped",
+            "num_failed",
         ]
 
         json_path = self.output_dir / "grid_search_enhancement_results.json"
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(
-                {"param_grid": self.param_grid, "results": [self._to_dict(r) for r in results]},
-                f, indent=2,
+                {
+                    "param_grid": self.param_grid,
+                    "results": [self._to_dict(r) for r in results],
+                },
+                f,
+                indent=2,
             )
         self.logger.info(f"Results saved: {json_path}")
 
@@ -415,17 +436,19 @@ class GridSearchRunner:
     @staticmethod
     def _to_dict(r: GridSearchResult) -> Dict[str, Any]:
         row = dict(r.params)
-        row.update({
-            "fisher_mean":      r.fisher_mean,
-            "fisher_std":       r.fisher_std,
-            "fisher_min":       r.fisher_min,
-            "fisher_max":       r.fisher_max,
-            "baseline_mean":    r.baseline_mean,
-            "improvement_mean": r.improvement_mean,
-            "num_success":      r.num_success,
-            "num_skipped":      r.num_skipped,
-            "num_failed":       r.num_failed,
-        })
+        row.update(
+            {
+                "fisher_mean": r.fisher_mean,
+                "fisher_std": r.fisher_std,
+                "fisher_min": r.fisher_min,
+                "fisher_max": r.fisher_max,
+                "baseline_mean": r.baseline_mean,
+                "improvement_mean": r.improvement_mean,
+                "num_success": r.num_success,
+                "num_skipped": r.num_skipped,
+                "num_failed": r.num_failed,
+            }
+        )
         return row
 
     def _print_top_results(self, results: List[GridSearchResult], top_n: int = 15):
@@ -443,14 +466,14 @@ class GridSearchRunner:
         print("-" * 108)
 
         for rank, r in enumerate(valid[:top_n], start=1):
-            fmt  = lambda v: f"{v:.4f}"  if v is not None else "   N/A"   # noqa
-            fmtd = lambda v: f"{v:+.4f}" if v is not None else "   N/A"   # noqa
+            fmt = lambda v: f"{v:.4f}" if v is not None else "   N/A"  # noqa
+            fmtd = lambda v: f"{v:+.4f}" if v is not None else "   N/A"  # noqa
             print(
                 f"{rank:>4}  "
-                f"{r.params.get('clip_limit','?'):>6}  "
-                f"{r.params.get('tile_size','?'):>4}  "
-                f"{r.params.get('sigma_min','?'):>5}  "
-                f"{r.params.get('sigma_max','?'):>5}  "
+                f"{r.params.get('clip_limit', '?'):>6}  "
+                f"{r.params.get('tile_size', '?'):>4}  "
+                f"{r.params.get('sigma_min', '?'):>5}  "
+                f"{r.params.get('sigma_max', '?'):>5}  "
                 f"{fmt(r.fisher_mean):>8}  "
                 f"{fmt(r.fisher_std):>7}  "
                 f"{fmt(r.baseline_mean):>9}  "
@@ -498,19 +521,42 @@ def main():
             "finds best parameters using Fisher Score (fiber vs background)"
         )
     )
-    parser.add_argument("--data-dir",    type=Path, required=True, help="Dataset root directory")
-    parser.add_argument("--output-dir",  type=Path, required=True, help="Output directory")
-    parser.add_argument("--sample-ids",  nargs="+",                help="Specific sample IDs (default: all)")
     parser.add_argument(
-        "--param-grid", type=str, default=None,
+        "--data-dir", type=Path, required=True, help="Dataset root directory"
+    )
+    parser.add_argument(
+        "--output-dir", type=Path, required=True, help="Output directory"
+    )
+    parser.add_argument(
+        "--sample-ids", nargs="+", help="Specific sample IDs (default: all)"
+    )
+    parser.add_argument(
+        "--param-grid",
+        type=str,
+        default=None,
         help=(
             'JSON parameter grid, e.g. \'{"clip_limit":[10.0,40.0],'
             '"tile_size":[8],"sigma_min":[2,4],"sigma_max":[8,12]}\''
         ),
     )
-    parser.add_argument("--offset-px",      type=int, default=50, help="Epidermis mask dilation (default: 50)")
-    parser.add_argument("--bg-kernel-size", type=int, default=51, help="Background subtraction kernel size (default: 51)")
-    parser.add_argument("--num-workers",    type=int, default=None, help="Parallel threads (default: cpu_count)")
+    parser.add_argument(
+        "--offset-px",
+        type=int,
+        default=50,
+        help="Epidermis mask dilation (default: 50)",
+    )
+    parser.add_argument(
+        "--bg-kernel-size",
+        type=int,
+        default=51,
+        help="Background subtraction kernel size (default: 51)",
+    )
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=None,
+        help="Parallel threads (default: cpu_count)",
+    )
     parser.add_argument("--verbose", action="store_true", help="Verbose logging")
 
     args = parser.parse_args()

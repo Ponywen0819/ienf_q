@@ -33,6 +33,7 @@ from neural_reconstruction.core.topology import TopologyBuilder
 from neural_reconstruction.core.evaluation import (
     extract_graph_points,
     compute_average_hausdorff_distance,
+    compute_cldice,
 )
 
 
@@ -41,29 +42,35 @@ from neural_reconstruction.core.evaluation import (
 # ============================================================================
 
 # GT 綠色 / Pred 橘紅色
-_COLOR_GT   = (0, 220, 0)      # BGR green
-_COLOR_PRED = (0, 100, 255)    # BGR orange-red
+_COLOR_GT = (0, 220, 0)  # BGR green
+_COLOR_PRED = (0, 100, 255)  # BGR orange-red
 
 
-def _draw_graph(canvas: np.ndarray, graph: nx.Graph, color: tuple, thickness: int = 1) -> None:
+def _draw_graph(
+    canvas: np.ndarray, graph: nx.Graph, color: tuple, thickness: int = 1
+) -> None:
     """將 graph 的邊（優先使用 path 像素座標）畫到 canvas 上（in-place）。"""
     for u, v, data in graph.edges(data=True):
-        path = data.get("path") or data.get("path-coordinates")
-        if path and len(path) >= 2:
-            pts = np.array(path, dtype=np.int32)   # (N, 2) as (y, x)
+        path = data.get("path")
+        if path is not None and len(path) >= 2:
+            pts = np.array(path, dtype=np.int32)  # (N, 2) as (y, x)
             for i in range(len(pts) - 1):
                 cv2.line(
                     canvas,
-                    (int(pts[i][1]),     int(pts[i][0])),      # (x, y)
+                    (int(pts[i][1]), int(pts[i][0])),  # (x, y)
                     (int(pts[i + 1][1]), int(pts[i + 1][0])),
-                    color, thickness, lineType=cv2.LINE_AA,
+                    color,
+                    thickness,
+                    lineType=cv2.LINE_AA,
                 )
         else:
             cv2.line(
                 canvas,
                 (int(u[1]), int(u[0])),
                 (int(v[1]), int(v[0])),
-                color, thickness, lineType=cv2.LINE_AA,
+                color,
+                thickness,
+                lineType=cv2.LINE_AA,
             )
 
 
@@ -87,7 +94,8 @@ def save_overlay_visualization(
     """
     # --- 背景：優先使用原始圖像 ---
     if image_path is not None and image_path.exists():
-        bg = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+        bg = cv2.imread(str(image_path), cv2.IMREAD_COLOR)[:, :, 1]  # BGR → RGB
+        bg = cv2.cvtColor(bg, cv2.COLOR_GRAY2BGR)  # 灰階轉彩色
         if bg is None:
             bg = cv2.cvtColor(roi_image, cv2.COLOR_GRAY2BGR)
     else:
@@ -97,7 +105,7 @@ def save_overlay_visualization(
             bg = roi_image.copy()
 
     canvas = bg.copy()
-    _draw_graph(canvas, gt_graph,   _COLOR_GT,   thickness=1)
+    _draw_graph(canvas, gt_graph, _COLOR_GT, thickness=1)
     _draw_graph(canvas, pred_graph, _COLOR_PRED, thickness=1)
 
     vis_dir.mkdir(parents=True, exist_ok=True)
@@ -119,6 +127,9 @@ class SampleResult:
     hausdorff_distance: Optional[float] = None
     hausdorff_distance_pred_to_gt: Optional[float] = None
     hausdorff_distance_gt_to_pred: Optional[float] = None
+    cldice: Optional[float] = None
+    cldice_tprec: Optional[float] = None
+    cldice_tsens: Optional[float] = None
     num_nodes_pred: Optional[int] = None
     num_nodes_gt: Optional[int] = None
     num_edges_pred: Optional[int] = None
@@ -143,6 +154,9 @@ class EvaluationSummary:
     hausdorff_std: Optional[float] = None
     hausdorff_min: Optional[float] = None
     hausdorff_max: Optional[float] = None
+    cldice_mean: Optional[float] = None
+    cldice_median: Optional[float] = None
+    cldice_std: Optional[float] = None
     count_mae_mean: Optional[float] = None
     count_mae_median: Optional[float] = None
     count_mae_std: Optional[float] = None
@@ -206,6 +220,17 @@ class EvaluationReporter:
             hausdorff_mean = hausdorff_median = hausdorff_std = None
             hausdorff_min = hausdorff_max = None
 
+        # clDice
+        valid_cldice = [
+            r.cldice for r in results if r.status == "success" and r.cldice is not None
+        ]
+        if valid_cldice:
+            cldice_mean = float(np.mean(valid_cldice))
+            cldice_median = float(np.median(valid_cldice))
+            cldice_std = float(np.std(valid_cldice))
+        else:
+            cldice_mean = cldice_median = cldice_std = None
+
         # Count MAE + correlation
         count_pairs = [
             (r.valid_count_pred, r.gt_count)
@@ -244,6 +269,9 @@ class EvaluationReporter:
             hausdorff_std=hausdorff_std,
             hausdorff_min=hausdorff_min,
             hausdorff_max=hausdorff_max,
+            cldice_mean=cldice_mean,
+            cldice_median=cldice_median,
+            cldice_std=cldice_std,
             count_mae_mean=count_mae_mean,
             count_mae_median=count_mae_median,
             count_mae_std=count_mae_std,
@@ -288,6 +316,9 @@ class EvaluationReporter:
             "hausdorff_distance",
             "hausdorff_distance_gt_to_pred",
             "hausdorff_distance_pred_to_gt",
+            "cldice",
+            "cldice_tprec",
+            "cldice_tsens",
             "num_nodes_pred",
             "num_nodes_gt",
             "num_edges_pred",
@@ -327,6 +358,16 @@ class EvaluationReporter:
             print(f"  Max:        {summary.hausdorff_max:.4f}")
         else:
             print("Hausdorff Distance: no valid data")
+
+        print("-" * 80)
+
+        if summary.cldice_mean is not None:
+            print("clDice:")
+            print(f"  Mean:       {summary.cldice_mean:.4f}")
+            print(f"  Median:     {summary.cldice_median:.4f}")
+            print(f"  Std:        {summary.cldice_std:.4f}")
+        else:
+            print("clDice: no valid data")
 
         print("-" * 80)
 
@@ -419,7 +460,9 @@ class DatasetEvaluator:
         if sample_ids is None:
             pkl_files = sorted(self.inference_dir.glob("*.pkl"))
             sample_ids = [p.stem for p in pkl_files]
-            self.logger.info(f"在 {self.inference_dir} 找到 {len(sample_ids)} 個推論結果")
+            self.logger.info(
+                f"在 {self.inference_dir} 找到 {len(sample_ids)} 個推論結果"
+            )
         else:
             self.logger.info(f"指定評測 {len(sample_ids)} 個樣本")
 
@@ -464,11 +507,15 @@ class DatasetEvaluator:
                 pred_points = extract_graph_points(extract_result.graph)
                 gt_points = extract_graph_points(graph_gt)
 
-                avg_dist, d_pred_to_gt, d_gt_to_pred = compute_average_hausdorff_distance(
-                    pred_points, gt_points
+                avg_dist, d_pred_to_gt, d_gt_to_pred = (
+                    compute_average_hausdorff_distance(pred_points, gt_points)
                 )
                 num_nodes_gt = graph_gt.number_of_nodes()
                 num_edges_gt = graph_gt.number_of_edges()
+
+                cld, tprec, tsens = compute_cldice(
+                    extract_result.graph, roi_label, tolerance_px=1
+                )
 
                 if self.visualize:
                     save_overlay_visualization(
@@ -479,6 +526,9 @@ class DatasetEvaluator:
                         gt_graph=graph_gt,
                         vis_dir=self.vis_dir,
                     )
+
+            else:
+                cld = tprec = tsens = None
 
             # --- Count ---
             gt_count = self.gt_counts.get(sample_id)
@@ -495,6 +545,9 @@ class DatasetEvaluator:
                 hausdorff_distance=avg_dist,
                 hausdorff_distance_pred_to_gt=d_pred_to_gt,
                 hausdorff_distance_gt_to_pred=d_gt_to_pred,
+                cldice=cld,
+                cldice_tprec=tprec,
+                cldice_tsens=tsens,
                 num_nodes_pred=extract_result.graph.number_of_nodes(),
                 num_nodes_gt=num_nodes_gt,
                 num_edges_pred=extract_result.graph.number_of_edges(),

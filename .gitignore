@@ -48,3 +48,5 @@ nas
 *.joblib
 notebooks/link_classfier/xgb_connection_filter.json
 notebooks/link_classfier/scaler.joblib
+
+dinov3/
