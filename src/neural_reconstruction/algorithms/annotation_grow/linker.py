@@ -36,6 +36,7 @@ from neural_reconstruction.core.crosses_detection import (
     RegionLabeler,
     SegmentDetector,
     CrossingCounter,
+    MainTrunkExtractor,
 )
 from collections import defaultdict
 
@@ -243,6 +244,7 @@ class AnnotationGrowLinker:
         )
 
         segmented_graph = segment_detector.detect_segments(segmented_graph)
+        segmented_graph = MainTrunkExtractor.extract(segmented_graph)
         # Step 2: Label regions and mark crossing edges
         labeled_graph, _ = region_labeler.label_topology(segmented_graph, mask)
 

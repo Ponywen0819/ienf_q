@@ -1,1 +1,0 @@
-uv run ./tools/run_inference.py --data-dir data_0331/ --output-dir ./output/grid/bg_31_clahe_768_20_sato_1 --algorithm annotation_grow                                  
