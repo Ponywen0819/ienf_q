@@ -33,6 +33,7 @@ from neural_reconstruction.core.topology import TopologyBuilder
 from neural_reconstruction.core.evaluation import (
     extract_graph_points,
     compute_average_hausdorff_distance,
+    compute_hd95,
     compute_cldice,
 )
 
@@ -127,6 +128,9 @@ class SampleResult:
     hausdorff_distance: Optional[float] = None
     hausdorff_distance_pred_to_gt: Optional[float] = None
     hausdorff_distance_gt_to_pred: Optional[float] = None
+    hd95: Optional[float] = None
+    hd95_pred_to_gt: Optional[float] = None
+    hd95_gt_to_pred: Optional[float] = None
     cldice: Optional[float] = None
     cldice_tprec: Optional[float] = None
     cldice_tsens: Optional[float] = None
@@ -154,6 +158,11 @@ class EvaluationSummary:
     hausdorff_std: Optional[float] = None
     hausdorff_min: Optional[float] = None
     hausdorff_max: Optional[float] = None
+    hd95_mean: Optional[float] = None
+    hd95_median: Optional[float] = None
+    hd95_std: Optional[float] = None
+    hd95_min: Optional[float] = None
+    hd95_max: Optional[float] = None
     cldice_mean: Optional[float] = None
     cldice_median: Optional[float] = None
     cldice_std: Optional[float] = None
@@ -220,6 +229,22 @@ class EvaluationReporter:
             hausdorff_mean = hausdorff_median = hausdorff_std = None
             hausdorff_min = hausdorff_max = None
 
+        # HD95
+        valid_hd95 = [
+            r.hd95
+            for r in results
+            if r.status == "success" and r.hd95 is not None
+        ]
+        if valid_hd95:
+            hd95_mean = float(np.mean(valid_hd95))
+            hd95_median = float(np.median(valid_hd95))
+            hd95_std = float(np.std(valid_hd95))
+            hd95_min = float(np.min(valid_hd95))
+            hd95_max = float(np.max(valid_hd95))
+        else:
+            hd95_mean = hd95_median = hd95_std = None
+            hd95_min = hd95_max = None
+
         # clDice
         valid_cldice = [
             r.cldice for r in results if r.status == "success" and r.cldice is not None
@@ -269,6 +294,11 @@ class EvaluationReporter:
             hausdorff_std=hausdorff_std,
             hausdorff_min=hausdorff_min,
             hausdorff_max=hausdorff_max,
+            hd95_mean=hd95_mean,
+            hd95_median=hd95_median,
+            hd95_std=hd95_std,
+            hd95_min=hd95_min,
+            hd95_max=hd95_max,
             cldice_mean=cldice_mean,
             cldice_median=cldice_median,
             cldice_std=cldice_std,
@@ -316,6 +346,9 @@ class EvaluationReporter:
             "hausdorff_distance",
             "hausdorff_distance_gt_to_pred",
             "hausdorff_distance_pred_to_gt",
+            "hd95",
+            "hd95_pred_to_gt",
+            "hd95_gt_to_pred",
             "cldice",
             "cldice_tprec",
             "cldice_tsens",
@@ -350,14 +383,26 @@ class EvaluationReporter:
         print("-" * 80)
 
         if summary.hausdorff_mean is not None:
-            print("Hausdorff Distance:")
+            print("Hausdorff Distance (Average):")
             print(f"  Mean:       {summary.hausdorff_mean:.4f}")
             print(f"  Median:     {summary.hausdorff_median:.4f}")
             print(f"  Std:        {summary.hausdorff_std:.4f}")
             print(f"  Min:        {summary.hausdorff_min:.4f}")
             print(f"  Max:        {summary.hausdorff_max:.4f}")
         else:
-            print("Hausdorff Distance: no valid data")
+            print("Hausdorff Distance (Average): no valid data")
+
+        print("-" * 80)
+
+        if summary.hd95_mean is not None:
+            print("Hausdorff Distance 95th Percentile (HD95):")
+            print(f"  Mean:       {summary.hd95_mean:.4f}")
+            print(f"  Median:     {summary.hd95_median:.4f}")
+            print(f"  Std:        {summary.hd95_std:.4f}")
+            print(f"  Min:        {summary.hd95_min:.4f}")
+            print(f"  Max:        {summary.hd95_max:.4f}")
+        else:
+            print("HD95: no valid data")
 
         print("-" * 80)
 
@@ -426,6 +471,7 @@ class DatasetEvaluator:
 
         self.reporter = EvaluationReporter(output_dir)
         self.gt_counts = self._load_gt_counts(data_dir)
+        self.px_um_ratios = self._load_px_um_ratios(data_dir)
 
         self.config = {
             "inference_dir": str(inference_dir),
@@ -442,6 +488,17 @@ class DatasetEvaluator:
             )
             return {}
         with open(count_path, encoding="utf-8") as f:
+            return json.load(f)
+
+    @staticmethod
+    def _load_px_um_ratios(data_dir: Path) -> Dict[str, float]:
+        px_um_path = Path(data_dir) / "px_um.json"
+        if not px_um_path.exists():
+            logging.getLogger(__name__).warning(
+                f"px_um.json not found at {px_um_path} — HD95 will remain in pixels"
+            )
+            return {}
+        with open(px_um_path, encoding="utf-8") as f:
             return json.load(f)
 
     def evaluate(self, sample_ids: Optional[List[str]] = None) -> EvaluationSummary:
@@ -492,6 +549,7 @@ class DatasetEvaluator:
 
             # --- Hausdorff ---
             avg_dist = d_pred_to_gt = d_gt_to_pred = None
+            hd95 = hd95_pred_to_gt = hd95_gt_to_pred = None
             num_nodes_gt = num_edges_gt = None
 
             gt_label_path = self.data_dir / sample_id / "label.png"
@@ -510,6 +568,20 @@ class DatasetEvaluator:
                 avg_dist, d_pred_to_gt, d_gt_to_pred = (
                     compute_average_hausdorff_distance(pred_points, gt_points)
                 )
+                hd95, hd95_pred_to_gt, hd95_gt_to_pred = compute_hd95(
+                    pred_points, gt_points
+                )
+
+                ratio = self.px_um_ratios.get(sample_id)
+                if ratio is not None:
+                    hd95 *= ratio
+                    hd95_pred_to_gt *= ratio
+                    hd95_gt_to_pred *= ratio
+                elif self.px_um_ratios:
+                    self.logger.warning(
+                        f"樣本 {sample_id} 未在 px_um.json 中找到 ratio — HD95 仍為像素單位"
+                    )
+
                 num_nodes_gt = graph_gt.number_of_nodes()
                 num_edges_gt = graph_gt.number_of_edges()
 
@@ -545,6 +617,9 @@ class DatasetEvaluator:
                 hausdorff_distance=avg_dist,
                 hausdorff_distance_pred_to_gt=d_pred_to_gt,
                 hausdorff_distance_gt_to_pred=d_gt_to_pred,
+                hd95=hd95,
+                hd95_pred_to_gt=hd95_pred_to_gt,
+                hd95_gt_to_pred=hd95_gt_to_pred,
                 cldice=cld,
                 cldice_tprec=tprec,
                 cldice_tsens=tsens,

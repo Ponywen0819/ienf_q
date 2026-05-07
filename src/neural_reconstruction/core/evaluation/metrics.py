@@ -101,6 +101,43 @@ def compute_average_hausdorff_distance(
     return float(avg_distance), float(d_a_to_b), float(d_b_to_a)
 
 
+def compute_hd95(
+    points_a: np.ndarray,
+    points_b: np.ndarray,
+) -> Tuple[float, float, float]:
+    """
+    計算 95th Percentile Hausdorff Distance (HD95)
+
+    HD95 定義：
+    - d95(A→B) = 95th percentile of {min_dist(a, B) for a in A}
+    - d95(B→A) = 95th percentile of {min_dist(b, A) for b in B}
+    - HD95(A, B) = max(d95(A→B), d95(B→A))
+
+    相比傳統最大 Hausdorff 距離，HD95 排除最遠的 5% 離群點，
+    對少數嚴重偏差的點更加穩健。
+
+    Args:
+        points_a: 點集 A，形狀 (M, 2)，每行為 [y, x]
+        points_b: 點集 B，形狀 (N, 2)，每行為 [y, x]
+
+    Returns:
+        (hd95, d95_a_to_b, d95_b_to_a)
+        - hd95: 對稱 HD95，= max(d95_a_to_b, d95_b_to_a)
+        - d95_a_to_b: A→B 方向的第 95 百分位最小距離
+        - d95_b_to_a: B→A 方向的第 95 百分位最小距離
+
+    Raises:
+        ValueError: 如果任一點集為空或形狀不正確
+    """
+    min_dist_a_to_b, min_dist_b_to_a = compute_point_min_distances(points_a, points_b)
+
+    d95_a_to_b = float(np.percentile(min_dist_a_to_b, 95))
+    d95_b_to_a = float(np.percentile(min_dist_b_to_a, 95))
+    hd95 = max(d95_a_to_b, d95_b_to_a)
+
+    return hd95, d95_a_to_b, d95_b_to_a
+
+
 def compute_directed_hausdorff_distance(
     points_a: np.ndarray, points_b: np.ndarray
 ) -> float:

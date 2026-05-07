@@ -59,7 +59,6 @@ class AnnotationGrowLinker:
         sato_sigmas_start: int = 3,
         sato_sigmas_stop: int = 8,
         # Dijkstra
-        dijkstra_k: float = 20.0,
         connectivity: int = 8,
         # Edge pruning
         prune_threshold: float = 20.0,
@@ -72,7 +71,6 @@ class AnnotationGrowLinker:
         self.clahe_grid = clahe_grid
         self.sato_sigmas_start = sato_sigmas_start
         self.sato_sigmas_stop = sato_sigmas_stop
-        self.dijkstra_k = dijkstra_k
         self.connectivity = connectivity
         self.prune_threshold = prune_threshold
         self.segment_length = segment_length

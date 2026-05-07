@@ -33,19 +33,20 @@ def build_enhanced_image(
     Returns:
         roi_image: Enhanced uint8 image (H, W), masked to ROI
     """
-    kernel = cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE, (bg_kernel_size, bg_kernel_size)
-    )
-    background = cv2.morphologyEx(green, cv2.MORPH_OPEN, kernel)
-    corrected = cv2.subtract(green, background)
+    if bg_kernel_size > 0:
+        kernel = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE, (bg_kernel_size, bg_kernel_size)
+        )
+        background = cv2.morphologyEx(green, cv2.MORPH_OPEN, kernel)
+        corrected = cv2.subtract(green, background)
+    else:
+        corrected = green
     roi_image = cv2.bitwise_and(corrected, corrected, mask=roi_mask)
 
     clahe = cv2.createCLAHE(clipLimit=clahe_clip, tileGridSize=clahe_grid)
     roi_image = clahe.apply(roi_image)
 
-    roi_image = ski.filters.sato(
-        roi_image, sigmas=sato_sigmas, black_ridges=False
-    )
+    roi_image = ski.filters.sato(roi_image, sigmas=sato_sigmas, black_ridges=False)
     vmin, vmax = roi_image.min(), roi_image.max()
     if vmax > vmin:
         roi_image = (roi_image - vmin) / (vmax - vmin) * 255

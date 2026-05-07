@@ -36,6 +36,8 @@ from neural_reconstruction.algorithms.xgb_mst.linker import XgbMstLinker
 from neural_reconstruction.algorithms.unet_linker import UnetLinker
 from neural_reconstruction.algorithms.dbscan_linker import DbscanLinker
 from neural_reconstruction.algorithms.annotation_grow import AnnotationGrowLinker
+from neural_reconstruction.algorithms.label_linker import LabelLinker
+from neural_reconstruction.algorithms.skeleton_linker import SkeletonLinker
 from neural_reconstruction.common.data_types import LinkerResult
 
 
@@ -124,18 +126,30 @@ class DatasetInferencer:
 
     def _process_sample(self, sample: SampleFiles):
         """處理單一樣本，儲存推論結果為 pkl"""
-        is_complete, reason = sample.is_complete()
-        if not is_complete:
-            self.logger.warning(f"樣本 {sample.sample_id} 跳過: {reason}")
-            return "skipped", sample.sample_id
-
         try:
             linker = self._get_linker()
 
-            image = np.array(Image.open(sample.image_path))
-            mask = np.array(Image.open(sample.mask_path))
-            annotation = np.array(Image.open(sample.annotation_path))
-            result = linker.run(image, mask, annotation)
+            if isinstance(linker, LabelLinker):
+                if sample.label_path is None or not sample.label_path.exists():
+                    self.logger.warning(
+                        f"樣本 {sample.sample_id} 跳過: label.png 不存在"
+                    )
+                    return "skipped", sample.sample_id
+                if not sample.mask_path.exists():
+                    self.logger.warning(f"樣本 {sample.sample_id} 跳過: missing_mask")
+                    return "skipped", sample.sample_id
+                mask = np.array(Image.open(sample.mask_path))
+                label = np.array(Image.open(sample.label_path))
+                result = linker.run(mask, label)
+            else:
+                is_complete, reason = sample.is_complete()
+                if not is_complete:
+                    self.logger.warning(f"樣本 {sample.sample_id} 跳過: {reason}")
+                    return "skipped", sample.sample_id
+                image = np.array(Image.open(sample.image_path))
+                mask = np.array(Image.open(sample.mask_path))
+                annotation = np.array(Image.open(sample.annotation_path))
+                result = linker.run(image, mask, annotation)
 
             if result is None:
                 self.logger.error(f"樣本 {sample.sample_id} 推論失敗: 返回 None")
@@ -182,11 +196,13 @@ def build_linker(algorithm: str) -> Any:
     if algorithm == "pure_mst":
         return PureMstLinker(
             offset_px=50,
-            rolling_ball_radius=50,
-            opening_kernel_size=3,
+            bg_kernel_size=31,
+            clahe_clip=10.0,
+            clahe_grid=(768, 768),
+            sato_sigmas_start=3,
+            sato_sigmas_stop=8,
             segment_length=5.0,
             search_radius=50.0,
-            intensity_weight=2,
             min_component_length=3.0,
         )
     elif algorithm == "hierarchical":
@@ -239,13 +255,17 @@ def build_linker(algorithm: str) -> Any:
     elif algorithm == "annotation_grow":
         return AnnotationGrowLinker(
             offset_px=50,
-            bg_kernel_size=51,
-            clahe_grid=(16, 16),
+            bg_kernel_size=31,
+            clahe_grid=(768, 768),
+            clahe_clip=20.0,
             sato_sigmas_start=3,
             sato_sigmas_stop=8,
-            clahe_clip=20.0,
-            prune_threshold=20.0,
+            prune_threshold=50.0,
         )
+    elif algorithm == "label":
+        return LabelLinker(offset_px=50)
+    elif algorithm == "skeleton":
+        return SkeletonLinker(offset_px=50, segment_length=3.0)
     else:
         raise ValueError(f"未知的演算法選項: {algorithm}")
 
@@ -270,6 +290,8 @@ def main():
             "unet",
             "dbscan",
             "annotation_grow",
+            "label",
+            "skeleton",
         ],
         default="pure_mst",
         help="使用的重建演算法 (預設: pure_mst)",

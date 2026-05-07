@@ -49,6 +49,7 @@ from .metrics import (
     compute_point_min_distances,
     compute_average_hausdorff_distance,
     compute_directed_hausdorff_distance,
+    compute_hd95,
     compute_cldice,
 )
 
@@ -75,6 +76,7 @@ __all__ = [
     'compute_point_min_distances',
     'compute_average_hausdorff_distance',
     'compute_directed_hausdorff_distance',
+    'compute_hd95',
     'compute_cldice',
     # 點集提取
     'GraphPointExtractor',

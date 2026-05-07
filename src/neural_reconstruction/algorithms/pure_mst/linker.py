@@ -51,23 +51,20 @@ class PureMstLinker:
         self,
         # 預處理參數
         offset_px: int = 50,
-        rolling_ball_radius: int = 50,
-        opening_kernel_size: int = 3,
-        clahe_clip: float = 20.0,
-        clahe_grid: tuple[int, int] = (16, 16),
+        bg_kernel_size: int = 31,
+        clahe_clip: float = 30.0,
+        clahe_grid: tuple[int, int] = (1024, 1024),
         sato_sigmas_start: int = 3,
         sato_sigmas_stop: int = 8,
         # 元件分析參數
         segment_length: float = 5.0,
         # 路徑查找參數
-        search_radius: float = 50.0,
-        intensity_weight: float = 2.0,
+        search_radius: float = 20.0,
         min_component_length: float = 10.0,
     ):
         # 預處理參數
         self.offset_px = offset_px
-        self.rolling_ball_radius = rolling_ball_radius
-        self.opening_kernel_size = opening_kernel_size
+        self.bg_kernel_size = bg_kernel_size
         self.clahe_clip = clahe_clip
         self.clahe_grid = clahe_grid
         self.sato_sigmas_start = sato_sigmas_start
@@ -75,7 +72,6 @@ class PureMstLinker:
         # 重建參數
         self.segment_length = segment_length
         self.search_radius = search_radius
-        self.intensity_weight = intensity_weight
         self.min_component_length = min_component_length
 
     def run(
@@ -105,23 +101,13 @@ class PureMstLinker:
         roi_image = build_enhanced_image(
             green=image,
             roi_mask=roi_mask,
-            bg_kernel_size=self.rolling_ball_radius * 2 + 1,
+            bg_kernel_size=self.bg_kernel_size,
             clahe_clip=self.clahe_clip,
             clahe_grid=self.clahe_grid,
             sato_sigmas=range(self.sato_sigmas_start, self.sato_sigmas_stop),
         )
 
         roi_annotation = cv2.bitwise_and(annotation, annotation, mask=roi_mask)
-
-        # apply opening to roi_annotation to remove small noise
-        if self.opening_kernel_size > 0:
-            # roi_annotation = cv2.morphologyEx(roi_annotation, cv2.MORPH_OPEN, kernel)
-            kernel = cv2.getStructuringElement(
-                cv2.MORPH_RECT, (self.opening_kernel_size, self.opening_kernel_size)
-            )
-            # apply closing to roi_annotation to fill small holes
-            roi_annotation = cv2.morphologyEx(roi_annotation, cv2.MORPH_CLOSE, kernel)
-
         reconstruction_graph = self._run_reconstruction(roi_annotation, roi_image)
 
         valid_count, labeled_graph = self._run_crossing_analysis(

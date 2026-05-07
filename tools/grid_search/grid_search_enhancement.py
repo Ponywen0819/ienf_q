@@ -1,8 +1,9 @@
 """
 CLAHE + Sato Enhancement Parameter Grid Search
 
-Evaluates combinations of CLAHE (clip_limit, tile_size) and Sato vesselness
-(sigma_min, sigma_max) parameters across all dataset samples.
+Evaluates combinations of background subtraction (bg_kernel_size), CLAHE
+(clip_limit, tile_size), and Sato vesselness (sigma_min, sigma_max) parameters
+across all dataset samples.
 
 Metric: Fisher Score — measures how well the enhanced image separates fiber
 pixels (label > 0 within ROI) from background pixels (label == 0 within ROI):
@@ -21,7 +22,7 @@ Usage:
     python tools/grid_search_enhancement.py \
         --data-dir data_0331 \
         --output-dir output/grid_search_enhancement \
-        --param-grid '{"clip_limit":[10.0,40.0],"tile_size":[8],"sigma_min":[2,4],"sigma_max":[8,12]}'
+        --param-grid '{"bg_kernel_size":[31,51],"clip_limit":[10.0,40.0],"tile_size":[8],"sigma_min":[2,4],"sigma_max":[8,12]}'
 
     # Specific samples
     python tools/grid_search_enhancement.py \
@@ -55,10 +56,15 @@ from neural_reconstruction.dataset import DatasetLoader, SampleFiles
 # ============================================================================
 
 DEFAULT_PARAM_GRID: Dict[str, List[Any]] = {
-    "clip_limit": [10.0, 20.0, 40.0],
-    "tile_size": [8, 16, 24, 32],
-    "sigma_min": [2, 3, 4],
-    "sigma_max": [5, 8, 12],
+    # "clip_limit": [10.0, 20.0, 30.0, 40.0, 50.0],
+    # "tile_size": [256, 512, 768, 1024, 1536, 2048],
+    # "sigma_min": [1, 2, 3, 4, 5],
+    "sigma_max": [6, 7, 8, 9, 10],
+    "bg_kernel_size": [31],
+    "clip_limit": [20.0],
+    "tile_size": [768],
+    "sigma_min": [3],
+    # "sigma_max": [8],
 }
 
 
@@ -113,13 +119,14 @@ def base_preprocess(
     label_path: Path,
     offset_px: int = 50,
     bg_kernel_size: int = 51,
-) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
+) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
     """
-    Fixed preprocessing (done once per sample, then cached):
+    Fixed preprocessing (done once per sample and bg_kernel_size, then cached):
+      green channel → ROI masking
       green channel → background subtraction → ROI masking
 
     Returns:
-        (roi_image_base, roi_mask, roi_label) or None on failure.
+        (roi_image_raw, roi_image_base, roi_mask, roi_label) or None on failure.
     """
     try:
         image = np.array(Image.open(image_path).convert("RGB"))[:, :, 1]
@@ -129,6 +136,7 @@ def base_preprocess(
         return None
 
     roi_mask = dilate_epidermis_vertically(mask, offset_px=offset_px)
+    roi_image_raw = cv2.bitwise_and(image, image, mask=roi_mask)
 
     kernel = cv2.getStructuringElement(
         cv2.MORPH_ELLIPSE, (bg_kernel_size, bg_kernel_size)
@@ -139,7 +147,7 @@ def base_preprocess(
     roi_image_base = cv2.bitwise_and(image, image, mask=roi_mask)
     roi_label = cv2.bitwise_and(label, label, mask=roi_mask)
 
-    return roi_image_base, roi_mask, roi_label
+    return roi_image_raw, roi_image_base, roi_mask, roi_label
 
 
 def apply_enhancement(
@@ -158,6 +166,11 @@ def apply_enhancement(
     clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(tile_size, tile_size))
     enhanced = clahe.apply(roi_image_base)
 
+    # enhanced = ski.filters.meijering(
+    #     enhanced,
+    #     sigmas=range(sigma_min, sigma_max),
+    #     black_ridges=False,
+    # )
     enhanced = ski.filters.sato(
         enhanced,
         sigmas=range(sigma_min, sigma_max),
@@ -184,7 +197,7 @@ class GridSearchResult:
     fisher_std: Optional[float]
     fisher_min: Optional[float]
     fisher_max: Optional[float]
-    baseline_mean: Optional[float]  # Fisher without any enhancement
+    baseline_mean: Optional[float]  # Fisher on raw green channel with ROI mask only
     improvement_mean: Optional[float]  # fisher_mean - baseline_mean
     num_success: int
     num_skipped: int
@@ -198,8 +211,8 @@ class GridSearchResult:
 
 class EnhancementEvaluator:
     """
-    Caches base-preprocessed data once, then applies CLAHE+Sato for each
-    parameter combination (fast inner loop).
+    Caches base-preprocessed data per bg_kernel_size, then applies CLAHE+Sato
+    for each parameter combination (fast inner loop).
     """
 
     def __init__(
@@ -209,54 +222,81 @@ class EnhancementEvaluator:
         bg_kernel_size: int = 51,
         num_workers: Optional[int] = None,
     ):
+        self.samples = samples
+        self.offset_px = offset_px
+        self.default_bg_kernel_size = bg_kernel_size
         self.num_workers = num_workers
         self.logger = logging.getLogger(__name__)
+        self._cache_by_bg_kernel: Dict[int, Dict[str, Optional[Tuple]]] = {}
+        self._baselines_by_bg_kernel: Dict[int, Dict[str, Optional[float]]] = {}
 
-        self.logger.info(f"Base-preprocessing {len(samples)} samples...")
-        self._cache: Dict[str, Optional[Tuple]] = {}
-        for sample in tqdm(samples, desc="Base preprocessing"):
+    def _ensure_base_cache(
+        self, bg_kernel_size: int
+    ) -> Tuple[Dict[str, Optional[Tuple]], Dict[str, Optional[float]]]:
+        if bg_kernel_size in self._cache_by_bg_kernel:
+            return (
+                self._cache_by_bg_kernel[bg_kernel_size],
+                self._baselines_by_bg_kernel[bg_kernel_size],
+            )
+
+        self.logger.info(
+            f"Base-preprocessing {len(self.samples)} samples "
+            f"(bg_kernel_size={bg_kernel_size})..."
+        )
+        cache: Dict[str, Optional[Tuple]] = {}
+        for sample in tqdm(
+            self.samples, desc=f"Base preprocessing bg={bg_kernel_size}"
+        ):
             if sample.label_path is None or not sample.label_path.exists():
-                self._cache[sample.sample_id] = None
+                cache[sample.sample_id] = None
                 continue
             ok, _ = sample.is_complete()
             if not ok:
-                self._cache[sample.sample_id] = None
+                cache[sample.sample_id] = None
                 continue
-            self._cache[sample.sample_id] = base_preprocess(
+            cache[sample.sample_id] = base_preprocess(
                 sample.image_path,
                 sample.mask_path,
                 sample.label_path,
-                offset_px=offset_px,
+                offset_px=self.offset_px,
                 bg_kernel_size=bg_kernel_size,
             )
 
-        loaded = sum(1 for v in self._cache.values() if v is not None)
-        self.logger.info(f"Cached {loaded}/{len(samples)} samples")
+        loaded = sum(1 for v in cache.values() if v is not None)
+        self.logger.info(
+            f"Cached {loaded}/{len(self.samples)} samples "
+            f"(bg_kernel_size={bg_kernel_size})"
+        )
 
-        # Pre-compute baseline Fisher Score (no enhancement)
-        self._baselines: Dict[str, Optional[float]] = {}
-        for sid, cached in self._cache.items():
+        # Pre-compute baseline Fisher Score (raw green channel + ROI masking only)
+        baselines: Dict[str, Optional[float]] = {}
+        for sid, cached in cache.items():
             if cached is None:
-                self._baselines[sid] = None
+                baselines[sid] = None
             else:
-                roi_base, roi_mask, roi_label = cached
-                self._baselines[sid] = compute_fisher_score(
-                    roi_base, roi_mask, roi_label
-                )
+                roi_raw, _, roi_mask, roi_label = cached
+                baselines[sid] = compute_fisher_score(roi_raw, roi_mask, roi_label)
 
-        valid_baselines = [v for v in self._baselines.values() if v is not None]
+        valid_baselines = [v for v in baselines.values() if v is not None]
         if valid_baselines:
             self.logger.info(
-                f"Baseline Fisher Score (no enhancement): "
+                f"Baseline Fisher Score (bg_kernel_size={bg_kernel_size}): "
+                f"raw ROI only  "
                 f"mean={np.mean(valid_baselines):.4f}  "
                 f"std={np.std(valid_baselines):.4f}"
             )
 
+        self._cache_by_bg_kernel[bg_kernel_size] = cache
+        self._baselines_by_bg_kernel[bg_kernel_size] = baselines
+        return cache, baselines
+
     def evaluate(self, params: Dict[str, Any]) -> GridSearchResult:
+        bg_kernel_size = int(params.get("bg_kernel_size", self.default_bg_kernel_size))
         clip_limit = params["clip_limit"]
         tile_size = params["tile_size"]
         sigma_min = params["sigma_min"]
         sigma_max = params["sigma_max"]
+        cache, baselines = self._ensure_base_cache(bg_kernel_size)
 
         if sigma_min >= sigma_max:
             return GridSearchResult(
@@ -278,22 +318,22 @@ class EnhancementEvaluator:
         num_failed = 0
 
         def _run(sid: str) -> Optional[Tuple[Optional[float], Optional[float]]]:
-            cached = self._cache.get(sid)
+            cached = cache.get(sid)
             if cached is None:
                 return None  # skipped
-            roi_base, roi_mask, roi_label = cached
+            _, roi_base, roi_mask, roi_label = cached
             try:
                 enhanced = apply_enhancement(
                     roi_base, clip_limit, tile_size, sigma_min, sigma_max
                 )
                 score = compute_fisher_score(enhanced, roi_mask, roi_label)
-                return score, self._baselines.get(sid)
+                return score, baselines.get(sid)
             except Exception as e:
                 self.logger.debug(f"Enhancement failed on {sid}: {e}", exc_info=True)
                 return (None, None)  # failed
 
         with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
-            futures = {executor.submit(_run, sid): sid for sid in self._cache}
+            futures = {executor.submit(_run, sid): sid for sid in cache}
             for future in as_completed(futures):
                 result = future.result()
                 if result is None:
@@ -344,6 +384,23 @@ class EnhancementEvaluator:
 # ============================================================================
 
 
+def normalize_param_grid(param_grid: Dict[str, List[Any]]) -> Dict[str, List[Any]]:
+    """
+    Keep the public grid flexible while using bg_kernel_size internally.
+
+    Some notes and older ad-hoc configs use the misspelled bg_kernal_size. Accept
+    it as an alias so those JSON grids still work.
+    """
+    normalized = dict(param_grid)
+    if "bg_kernal_size" in normalized:
+        if "bg_kernel_size" in normalized:
+            raise ValueError(
+                "Use only one of bg_kernel_size or bg_kernal_size in --param-grid"
+            )
+        normalized["bg_kernel_size"] = normalized.pop("bg_kernal_size")
+    return normalized
+
+
 class GridSearchRunner:
     def __init__(
         self,
@@ -357,7 +414,7 @@ class GridSearchRunner:
     ):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.param_grid = param_grid
+        self.param_grid = normalize_param_grid(param_grid)
         self.logger = logging.getLogger(__name__)
 
         loader = DatasetLoader(data_dir)
@@ -453,23 +510,25 @@ class GridSearchRunner:
 
     def _print_top_results(self, results: List[GridSearchResult], top_n: int = 15):
         valid = [r for r in results if r.fisher_mean is not None]
-        print("\n" + "=" * 108)
+        print("\n" + "=" * 122)
         print(
             f"Enhancement Grid Search — Top {min(top_n, len(valid))} Configurations"
             "  (sorted by Fisher Score, higher is better)"
         )
-        print("=" * 108)
+        print("=" * 122)
         print(
-            f"{'Rank':>4}  {'clip':>6}  {'tile':>4}  {'σ_min':>5}  {'σ_max':>5}  "
+            f"{'Rank':>4}  {'bg':>5}  {'clip':>6}  {'tile':>4}  "
+            f"{'σ_min':>5}  {'σ_max':>5}  "
             f"{'Fisher':>8}  {'±std':>7}  {'Baseline':>9}  {'Δ':>8}  {'n':>4}"
         )
-        print("-" * 108)
+        print("-" * 122)
 
         for rank, r in enumerate(valid[:top_n], start=1):
             fmt = lambda v: f"{v:.4f}" if v is not None else "   N/A"  # noqa
             fmtd = lambda v: f"{v:+.4f}" if v is not None else "   N/A"  # noqa
             print(
                 f"{rank:>4}  "
+                f"{r.params.get('bg_kernel_size', '?'):>5}  "
                 f"{r.params.get('clip_limit', '?'):>6}  "
                 f"{r.params.get('tile_size', '?'):>4}  "
                 f"{r.params.get('sigma_min', '?'):>5}  "
@@ -491,7 +550,7 @@ class GridSearchRunner:
                 print(f"  baseline_mean: {best.baseline_mean:.4f}")
                 print(f"  improvement:   {best.improvement_mean:+.4f}")
 
-        print("=" * 108 + "\n")
+        print("=" * 122 + "\n")
 
 
 # ============================================================================
@@ -535,7 +594,8 @@ def main():
         type=str,
         default=None,
         help=(
-            'JSON parameter grid, e.g. \'{"clip_limit":[10.0,40.0],'
+            'JSON parameter grid, e.g. \'{"bg_kernel_size":[31,51],'
+            '"clip_limit":[10.0,40.0],'
             '"tile_size":[8],"sigma_min":[2,4],"sigma_max":[8,12]}\''
         ),
     )
@@ -547,9 +607,14 @@ def main():
     )
     parser.add_argument(
         "--bg-kernel-size",
+        "--bg-kernal-size",
         type=int,
         default=51,
-        help="Background subtraction kernel size (default: 51)",
+        dest="bg_kernel_size",
+        help=(
+            "Background subtraction kernel size used only when bg_kernel_size "
+            "is omitted from --param-grid (default: 51)"
+        ),
     )
     parser.add_argument(
         "--num-workers",
@@ -564,7 +629,9 @@ def main():
     setup_logging(args.output_dir, args.verbose)
     logger = logging.getLogger(__name__)
 
-    param_grid = json.loads(args.param_grid) if args.param_grid else DEFAULT_PARAM_GRID
+    param_grid = normalize_param_grid(
+        json.loads(args.param_grid) if args.param_grid else DEFAULT_PARAM_GRID
+    )
 
     total = 1
     for v in param_grid.values():
