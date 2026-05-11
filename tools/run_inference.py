@@ -255,12 +255,12 @@ def build_linker(algorithm: str) -> Any:
     elif algorithm == "annotation_grow":
         return AnnotationGrowLinker(
             offset_px=50,
-            bg_kernel_size=31,
-            clahe_grid=(768, 768),
+            bg_kernel_size=3,
+            clahe_grid=(780, 780),
             clahe_clip=20.0,
             sato_sigmas_start=3,
             sato_sigmas_stop=8,
-            prune_threshold=50.0,
+            prune_threshold=20.0,
         )
     elif algorithm == "label":
         return LabelLinker(offset_px=50)
@@ -299,8 +299,8 @@ def main():
     parser.add_argument(
         "--workers",
         type=int,
-        default=os.cpu_count(),
-        help=f"平行處理的執行緒數量（預設: CPU 核心數 {os.cpu_count()}）",
+        default=1,
+        help=f"平行處理的執行緒數量（預設: 1）",
     )
     parser.add_argument("--verbose", action="store_true", help="啟用詳細日誌輸出")
 

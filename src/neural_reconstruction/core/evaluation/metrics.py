@@ -254,9 +254,13 @@ def compute_cldice(
         return 0.0, 0.0, 0.0
 
     # ── Step 3: 膨脹（tolerance）─────────────────────────────────────────────
-    structuring_element = disk(tolerance_px)
-    dilated_gt = binary_dilation(gt_binary, structure=structuring_element)
-    dilated_pred = binary_dilation(skel_pred_mask, structure=structuring_element)
+    if tolerance_px <= 0:
+        dilated_gt = gt_binary
+        dilated_pred = skel_pred_mask
+    else:
+        structuring_element = disk(tolerance_px)
+        dilated_gt = binary_dilation(gt_binary, structure=structuring_element)
+        dilated_pred = binary_dilation(skel_pred_mask, structure=structuring_element)
 
     # ── Step 4: Tprec / Tsens ─────────────────────────────────────────────────
     n_skel_pred = int(skel_pred_mask.sum())

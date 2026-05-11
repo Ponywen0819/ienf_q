@@ -29,39 +29,11 @@ def get_components(binary_img: np.ndarray, min_area: int = 0) -> np.ndarray:
     return labeled
 
 
-def compute_per_component_thresholds(
-    cost_map: np.ndarray,
-    annot_labeled: np.ndarray,
-    k: float = 1.5,
-) -> dict[int, float]:
-    """
-    Compute per-component adaptive stopping thresholds.
-
-    threshold[cid] = mean(cost_map[seed_pixels]) + k * std(cost_map[seed_pixels])
-
-    Args:
-        cost_map:      float32 (H, W) traversal cost
-        annot_labeled: int (H, W) component labels
-        k:             multiplier for std (larger = expands further)
-
-    Returns:
-        thresholds: dict mapping component ID -> stopping threshold
-    """
-    thresholds: dict[int, float] = {}
-    n = int(annot_labeled.max())
-    for cid in range(1, n + 1):
-        seed_costs = cost_map[annot_labeled == cid]
-        mu = float(seed_costs.mean())
-        sig = float(seed_costs.std())
-        thresholds[cid] = mu + k * sig
-    return thresholds
-
-
 def multi_source_dijkstra(
     cost_map: np.ndarray,
     annot_labeled: np.ndarray,
     connectivity: int = 8,
-    thresholds: Optional[dict[int, float]] = None,
+    roi_mask: Optional[np.ndarray] = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Multi-source Dijkstra on a 2D cost map.
@@ -73,8 +45,7 @@ def multi_source_dijkstra(
         cost_map:      float32 (H, W) per-pixel traversal cost
         annot_labeled: int (H, W) component labels (0=background)
         connectivity:  4 or 8
-        thresholds:    if provided, expansion from component cid stops
-                       when accumulated cost exceeds thresholds[cid]
+        roi_mask:       boolean (H, W) region of interest mask (1=valid, 0=invalid)
 
     Returns:
         owner_map: int32 (H, W) — which component owns each pixel (0=unvisited)
@@ -88,9 +59,14 @@ def multi_source_dijkstra(
         neighbors = [(-1, 0), (1, 0), (0, -1), (0, 1)]
     else:
         neighbors = [
-            (-1, -1), (-1, 0), (-1, 1),
-            ( 0, -1),          ( 0, 1),
-            ( 1, -1), ( 1, 0), ( 1, 1),
+            (-1, -1),
+            (-1, 0),
+            (-1, 1),
+            (0, -1),
+            (0, 1),
+            (1, -1),
+            (1, 0),
+            (1, 1),
         ]
 
     dist_map = np.full((H, W), np.inf, dtype=np.float32)
@@ -111,7 +87,7 @@ def multi_source_dijkstra(
 
         if d > dist_map[y, x]:
             continue
-        if thresholds is not None and d > thresholds[cid]:
+        if roi_mask is not None and roi_mask[y, x] == 0:
             continue
 
         for dy, dx in neighbors:
@@ -120,9 +96,6 @@ def multi_source_dijkstra(
                 continue
 
             new_dist = d + float(cost_map[ny, nx])
-
-            if thresholds is not None and new_dist > thresholds[cid]:
-                continue
 
             if new_dist < dist_map[ny, nx]:
                 dist_map[ny, nx] = new_dist

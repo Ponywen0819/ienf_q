@@ -231,9 +231,7 @@ class EvaluationReporter:
 
         # HD95
         valid_hd95 = [
-            r.hd95
-            for r in results
-            if r.status == "success" and r.hd95 is not None
+            r.hd95 for r in results if r.status == "success" and r.hd95 is not None
         ]
         if valid_hd95:
             hd95_mean = float(np.mean(valid_hd95))

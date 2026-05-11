@@ -21,7 +21,6 @@ from neural_reconstruction.common.data_types import LinkerResult
 from .cost_map import build_enhanced_image, build_cost_map
 from .dijkstra import (
     get_components,
-    compute_per_component_thresholds,
     multi_source_dijkstra,
 )
 from .graph_builder import (
@@ -130,6 +129,7 @@ class AnnotationGrowLinker:
             cost_map,
             annot_labeled,
             connectivity=self.connectivity,
+            roi_mask=(roi_mask > 127),
         )
         logger.info(
             f"Dijkstra done — pixels reached: {(owner_map > 0).sum():,} "
@@ -244,7 +244,7 @@ class AnnotationGrowLinker:
         )
 
         segmented_graph = segment_detector.detect_segments(segmented_graph)
-        segmented_graph = MainTrunkExtractor.extract(segmented_graph)
+        # segmented_graph = MainTrunkExtractor.extract(segmented_graph)
         # Step 2: Label regions and mark crossing edges
         labeled_graph, _ = region_labeler.label_topology(segmented_graph, mask)
 
