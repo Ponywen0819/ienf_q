@@ -16,7 +16,6 @@ import argparse
 import concurrent.futures
 import copy
 import logging
-import os
 import pickle
 import threading
 from pathlib import Path
@@ -26,19 +25,11 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
-from neural_reconstruction.algorithms.composit_mst.linker import CompositLinker
 from neural_reconstruction.dataset import SampleFiles, DatasetLoader
 from neural_reconstruction.algorithms.pure_mst.linker import PureMstLinker
-from neural_reconstruction.algorithms.fragment_linking.linker import (
-    HierarchicalFragmentLinker,
-)
-from neural_reconstruction.algorithms.xgb_mst.linker import XgbMstLinker
-from neural_reconstruction.algorithms.unet_linker import UnetLinker
-from neural_reconstruction.algorithms.dbscan_linker import DbscanLinker
 from neural_reconstruction.algorithms.annotation_grow import AnnotationGrowLinker
 from neural_reconstruction.algorithms.label_linker import LabelLinker
 from neural_reconstruction.algorithms.skeleton_linker import SkeletonLinker
-from neural_reconstruction.common.data_types import LinkerResult
 
 
 # ============================================================================
@@ -196,67 +187,20 @@ def build_linker(algorithm: str) -> Any:
     if algorithm == "pure_mst":
         return PureMstLinker(
             offset_px=50,
-            bg_kernel_size=31,
-            clahe_clip=10.0,
+            bg_kernel_size=3,
             clahe_grid=(768, 768),
+            clahe_clip=20.0,
             sato_sigmas_start=3,
             sato_sigmas_stop=8,
             segment_length=5.0,
             search_radius=50.0,
             min_component_length=3.0,
         )
-    elif algorithm == "hierarchical":
-        return HierarchicalFragmentLinker(
-            offset_px=50,
-            rolling_ball_radius=50,
-            opening_kernel_size=0,
-            segment_length=3.0,
-            search_radius_endpoint_extension=20.0,
-            max_angle_endpoint_extension=75.0,
-            search_radius_mst=100.0,
-            max_angle_mst=90.0,
-            max_cost_threshold_mst=0.95,
-            distance_weight_mst=0.3,
-            min_component_length=3.0,
-        )
-    elif algorithm == "composit":
-        return CompositLinker(
-            offset_px=50,
-            rolling_ball_radius=50,
-            opening_kernel_size=3,
-            segment_length=5.0,
-            search_radius=50.0,
-            intensity_weight=2,
-            min_component_length=3.0,
-        )
-    elif algorithm == "unet":
-        return UnetLinker(
-            checkpoint_path="/home/pony/projects/ienf_q/output/unet_0320/unet_best.pth",
-            base_channels=32,
-            patch_size=512,
-            overlap=64,
-            threshold=0.5,
-            device="auto",
-        )
-    elif algorithm == "dbscan":
-        return DbscanLinker(
-            offset_px=50,
-            rolling_ball_radius=50,
-            opening_kernel_size=3,
-            use_sato=True,
-            sato_sigmas=(4, 5, 6, 7),
-            segment_length=3.0,
-            eps=20.0,
-            min_samples=10,
-            intra_search_radius=50.0,
-            extend_radius=30.0,
-            min_component_length=10.0,
-        )
     elif algorithm == "annotation_grow":
         return AnnotationGrowLinker(
             offset_px=50,
             bg_kernel_size=3,
-            clahe_grid=(780, 780),
+            clahe_grid=(768, 768),
             clahe_clip=20.0,
             sato_sigmas_start=3,
             sato_sigmas_stop=8,
@@ -285,10 +229,6 @@ def main():
         "--algorithm",
         choices=[
             "pure_mst",
-            "hierarchical",
-            "composit",
-            "unet",
-            "dbscan",
             "annotation_grow",
             "label",
             "skeleton",

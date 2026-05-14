@@ -22,35 +22,40 @@ from scipy import stats
 
 # ---------------------------------------------------------------------------
 # Edit these to change what is compared.
-# Paths are relative to the project root and should each contain a
-# `results.json` produced by the evaluation pipeline.
+# GRID_DIR must contain a per_combo/ subdirectory produced by staged_grid_search.py.
+# REFERENCE_PARAMS and each entry of COMPARISONS_PARAMS are dicts that match
+# a subset of the `params` field in each combo JSON.
 # ---------------------------------------------------------------------------
-GRID_DIR = Path("output/grid")
+GRID_DIR = Path("output/0510_grid_clahde_clip_size")
 
-REFERENCE = GRID_DIR / "bg_5_clahe_768_20_sato_3_8_20"
+REFERENCE_PARAMS: dict = {"clahe_grid": [768, 768], "clahe_clip": 20.0}
 
-COMPARISONS: list[Path] = [
-    # GRID_DIR / "bg_0",
-    # GRID_DIR / "bg_3",
-    # GRID_DIR / "bg_6",
-    # GRID_DIR / "bg_8",
-    # GRID_DIR / "bg_16",
-    GRID_DIR / "bg_0_clahe_768_20_sato_3_8_20",
-    # GRID_DIR / "bg_3_clahe_768_20_sato_3_8_20",
-    GRID_DIR / "bg_5_clahe_768_20_sato_3_8_20",
-    GRID_DIR / "bg_7_clahe_768_20_sato_3_8_20",
-    GRID_DIR / "bg_11_clahe_768_20_sato_3_8_20",
-    GRID_DIR / "bg_15_clahe_768_20_sato_3_8_20",
-    GRID_DIR / "bg_21_clahe_768_20_sato_3_8_20",
-    GRID_DIR / "bg_25_clahe_768_20_sato_3_8_20",
-    GRID_DIR / "bg_31_clahe_768_20_sato_3_8_20",
-    GRID_DIR / "bg_41_clahe_768_20_sato_3_8_20",
-    # GRID_DIR / "bg_31_clahe_768_20_sato_3_7",
-    # GRID_DIR / "bg_31_clahe_768_20_sato_3_10",
-    # GRID_DIR / "bg_31_clahe_768_20_sato_3_8_10",
-    # GRID_DIR / "bg_31_clahe_768_20_sato_3_8_30",
-    # GRID_DIR / "bg_31_clahe_768_20_sato_3_8_40",
-    # GRID_DIR / "bg_31_clahe_768_20_sato_3_8_50",
+COMPARISONS_PARAMS: list[dict] = [
+    {"clahe_grid": [832, 832], "clahe_clip": 10.0},
+    {"clahe_grid": [832, 832], "clahe_clip": 20.0},
+    {"clahe_grid": [832, 832], "clahe_clip": 30.0},
+    {"clahe_grid": [832, 832], "clahe_clip": 40.0},
+    {"clahe_grid": [832, 832], "clahe_clip": 50.0},
+    {"clahe_grid": [800, 800], "clahe_clip": 10.0},
+    {"clahe_grid": [800, 800], "clahe_clip": 20.0},
+    {"clahe_grid": [800, 800], "clahe_clip": 30.0},
+    {"clahe_grid": [800, 800], "clahe_clip": 40.0},
+    {"clahe_grid": [800, 800], "clahe_clip": 50.0},
+    {"clahe_grid": [768, 768], "clahe_clip": 10.0},
+    {"clahe_grid": [768, 768], "clahe_clip": 20.0},
+    {"clahe_grid": [768, 768], "clahe_clip": 30.0},
+    {"clahe_grid": [768, 768], "clahe_clip": 40.0},
+    {"clahe_grid": [768, 768], "clahe_clip": 50.0},
+    {"clahe_grid": [736, 736], "clahe_clip": 10.0},
+    {"clahe_grid": [736, 736], "clahe_clip": 20.0},
+    {"clahe_grid": [736, 736], "clahe_clip": 30.0},
+    {"clahe_grid": [736, 736], "clahe_clip": 40.0},
+    {"clahe_grid": [736, 736], "clahe_clip": 50.0},
+    {"clahe_grid": [704, 704], "clahe_clip": 10.0},
+    {"clahe_grid": [704, 704], "clahe_clip": 20.0},
+    {"clahe_grid": [704, 704], "clahe_clip": 30.0},
+    {"clahe_grid": [704, 704], "clahe_clip": 40.0},
+    {"clahe_grid": [704, 704], "clahe_clip": 50.0},
 ]
 
 METRICS: list[str] = ["hd95", "cldice"]
@@ -64,25 +69,35 @@ METRIC_SPECS: dict[str, tuple[str, bool]] = {
 }
 
 
-def resolve_results_json(path: Path) -> Path:
-    if path.is_dir():
-        candidate = path / "results.json"
-        if not candidate.exists():
-            raise FileNotFoundError(f"No results.json under {path}")
-        return candidate
-    if not path.exists():
-        raise FileNotFoundError(f"Path not found: {path}")
-    return path
+def load_combo_samples(
+    grid_dir: Path, match_params: dict
+) -> tuple[dict[str, dict], str]:
+    """
+    Scan grid_dir/per_combo/combo_*.json and return samples from the first
+    combo whose params contain all key-value pairs in match_params.
 
+    Returns:
+        (sample_dict, display_name)
+        sample_dict: {sample_id: {hd95, cldice, tprec, tsens, ...}}
+    """
+    per_combo_dir = grid_dir / "per_combo"
+    if not per_combo_dir.is_dir():
+        raise FileNotFoundError(f"per_combo/ not found under {grid_dir}")
 
-def load_samples(results_json: Path) -> dict[str, dict]:
-    with results_json.open() as f:
-        data = json.load(f)
-    return {
-        sid: s
-        for sid, s in data.get("samples", {}).items()
-        if s.get("status") == "success"
-    }
+    for combo_file in sorted(per_combo_dir.glob("combo_*.json")):
+        with combo_file.open() as f:
+            data = json.load(f)
+        params = data.get("params", {})
+        if all(params.get(k) == v for k, v in match_params.items()):
+            samples = {
+                s["sample_id"]: s
+                for s in data.get("samples", [])
+                if s.get("status") == "success"
+            }
+            name = ", ".join(f"{k}={v}" for k, v in match_params.items())
+            return samples, name
+
+    raise FileNotFoundError(f"No combo matching {match_params} in {per_combo_dir}")
 
 
 def paired_values(
@@ -254,20 +269,20 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    ref_json = resolve_results_json(REFERENCE)
-    ref_samples = load_samples(ref_json)
-    ref_name = display_name(ref_json)
+    try:
+        ref_samples, ref_name = load_combo_samples(GRID_DIR, REFERENCE_PARAMS)
+    except FileNotFoundError as exc:
+        print(f"Reference not found: {exc}", file=sys.stderr)
+        return 1
     print(f"Reference: {ref_name}  (n_success={len(ref_samples)})")
 
     rows: list[dict] = []
-    for cmp_path in COMPARISONS:
+    for cmp_params in COMPARISONS_PARAMS:
         try:
-            cmp_json = resolve_results_json(cmp_path)
+            cmp_samples, cmp_name = load_combo_samples(GRID_DIR, cmp_params)
         except FileNotFoundError as exc:
             print(f"  skip: {exc}", file=sys.stderr)
             continue
-        cmp_samples = load_samples(cmp_json)
-        cmp_name = display_name(cmp_json)
 
         for metric in METRICS:
             metric_key, lower_is_better = METRIC_SPECS[metric]
