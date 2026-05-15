@@ -290,7 +290,7 @@ ax.imshow(disp)
 ax.axis("off")
 
 sc = ax.scatter(
-    mid_x, mid_y, c=mp_cost, cmap="viridis",
+    mid_x, mid_y, c=mp_cost, cmap="cool",
     s=22, edgecolors="white", linewidths=0.3, zorder=3,
 )
 ax.scatter(

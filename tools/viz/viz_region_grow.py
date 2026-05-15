@@ -190,7 +190,7 @@ plt.close(fig_a)
 
 # Panel (b): cumulative cost heatmap
 fig_b, ax_b = plt.subplots(figsize=panel_size, constrained_layout=True)
-cmap_cost = plt.get_cmap("viridis").copy()
+cmap_cost = plt.get_cmap("cool").copy()
 cmap_cost.set_bad(color="black")
 im_cost = ax_b.imshow(dist_view, cmap=cmap_cost, vmin=0.0, vmax=vmax)
 ax_b.axis("off")

@@ -31,13 +31,7 @@ from .graph_builder import (
 )
 from .skeleton import build_result_graph
 
-from neural_reconstruction.core.crosses_detection import (
-    RegionLabeler,
-    SegmentDetector,
-    CrossingCounter,
-    MainTrunkExtractor,
-)
-from collections import defaultdict
+from neural_reconstruction.core.crosses_detection import run_crossing_analysis
 
 
 logger = logging.getLogger(__name__)
@@ -62,6 +56,8 @@ class AnnotationGrowLinker:
         connectivity: int = 8,
         # Edge pruning
         prune_threshold: float = 20.0,
+        # Subtree filtering
+        min_tree_components: int = 5,
         # Skeletonization
         segment_length: float = 100.0,
     ):
@@ -73,6 +69,7 @@ class AnnotationGrowLinker:
         self.sato_sigmas_stop = sato_sigmas_stop
         self.connectivity = connectivity
         self.prune_threshold = prune_threshold
+        self.min_tree_components = min_tree_components
         self.segment_length = segment_length
 
     def run(
@@ -165,7 +162,12 @@ class AnnotationGrowLinker:
             f"Result graph: {result_graph.number_of_nodes()} nodes, "
             f"{result_graph.number_of_edges()} edges"
         )
-        valid_count, labeled_graph = self._run_crossing_analysis(mask, result_graph)
+        valid_count, labeled_graph = run_crossing_analysis(
+            result_graph,
+            mask,
+            annot_labeled,
+            min_tree_components=self.min_tree_components,
+        )
         return LinkerResult(
             annotation=roi_annotation,
             image=roi_image,
@@ -173,84 +175,3 @@ class AnnotationGrowLinker:
             graph=labeled_graph,
             valid_count=valid_count,
         )
-
-    def _run_crossing_analysis(
-        self,
-        mask: np.ndarray,
-        graph: nx.Graph,
-    ) -> tuple[int, nx.Graph]:
-        """
-        交叉點分析
-
-        Args:
-            mask: 二值化遮罩影像 (0/255 或 0/1)
-            graph: MST 重建圖 (nx.Graph)
-
-        Returns:
-            {component_id: crossing_count}
-        """
-
-        region_labeler = RegionLabeler()
-        segment_detector = SegmentDetector()
-        crossing_counter = CrossingCounter()
-
-        # Step 1: Detect segments (must run before RegionLabeler — segment_id is needed by label_topology)
-        segmented_graph = segment_detector.detect_segments(graph)
-
-        # Step 1b: Remove short stub segments (total path length < 5 px, with at least one endpoint)
-        def _path_length(data, u, v):
-            path = data.get("path", [u, v])
-            return len(path) - 1  # number of pixel steps
-
-        seg_edges = defaultdict(list)
-        for u, v, data in segmented_graph.edges(data=True):
-            seg_id = data.get("segment_id")
-            if seg_id is not None:
-                seg_edges[seg_id].append((u, v, data))
-
-        edges_to_remove = []
-        for seg_id, edges in seg_edges.items():
-            # Collect boundary nodes of this segment
-            boundary_nodes = set()
-            for u, v, _ in edges:
-                if segmented_graph.nodes[u].get("node_type") in (
-                    "endpoint",
-                    "branchpoint",
-                ):
-                    boundary_nodes.add(u)
-                if segmented_graph.nodes[v].get("node_type") in (
-                    "endpoint",
-                    "branchpoint",
-                ):
-                    boundary_nodes.add(v)
-
-            # Only prune if at least one boundary node is an endpoint (dangling stub)
-            has_endpoint = any(
-                segmented_graph.nodes[n].get("node_type") == "endpoint"
-                for n in boundary_nodes
-            )
-            if not has_endpoint:
-                continue
-
-            total_length = sum(_path_length(data, u, v) for u, v, data in edges)
-            if total_length < 5:
-                edges_to_remove.extend((u, v) for u, v, _ in edges)
-
-        segmented_graph.remove_edges_from(edges_to_remove)
-        segmented_graph.remove_nodes_from(list(nx.isolates(segmented_graph)))
-        logger.info(
-            f"Pruned {len(edges_to_remove)} stub edges → "
-            f"{segmented_graph.number_of_nodes()} nodes, {segmented_graph.number_of_edges()} edges"
-        )
-
-        segmented_graph = segment_detector.detect_segments(segmented_graph)
-        # segmented_graph = MainTrunkExtractor.extract(segmented_graph)
-        # Step 2: Label regions and mark crossing edges
-        labeled_graph, _ = region_labeler.label_topology(segmented_graph, mask)
-
-        # Step 3: Count effective crossings
-        result = crossing_counter.count_effective_crossings(
-            labeled_graph, epidermis_mask=mask
-        )
-
-        return result["effective_crossing_count"], labeled_graph

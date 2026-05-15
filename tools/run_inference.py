@@ -129,9 +129,15 @@ class DatasetInferencer:
                 if not sample.mask_path.exists():
                     self.logger.warning(f"樣本 {sample.sample_id} 跳過: missing_mask")
                     return "skipped", sample.sample_id
+                if not sample.annotation_path.exists():
+                    self.logger.warning(
+                        f"樣本 {sample.sample_id} 跳過: missing_annotation"
+                    )
+                    return "skipped", sample.sample_id
                 mask = np.array(Image.open(sample.mask_path))
                 label = np.array(Image.open(sample.label_path))
-                result = linker.run(mask, label)
+                annotation = np.array(Image.open(sample.annotation_path))
+                result = linker.run(mask, label, annotation)
             else:
                 is_complete, reason = sample.is_complete()
                 if not is_complete:

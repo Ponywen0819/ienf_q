@@ -29,10 +29,12 @@ from .region_labeler import RegionLabeler
 from .segment_detector import SegmentDetector
 from .crossing_counter import CrossingCounter
 from .main_trunk_extractor import MainTrunkExtractor
+from .pipeline import run_crossing_analysis
 
 __all__ = [
     'RegionLabeler',
     'SegmentDetector',
     'CrossingCounter',
     'MainTrunkExtractor',
+    'run_crossing_analysis',
 ]
