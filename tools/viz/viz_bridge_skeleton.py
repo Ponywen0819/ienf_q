@@ -332,13 +332,12 @@ BRANCH_COLOR = "#3399ff"    # blue
 def _draw_skeleton_markers(ax):
     ax.scatter(
         bp_xs, bp_ys, s=46, c=BRANCH_COLOR, edgecolors="black",
-        linewidths=0.6, zorder=4, label="branch point (deg ≥ 3)",
+        linewidths=0.6, zorder=4,
     )
     ax.scatter(
         ep_xs, ep_ys, s=46, c=ENDPOINT_COLOR, edgecolors="black",
-        linewidths=0.6, zorder=4, label="endpoint (deg = 1)",
+        linewidths=0.6, zorder=4,
     )
-    ax.legend(loc="lower right", fontsize=9, framealpha=0.85)
 
 
 # Short stubs that the stub-removal step deletes = raw skeleton minus the
@@ -381,9 +380,26 @@ render_mask_layers(
     "viz_bs_5_skeleton_raw.png",
     extra=_draw_raw_stub_circles,
 )
+# Same raw skeleton, plain (no stub-highlight circles).
+render_mask_layers(
+    [(raw_skeleton, SKELETON_COLOR)],
+    "viz_bs_5_skeleton_raw_plain.png",
+)
 # Figure 6 — topology graph skeleton after short-stub removal, with markers
 render_mask_layers(
     [(skeleton, SKELETON_COLOR)],
     "viz_bs_6_skeleton.png",
     extra=_draw_skeleton_markers,
+)
+# Same stub-removed skeleton, plain (no endpoint / branch-point markers).
+render_mask_layers(
+    [(skeleton, SKELETON_COLOR)],
+    "viz_bs_6_skeleton_plain.png",
+)
+# Same plain skeleton, but with the same red circles as bs_5 marking where
+# the stubs *were* — the spots are now empty, showing what got cleaned up.
+render_mask_layers(
+    [(skeleton, SKELETON_COLOR)],
+    "viz_bs_6_skeleton_circles.png",
+    extra=_draw_raw_stub_circles,
 )

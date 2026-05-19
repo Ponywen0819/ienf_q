@@ -48,10 +48,15 @@ PRUNE_THRESHOLD = 20.0   # tau
 DILATE_RADIUS = 1        # r_d
 SEGMENT_LENGTH = 100.0   # build_seed_graph segmentation
 L_MIN = 5.0              # minimum per-region path length for an effective crossing
+MIN_TREE_COMPONENTS = 5  # min annotation components a subtree must cover to count
+COVER_NEIGHBORHOOD = 3   # half-window when checking annotation coverage
 
 SKELETON_COLOR = np.array([1.00, 1.00, 1.00], dtype=np.float32)   # white
 EFFECTIVE_COLOR = np.array([0.20, 0.90, 0.35], dtype=np.float32)  # green
+EXCLUDED_COLOR = np.array([0.55, 0.55, 0.60], dtype=np.float32)   # dim gray
 CROSSING_POINT_COLOR = "#ff3030"                                  # red
+ENDPOINT_COLOR = "#ff5020"   # orange-red — matches bs_6
+BRANCH_COLOR = "#3399ff"     # blue — matches bs_6
 EPIDERMIS_TINT = np.array([0.60, 0.45, 0.32], dtype=np.float32)   # warm
 
 
@@ -140,6 +145,68 @@ epi = mask > 0
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Subtree annotation coverage — for each skeleton connected component (a
+# reconstructed subtree), count how many distinct annotation components it
+# touches (within a small neighborhood, since skeleton pixels need not land
+# exactly on annotation pixels). Subtrees covering fewer than
+# MIN_TREE_COMPONENTS are excluded from the crossing count, matching
+# `_exclude_small_subtrees_from_count` in core/crosses_detection/pipeline.py.
+# ─────────────────────────────────────────────────────────────────────────────
+skel_cc_labels = ski.measure.label(skeleton, connectivity=2)
+n_cc = int(skel_cc_labels.max())
+
+cc_coverage_count: dict[int, int] = {}
+for cc_id in range(1, n_cc + 1):
+    ys_cc, xs_cc = np.where(skel_cc_labels == cc_id)
+    covered: set[int] = set()
+    for y, x in zip(ys_cc.tolist(), xs_cc.tolist()):
+        y0, y1 = max(0, y - COVER_NEIGHBORHOOD), min(H, y + COVER_NEIGHBORHOOD + 1)
+        x0, x1 = max(0, x - COVER_NEIGHBORHOOD), min(W, x + COVER_NEIGHBORHOOD + 1)
+        covered.update(np.unique(annot_labeled[y0:y1, x0:x1]).tolist())
+    covered.discard(0)
+    cc_coverage_count[cc_id] = len(covered)
+
+qualifying_ccs = {
+    cc for cc, n in cc_coverage_count.items() if n >= MIN_TREE_COMPONENTS
+}
+
+# Subtree masks reused by figures 1, 2, 3.
+qualifying_mask = np.isin(
+    skel_cc_labels, list(qualifying_ccs) if qualifying_ccs else [-1]
+)
+excluded_mask = skeleton & ~qualifying_mask
+
+# Topology markers (matches viz_bridge_skeleton bs_6): endpoints = degree-1,
+# branch points = degree>=3 in the pixel-level seed graph.
+endpoint_nodes = [n for n in seed_graph.nodes() if seed_graph.degree(n) == 1]
+branch_nodes = [n for n in seed_graph.nodes() if seed_graph.degree(n) >= 3]
+
+
+def _crop_local_xy(nodes):
+    xs, ys = [], []
+    for ny, nx_ in nodes:
+        if CROP_Y0 <= ny < CROP_Y0 + CROP_H and CROP_X0 <= nx_ < CROP_X0 + CROP_W:
+            xs.append(nx_ - CROP_X0)
+            ys.append(ny - CROP_Y0)
+    return xs, ys
+
+
+ep_xs, ep_ys = _crop_local_xy(endpoint_nodes)
+bp_xs, bp_ys = _crop_local_xy(branch_nodes)
+
+
+def _draw_topology_markers(ax):
+    ax.scatter(
+        bp_xs, bp_ys, s=46, c=BRANCH_COLOR, edgecolors="black",
+        linewidths=0.6, zorder=4,
+    )
+    ax.scatter(
+        ep_xs, ep_ys, s=46, c=ENDPOINT_COLOR, edgecolors="black",
+        linewidths=0.6, zorder=4,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Crossing points — skeleton pixels 8-adjacent to a skeleton pixel of the
 # other region. (A "crossing edge" between adjacent pixels is, visually, a point.)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -209,6 +276,7 @@ def _region_lengths(path: list) -> tuple:
 
 effective_ids = set()
 n_crossing_segments = 0
+n_excluded_by_coverage = 0
 for sid in range(1, int(seg_labels.max()) + 1):
     ys, xs = np.where(seg_labels == sid)
     regs = epi[ys, xs]
@@ -217,14 +285,22 @@ for sid in range(1, int(seg_labels.max()) + 1):
     n_crossing_segments += 1
     path = _trace_segment(list(zip(ys.tolist(), xs.tolist())))
     l_epi, l_der = _region_lengths(path)
-    if l_epi >= L_MIN and l_der >= L_MIN:
-        effective_ids.add(sid)
+    if l_epi < L_MIN or l_der < L_MIN:
+        continue
+    parent_cc = int(skel_cc_labels[ys[0], xs[0]])
+    if parent_cc not in qualifying_ccs:
+        n_excluded_by_coverage += 1
+        continue
+    effective_ids.add(sid)
 
 effective_mask = np.isin(seg_labels, list(effective_ids)) if effective_ids else np.zeros_like(skeleton)
 
 print(
     f"skeleton px: {int(skeleton.sum())}  crossing points: {int(crossing_pts.sum())}  "
-    f"crossing segments: {n_crossing_segments}  effective (N_cross): {len(effective_ids)}"
+    f"crossing segments: {n_crossing_segments}  "
+    f"effective (N_cross): {len(effective_ids)}  "
+    f"excluded by coverage<{MIN_TREE_COMPONENTS}: {n_excluded_by_coverage}  "
+    f"subtrees: {n_cc} (qualifying: {len(qualifying_ccs)})"
 )
 
 
@@ -257,16 +333,20 @@ def save_fig(disp: np.ndarray, out_name: str, extra=None) -> None:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Figure 1 — crossing points
+# Excluded-by-coverage subtrees stay dim gray (match fig 3); crossing-point
+# markers use a star so they're distinct from the orange endpoint markers.
 # ─────────────────────────────────────────────────────────────────────────────
 disp1 = faded_bg.copy()
-disp1[crop(skeleton)] = SKELETON_COLOR
+disp1[crop(excluded_mask)] = EXCLUDED_COLOR
+disp1[crop(qualifying_mask)] = SKELETON_COLOR
 cp_ys, cp_xs = np.where(crop(crossing_pts))
 
 
 def _draw_crossing_points(ax):
+    _draw_topology_markers(ax)
     ax.scatter(
-        cp_xs, cp_ys, s=44, c=CROSSING_POINT_COLOR,
-        edgecolors="black", linewidths=0.6, zorder=4,
+        cp_xs, cp_ys, s=140, c=CROSSING_POINT_COLOR, marker="*",
+        edgecolors="black", linewidths=0.7, zorder=5,
     )
 
 
@@ -274,10 +354,62 @@ save_fig(disp1, "viz_crossing_points.png", extra=_draw_crossing_points)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Figure 2 — effective crossing segments coloured, everything else white
+# Figure 2 — effective crossing segments coloured, with topology markers
 # ─────────────────────────────────────────────────────────────────────────────
 disp2 = faded_bg.copy()
-disp2[crop(skeleton)] = SKELETON_COLOR
+disp2[crop(excluded_mask)] = EXCLUDED_COLOR
+disp2[crop(qualifying_mask)] = SKELETON_COLOR
 disp2[crop(effective_mask)] = EFFECTIVE_COLOR
 
-save_fig(disp2, "viz_crossing_effective.png")
+save_fig(disp2, "viz_crossing_effective.png", extra=_draw_topology_markers)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Figure 3 — subtree annotation coverage. No epidermis tint / ROI overlay
+# here; the original annotation components are drawn directly so each subtree
+# can be visually associated with the components it covers. Qualifying
+# subtrees (>= MIN_TREE_COMPONENTS covered annotations) are drawn in white;
+# excluded subtrees are drawn dim gray. Each subtree is labelled at its
+# centroid with the number of annotation components it covers.
+# ─────────────────────────────────────────────────────────────────────────────
+ANNOT_COLOR = np.array([0.30, 0.65, 1.00], dtype=np.float32)  # blue
+
+plain_bg = np.stack([green_crop] * 3, axis=-1).astype(np.float32) / 255.0 * 0.5
+disp3 = plain_bg.copy()
+disp3[crop(annotation_bin > 0)] = ANNOT_COLOR
+disp3[crop(excluded_mask)] = EXCLUDED_COLOR
+disp3[crop(qualifying_mask)] = SKELETON_COLOR
+
+cc_label_positions: list[tuple[int, int, int, bool]] = []  # (x, y, count, qualifying)
+for cc_id, count in cc_coverage_count.items():
+    ys_cc, xs_cc = np.where(skel_cc_labels == cc_id)
+    in_crop = (
+        (ys_cc >= CROP_Y0)
+        & (ys_cc < CROP_Y0 + CROP_H)
+        & (xs_cc >= CROP_X0)
+        & (xs_cc < CROP_X0 + CROP_W)
+    )
+    if not in_crop.any():
+        continue
+    cy = int(ys_cc[in_crop].mean()) - CROP_Y0
+    cx = int(xs_cc[in_crop].mean()) - CROP_X0
+    cc_label_positions.append((cx, cy, count, cc_id in qualifying_ccs))
+
+
+def _draw_coverage_labels(ax):
+    for cx, cy, count, ok in cc_label_positions:
+        ax.text(
+            cx, cy, str(count),
+            color="white" if ok else "#ffd0d0",
+            fontsize=11, fontweight="bold",
+            ha="center", va="center",
+            bbox=dict(
+                boxstyle="round,pad=0.18",
+                facecolor=("#228b3a" if ok else "#992020"),
+                edgecolor="black", linewidth=0.5, alpha=0.85,
+            ),
+            zorder=5,
+        )
+
+
+save_fig(disp3, "viz_crossing_coverage.png", extra=_draw_coverage_labels)

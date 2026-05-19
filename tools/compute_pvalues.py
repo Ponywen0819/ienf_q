@@ -1,8 +1,11 @@
 """Compute paired p-values (Wilcoxon signed-rank + paired t-test) for hd95 and
-clDice between a reference parameter setting and a hard-coded list of
-comparison settings.
+clDice between a reference parameter setting and every other setting present
+in the grid-search output directory.
 
-Edit `REFERENCE`, `COMPARISONS`, and `METRICS` below to change what is tested.
+Comparisons are discovered automatically: each combo_*.json under per_combo/
+is projected onto the keys of REFERENCE_PARAMS, deduplicated, and the
+reference's own projection is removed. Set REFERENCE_PARAMS to the axes you
+want to sweep.
 
 Run:
     uv run python tools/compute_pvalues.py
@@ -23,40 +26,18 @@ from scipy import stats
 # ---------------------------------------------------------------------------
 # Edit these to change what is compared.
 # GRID_DIR must contain a per_combo/ subdirectory produced by staged_grid_search.py.
-# REFERENCE_PARAMS and each entry of COMPARISONS_PARAMS are dicts that match
-# a subset of the `params` field in each combo JSON.
+# REFERENCE_PARAMS' keys define the axes; comparisons are auto-discovered by
+# scanning per_combo/ for every unique value combination along those axes.
 # ---------------------------------------------------------------------------
-GRID_DIR = Path("output/0510_grid_clahde_clip_size")
+# GRID_DIR = Path("output/0510_grid")
+# GRID_DIR = Path("output/grid_0510/clahe_grid")
+GRID_DIR = Path("output/grid_0510/threshold")
 
-REFERENCE_PARAMS: dict = {"clahe_grid": [768, 768], "clahe_clip": 20.0}
-
-COMPARISONS_PARAMS: list[dict] = [
-    {"clahe_grid": [832, 832], "clahe_clip": 10.0},
-    {"clahe_grid": [832, 832], "clahe_clip": 20.0},
-    {"clahe_grid": [832, 832], "clahe_clip": 30.0},
-    {"clahe_grid": [832, 832], "clahe_clip": 40.0},
-    {"clahe_grid": [832, 832], "clahe_clip": 50.0},
-    {"clahe_grid": [800, 800], "clahe_clip": 10.0},
-    {"clahe_grid": [800, 800], "clahe_clip": 20.0},
-    {"clahe_grid": [800, 800], "clahe_clip": 30.0},
-    {"clahe_grid": [800, 800], "clahe_clip": 40.0},
-    {"clahe_grid": [800, 800], "clahe_clip": 50.0},
-    {"clahe_grid": [768, 768], "clahe_clip": 10.0},
-    {"clahe_grid": [768, 768], "clahe_clip": 20.0},
-    {"clahe_grid": [768, 768], "clahe_clip": 30.0},
-    {"clahe_grid": [768, 768], "clahe_clip": 40.0},
-    {"clahe_grid": [768, 768], "clahe_clip": 50.0},
-    {"clahe_grid": [736, 736], "clahe_clip": 10.0},
-    {"clahe_grid": [736, 736], "clahe_clip": 20.0},
-    {"clahe_grid": [736, 736], "clahe_clip": 30.0},
-    {"clahe_grid": [736, 736], "clahe_clip": 40.0},
-    {"clahe_grid": [736, 736], "clahe_clip": 50.0},
-    {"clahe_grid": [704, 704], "clahe_clip": 10.0},
-    {"clahe_grid": [704, 704], "clahe_clip": 20.0},
-    {"clahe_grid": [704, 704], "clahe_clip": 30.0},
-    {"clahe_grid": [704, 704], "clahe_clip": 40.0},
-    {"clahe_grid": [704, 704], "clahe_clip": 50.0},
-]
+REFERENCE_PARAMS: dict = {"prune_threshold": 20}
+# REFERENCE_PARAMS: dict = {"bg_kernel_size": 5}
+# REFERENCE_PARAMS: dict = {"clahe_grid": [768, 768], "clahe_clip": 30.0}
+# REFERENCE_PARAMS: dict = {"sato_sigmas_start": 2,
+#       "sato_sigmas_stop": 6,}
 
 METRICS: list[str] = ["hd95", "cldice"]
 # ---------------------------------------------------------------------------
@@ -67,6 +48,60 @@ METRIC_SPECS: dict[str, tuple[str, bool]] = {
     "cldice": ("cldice", False),
     "hausdorff": ("hausdorff_distance", True),
 }
+
+
+def _hashable(v):
+    """Make nested lists hashable so projections can go into a set."""
+    if isinstance(v, list):
+        return tuple(_hashable(x) for x in v)
+    return v
+
+
+def discover_comparisons(
+    grid_dir: Path, axis_keys: list[str], exclude: dict | None = None
+) -> list[dict]:
+    """
+    Scan grid_dir/per_combo/combo_*.json and return every unique parameter
+    projection onto ``axis_keys``. The projection equal to ``exclude`` (if
+    given) is dropped from the result. Combos missing any axis key are
+    skipped.
+
+    Returns:
+        Sorted list of dicts, each with exactly the keys in ``axis_keys``.
+    """
+    per_combo_dir = grid_dir / "per_combo"
+    if not per_combo_dir.is_dir():
+        raise FileNotFoundError(f"per_combo/ not found under {grid_dir}")
+
+    exclude_key = (
+        tuple(_hashable(exclude[k]) for k in axis_keys) if exclude is not None else None
+    )
+
+    seen: dict[tuple, dict] = {}
+    duplicates = 0
+    for combo_file in sorted(per_combo_dir.glob("combo_*.json")):
+        with combo_file.open() as f:
+            data = json.load(f)
+        params = data.get("params", {})
+        if any(k not in params for k in axis_keys):
+            continue
+        proj = {k: params[k] for k in axis_keys}
+        key = tuple(_hashable(proj[k]) for k in axis_keys)
+        if key == exclude_key:
+            continue
+        if key in seen:
+            duplicates += 1
+            continue
+        seen[key] = proj
+
+    if duplicates:
+        print(
+            f"  note: {duplicates} combo(s) shared an axis projection with another "
+            f"(grid varies along axes outside {axis_keys}); first match kept.",
+            file=sys.stderr,
+        )
+
+    return [seen[k] for k in sorted(seen)]
 
 
 def load_combo_samples(
@@ -201,31 +236,35 @@ def print_human(rows: list[dict], metrics: list[str], ref_name: str) -> None:
     cmp_width = max((len(r["comparison"]) for r in rows), default=20)
     cmp_width = max(cmp_width, 12)
 
+    def _sort_key(r: dict, lower_is_better: bool) -> float:
+        v = r.get("cmp_mean")
+        if v is None or not np.isfinite(v):
+            return float("inf")  # invalid → last
+        # Best first: ascending for lower-better, descending for higher-better.
+        return float(v) if lower_is_better else -float(v)
+
     for m in metrics:
-        spec = METRIC_SPECS[m]
-        better = "lower" if spec[1] else "higher"
+        _, lower_better = METRIC_SPECS[m]
+        better = "lower" if lower_better else "higher"
         print()
         print(f"=== {m}  ({better} is better; reference = {ref_name}) ===")
         header = (
             f"{'comparison':<{cmp_width}} {'n':>3} "
             f"{'ref_mean':>9} {'cmp_mean':>9} {'Δmean':>9} "
-            f"{'wilcox_p':>10} {'wilcox_p<':>11} "
-            f"{'ttest_p':>10} {'ttest_p<':>10}"
+            f"{'wilcox_p':>10} {'wilcox_p<':>11}"
         )
         print(header)
         print("-" * len(header))
-        for r in by_metric[m]:
+        for r in sorted(by_metric[m], key=lambda r: _sort_key(r, lower_better)):
             print(
                 f"{r['comparison']:<{cmp_width}} {r['n']:>3} "
                 f"{r['ref_mean']:>9.4f} {r['cmp_mean']:>9.4f} "
                 f"{r['mean_diff']:>+9.4f} "
                 f"{format_p(r['wilcoxon_p']):>10} "
-                f"{format_p(r['wilcoxon_p_ref_better']):>11} "
-                f"{format_p(r['ttest_p']):>10} "
-                f"{format_p(r['ttest_p_ref_better']):>10}"
+                f"{format_p(r['wilcoxon_p_ref_better']):>11}"
             )
         print(
-            "  wilcox_p<  / ttest_p<  : one-sided p-value for "
+            "  wilcox_p<  : one-sided p-value for "
             "'reference is better than comparison'."
         )
 
@@ -276,8 +315,18 @@ def main() -> int:
         return 1
     print(f"Reference: {ref_name}  (n_success={len(ref_samples)})")
 
+    axis_keys = list(REFERENCE_PARAMS.keys())
+    try:
+        comparisons = discover_comparisons(
+            GRID_DIR, axis_keys, exclude=REFERENCE_PARAMS
+        )
+    except FileNotFoundError as exc:
+        print(f"Could not discover comparisons: {exc}", file=sys.stderr)
+        return 1
+    print(f"Discovered {len(comparisons)} comparison(s) over axes: {axis_keys}")
+
     rows: list[dict] = []
-    for cmp_params in COMPARISONS_PARAMS:
+    for cmp_params in comparisons:
         try:
             cmp_samples, cmp_name = load_combo_samples(GRID_DIR, cmp_params)
         except FileNotFoundError as exc:

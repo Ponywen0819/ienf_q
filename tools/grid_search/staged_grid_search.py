@@ -12,6 +12,7 @@ Stage dependency chain:
   annot_comp     ← offset_px
   bg_removed     ← offset_px, bg_kernel_size
   clahe_applied  ← offset_px, bg_kernel_size, clahe_clip, clahe_grid
+  sato_per_sigma ← clahe_p + sigma   (raw per-sigma vesselness, reused across ranges)
   roi_image      ← offset_px, bg_kernel_size, clahe_clip, clahe_grid, sato_sigmas_{start,stop}
   cost_map       ← (same as roi_image)
   dijkstra       ← (roi_image params) + connectivity
@@ -45,7 +46,10 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
-from neural_reconstruction.algorithms.annotation_grow.cost_map import build_cost_map
+from neural_reconstruction.algorithms.annotation_grow.cost_map import (
+    apply_within_mask_strips,
+    build_cost_map,
+)
 from neural_reconstruction.algorithms.annotation_grow.dijkstra import (
     get_components,
     multi_source_dijkstra,
@@ -70,17 +74,21 @@ from neural_reconstruction.dataset import DatasetLoader, SampleFiles
 # ── Default parameters ───────────────────────────────────────────────────────
 
 DEFAULT_PARAM_GRID: Dict[str, List[Any]] = {
-    "clahe_grid": [(s, s) for s in [704, 736, 768, 800, 832]],
-    "clahe_clip": [10.0, 20.0, 30.0, 40.0, 50.0],
+    # "bg_kernel_size": [0,3,5,7,9,11],
+    # "clahe_grid": [(s, s) for s in [704, 736, 768, 800, 832]],
+    # "clahe_clip": [10.0, 20.0, 30.0, 40.0, 50.0],
+    # "sato_sigmas_start": [i for i in range(1, 6) ],
+    # "sato_sigmas_stop": [i+1 for i in range(1, 6)],
+    "prune_threshold": [10.0, 20.0, 30.0, 40.0, 50.0],
 }
 
 FIXED_PARAMS: Dict[str, Any] = {
     "offset_px": 50,
     "bg_kernel_size": 5,
-    "clahe_clip": 20.0,
+    "clahe_clip": 30.0,
     "clahe_grid": (768, 768),
-    "sato_sigmas_start": 3,
-    "sato_sigmas_stop": 8,
+    "sato_sigmas_start": 1,
+    "sato_sigmas_stop": 4,
     "connectivity": 8,
     "prune_threshold": 20.0,
     "segment_length": 100.0,
@@ -90,6 +98,20 @@ CLDICE_TOLERANCE_PX = 1
 
 SORT_KEYS = ("hd95_mean", "cldice_mean", "tprec_mean", "tsens_mean")
 ASC_METRICS = {"hd95_mean"}
+
+
+def _is_valid_combination(params: Dict[str, Any]) -> bool:
+    """Return False for parameter combos that should be skipped entirely.
+
+    Constraints (extend as needed):
+      - sato_sigmas_start < sato_sigmas_stop
+        (sigmas = range(start, stop), so start ≥ stop yields an empty range)
+    """
+    start = params.get("sato_sigmas_start")
+    stop = params.get("sato_sigmas_stop")
+    if start is not None and stop is not None and start >= stop:
+        return False
+    return True
 
 
 # ── Data structures ──────────────────────────────────────────────────────────
@@ -244,11 +266,23 @@ def _run_staged_pipeline(
         lambda: _apply_clahe(bg_removed, clahe_clip, clahe_grid),
     )
 
-    # Stage: roi_image — Sato vesselness filter + normalise
+    # Stage: sato_per_sigma — raw (unnormalised) Sato response per single sigma.
+    # Cached individually so that overlapping (start, stop) ranges reuse work:
+    # range(1,6), range(1,7), range(2,6)… all share their per-sigma responses.
+    per_sigma_responses = [
+        _cached(
+            cache,
+            (sid, "sato_per_sigma") + clahe_p + (sigma,),
+            lambda s=sigma: _apply_sato_single(clahe_applied, roi_mask, s),
+        )
+        for sigma in range(sato_start, sato_stop)
+    ]
+
+    # Stage: roi_image — element-wise max across sigmas + min-max → uint8
     roi_image: np.ndarray = _cached(
         cache,
         (sid, "roi_image") + preproc_p,
-        lambda: _apply_sato(clahe_applied, sato_start, sato_stop),
+        lambda: _combine_and_normalise_sato(per_sigma_responses),
     )
 
     # Stage: cost_map
@@ -304,13 +338,21 @@ def _run_staged_pipeline(
 def _apply_bg_removal(
     green: np.ndarray, roi_mask: np.ndarray, bg_kernel_size: int
 ) -> np.ndarray:
-    """Background subtraction via morphological opening, masked to ROI."""
+    """Background subtraction via morphological opening, masked to ROI.
+
+    Morphology is strip-cropped to ROI: opening = erosion → dilation, so the
+    halo is 2× the kernel radius (= bg_kernel_size).
+    """
     if bg_kernel_size > 0:
         kernel = cv2.getStructuringElement(
             cv2.MORPH_ELLIPSE, (bg_kernel_size, bg_kernel_size)
         )
-        background = cv2.morphologyEx(green, cv2.MORPH_OPEN, kernel)
-        corrected = cv2.subtract(green, background)
+
+        def _op(patch: np.ndarray) -> np.ndarray:
+            bg = cv2.morphologyEx(patch, cv2.MORPH_OPEN, kernel)
+            return cv2.subtract(patch, bg)
+
+        corrected = apply_within_mask_strips(green, roi_mask, _op, pad=bg_kernel_size)
     else:
         corrected = green
     return cv2.bitwise_and(corrected, corrected, mask=roi_mask)
@@ -324,13 +366,30 @@ def _apply_clahe(
     return clahe.apply(bg_removed)
 
 
-def _apply_sato(img: np.ndarray, sato_start: int, sato_stop: int) -> np.ndarray:
-    """Sato vesselness filter with min-max normalisation to uint8."""
+def _apply_sato_single(
+    img: np.ndarray, roi_mask: np.ndarray, sigma: int
+) -> np.ndarray:
+    """Raw Sato vesselness response at one sigma (no normalisation).
+
+    Strip-cropped to the ROI: per-sigma padding 4·σ + 4 keeps inside-ROI
+    pixels byte-identical to a full-image call after uint8 quantisation.
+    """
     import skimage as ski
 
-    result = ski.filters.sato(
-        img, sigmas=range(sato_start, sato_stop), black_ridges=False
+    pad = int(np.ceil(4 * sigma)) + 4
+    return apply_within_mask_strips(
+        img,
+        roi_mask,
+        lambda patch: ski.filters.sato(
+            patch, sigmas=range(sigma, sigma + 1), black_ridges=False
+        ),
+        pad=pad,
     )
+
+
+def _combine_and_normalise_sato(per_sigma_responses: List[np.ndarray]) -> np.ndarray:
+    """Element-wise max across per-sigma Sato responses, then min-max → uint8."""
+    result = np.maximum.reduce(per_sigma_responses)
     vmin, vmax = result.min(), result.max()
     if vmax > vmin:
         result = (result - vmin) / (vmax - vmin) * 255
@@ -691,13 +750,22 @@ class GridSearchRunner:
 
     def _iter_combinations(self):
         keys = list(self.param_grid.keys())
+        skipped = 0
         for values in itertools.product(*self.param_grid.values()):
             params = dict(self.fixed_params)
             params.update(dict(zip(keys, values)))
             # Normalise clahe_grid to tuple so it is hashable
             if "clahe_grid" in params and isinstance(params["clahe_grid"], list):
                 params["clahe_grid"] = tuple(params["clahe_grid"])
+            if not _is_valid_combination(params):
+                skipped += 1
+                continue
             yield params
+        if skipped:
+            self.logger.info(
+                f"Skipped {skipped} invalid combination(s) "
+                f"(e.g. sato_sigmas_start >= sato_sigmas_stop)"
+            )
 
     def _sort_key(self, r: GridSearchResult):
         v = getattr(r, self.sort_by)

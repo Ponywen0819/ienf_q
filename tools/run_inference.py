@@ -193,11 +193,11 @@ def build_linker(algorithm: str) -> Any:
     if algorithm == "pure_mst":
         return PureMstLinker(
             offset_px=50,
-            bg_kernel_size=3,
+            bg_kernel_size=5,
             clahe_grid=(768, 768),
-            clahe_clip=20.0,
-            sato_sigmas_start=3,
-            sato_sigmas_stop=8,
+            clahe_clip=30.0,
+            sato_sigmas_start=1,
+            sato_sigmas_stop=4,
             segment_length=5.0,
             search_radius=50.0,
             min_component_length=3.0,
@@ -205,11 +205,11 @@ def build_linker(algorithm: str) -> Any:
     elif algorithm == "annotation_grow":
         return AnnotationGrowLinker(
             offset_px=50,
-            bg_kernel_size=3,
+            bg_kernel_size=5,
             clahe_grid=(768, 768),
-            clahe_clip=20.0,
-            sato_sigmas_start=3,
-            sato_sigmas_stop=8,
+            clahe_clip=30.0,
+            sato_sigmas_start=1,
+            sato_sigmas_stop=4,
             prune_threshold=20.0,
         )
     elif algorithm == "label":
