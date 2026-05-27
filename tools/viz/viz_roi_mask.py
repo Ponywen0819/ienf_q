@@ -23,7 +23,6 @@ from neural_reconstruction.algorithms.annotation_grow.skeleton import (
 )
 from skimage.measure import regionprops
 import matplotlib.cm as mcm
-from PIL import Image
 import skimage as ski
 
 # from skimage.measure import label
@@ -143,6 +142,105 @@ def _viz_crop(arr: np.ndarray) -> np.ndarray:
     return arr[y0:y1, x0:x1]
 
 
+# Cropped original mask, reused by the aux-figure annotations.
+_mask_crop = _viz_crop(mask)
+
+
+def _save_with_axes(viz_arr: np.ndarray, output_path: str, *, annotate_fn=None) -> None:
+    """Save `viz_arr` with a small coordinate-system indicator outside the image.
+
+    The image is flipped vertically and drawn with origin='lower' so it appears
+    right-side up while y follows the math convention (0 at bottom, increasing
+    upward). Default chrome (labels, ticks, spines) is removed; the only
+    coordinate cue is a small widget in the lower-left margin: a `(0,0)` text
+    plus two short single-headed arrows pointing right (x) and up (y).
+    """
+    H, W = viz_arr.shape[:2]
+    fig, ax = plt.subplots(figsize=(10, 10 * H / W + 0.6))
+    ax.imshow(np.flipud(viz_arr), origin="lower", extent=(0.0, float(W), 0.0, float(H)))
+
+    # Strip default chrome.
+    ax.set_xticks([])
+    ax.set_yticks([])
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    # Coordinate axis labels sit just outside the image: `y` to the left of
+    # the top edge (direction of increasing y) and `x` below the right edge
+    # (direction of increasing x). Plain black text — no overlap with image
+    # content, so no stroke needed.
+    mx_label = 20
+    my_label = 20
+
+    axis_text_kw = dict(
+        fontsize=12,
+        color="black",
+        zorder=11,
+    )
+    ax.text(-mx_label, H + 5 * my_label, "y", ha="right", va="top", **axis_text_kw)
+    ax.text(W + 5* mx_label, -my_label, "x", ha="right", va="top", **axis_text_kw)
+
+    # `(0,0)` text just outside the image's lower-left corner.
+    ax.text(
+        -mx_label, -my_label, "(0,0)",
+        ha="right", va="top", fontsize=12, color="black", zorder=11,
+    )
+
+    # Just enough margin to host the labels.
+    # ax.set_xlim(-mx_label * 4, W)
+    # ax.set_ylim(-my_label * 1.8, H)
+    ax.set_aspect("equal")
+
+    if annotate_fn is not None:
+        annotate_fn(ax, H, W)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _annotate_aux_mask(ax, H_crop: int, W_crop: int) -> None:
+    """Aux-mask overlays: red dashed vertical at a sampled x, red solid arrow
+    pointing to the original epidermis top edge at that same x."""
+    # Pick a column ~1/3 into the masked range so the line lands inside the
+    # epidermis region (visually informative rather than landing on empty bg).
+    mask_cols = np.where(_mask_crop.any(axis=0))[0]
+    if len(mask_cols) > 0:
+        chosen_col = int(mask_cols[len(mask_cols) // 3])
+    else:
+        chosen_col = W_crop // 2
+
+    # 1) Dashed red vertical line representing the sampled x position.
+    # `plot` instead of `axvline` so the dashed line stays inside the image
+    # y-range and does not bleed into the margin that hosts the (0,0) widget.
+    ax.plot(
+        [chosen_col, chosen_col], [0, H_crop],
+        color="red", linestyle="--", linewidth=2, zorder=5,
+    )
+
+    # 2) Solid red arrow with arrowhead pointing to the mask's top edge at x=chosen_col.
+    # `argmax(>0)` finds the topmost row of the mask in that column; convert
+    # the row index to display-y by mirroring (origin='lower' + np.flipud).
+    col_vals = _mask_crop[:, chosen_col]
+    if (col_vals > 0).any():
+        top_row = int(np.argmax(col_vals > 0))
+        edge_y = (H_crop - 1) - top_row + 50
+        # Solid red arrow grows from the image bottom (y=0) up to the mask
+        # top edge, sharing the same x as the dashed line so the shaft
+        # overlaps the dashed segment in the lower portion of the image.
+        ax.annotate(
+            "",
+            xy=(chosen_col, edge_y),
+            xytext=(chosen_col, 0),
+            arrowprops=dict(
+                arrowstyle="-|>",
+                color="red",
+                lw=2,
+                mutation_scale=12,
+            ),
+            zorder=6,
+        )
+
+
 # 圖 1: aux_mask + 原始遮罩輪廓 (讓讀者看出 aux 上緣就貼著遮罩頂端)
 viz_aux = _overlay_masks(
     bg_image,
@@ -150,7 +248,11 @@ viz_aux = _overlay_masks(
     alpha=0.45,
     outlines=[(mask, ORIG_MASK_COLOR, OUTLINE_THICKNESS)],
 )
-Image.fromarray(_viz_crop(viz_aux)).save("./output/viz_aux_mask.png")
+_save_with_axes(
+    _viz_crop(viz_aux),
+    "./output/viz_aux_mask.png",
+    annotate_fn=_annotate_aux_mask,
+)
 
 # 圖 2: 不受限膨脹 + 原始遮罩輪廓
 viz_uncon = _overlay_masks(
@@ -159,7 +261,7 @@ viz_uncon = _overlay_masks(
     alpha=0.5,
     outlines=[(mask, ORIG_MASK_COLOR, OUTLINE_THICKNESS)],
 )
-Image.fromarray(_viz_crop(viz_uncon)).save("./output/viz_unconstrained_dilation.png")
+_save_with_axes(_viz_crop(viz_uncon), "./output/viz_unconstrained_dilation.png")
 
 # 圖 3: roi_mask + 原始遮罩輪廓
 viz_roi = _overlay_masks(
@@ -168,4 +270,4 @@ viz_roi = _overlay_masks(
     alpha=0.5,
     outlines=[(mask, ORIG_MASK_COLOR, OUTLINE_THICKNESS)],
 )
-Image.fromarray(_viz_crop(viz_roi)).save("./output/viz_roi_mask.png")
+_save_with_axes(_viz_crop(viz_roi), "./output/viz_roi_mask.png")

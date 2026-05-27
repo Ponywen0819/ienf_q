@@ -42,37 +42,45 @@ from neural_reconstruction.core.evaluation import (
 # 視覺化工具
 # ============================================================================
 
-# GT 綠色 / Pred 橘紅色
-_COLOR_GT = (0, 220, 0)  # BGR green
-_COLOR_PRED = (0, 100, 255)  # BGR orange-red
+# Confusion-matrix 配色 (BGR): GT-only 綠 / Pred-only 紅 / 重疊 黃
+_COLOR_GT = (0, 220, 0)  # GT only (false negative) — green
+_COLOR_PRED = (0, 0, 255)  # Pred only (false positive) — red
+_COLOR_OVERLAP = (0, 255, 255)  # GT ∩ Pred (true positive) — yellow
+
+# 兩條線視為「重疊」的像素容差（pred 與 gt 很少剛好逐像素重合）。
+# 實際使用時改以每個樣本的 px_um_ratio 換算（1.28 µm / px_um_ratio）；
+# 此常數僅作為無法取得 ratio 時的後備預設值。
+_MATCH_TOLERANCE_PX = 2
 
 
-def _draw_graph(
-    canvas: np.ndarray, graph: nx.Graph, color: tuple, thickness: int = 1
-) -> None:
-    """將 graph 的邊（優先使用 path 像素座標）畫到 canvas 上（in-place）。"""
+def _rasterize_graph(
+    shape: tuple, graph: nx.Graph, thickness: int = 1
+) -> np.ndarray:
+    """將 graph 的邊（優先使用 path 像素座標）光柵化為布林遮罩。"""
+    mask = np.zeros(shape[:2], dtype=np.uint8)
     for u, v, data in graph.edges(data=True):
         path = data.get("path")
         if path is not None and len(path) >= 2:
             pts = np.array(path, dtype=np.int32)  # (N, 2) as (y, x)
             for i in range(len(pts) - 1):
                 cv2.line(
-                    canvas,
+                    mask,
                     (int(pts[i][1]), int(pts[i][0])),  # (x, y)
                     (int(pts[i + 1][1]), int(pts[i + 1][0])),
-                    color,
+                    255,
                     thickness,
-                    lineType=cv2.LINE_AA,
+                    lineType=cv2.LINE_8,
                 )
         else:
             cv2.line(
-                canvas,
+                mask,
                 (int(u[1]), int(u[0])),
                 (int(v[1]), int(v[0])),
-                color,
+                255,
                 thickness,
-                lineType=cv2.LINE_AA,
+                lineType=cv2.LINE_8,
             )
+    return mask > 0
 
 
 def save_overlay_visualization(
@@ -82,32 +90,65 @@ def save_overlay_visualization(
     pred_graph: nx.Graph,
     gt_graph: nx.Graph,
     vis_dir: Path,
+    match_tolerance_px: int = _MATCH_TOLERANCE_PX,
 ) -> None:
     """
-    輸出三層疊加圖：原始輸入圖像 → GT 拓樸（綠）→ 預測拓樸（橘紅）。
+    輸出 confusion-matrix 風格重建圖：純黑背景上只畫重建結果，
+    GT-only 綠、Pred-only 紅、GT∩Pred 重疊處橙。
+
+    不疊加原始影像，避免亮背景蓋過細線。
+
+    重疊判定採 ``match_tolerance_px`` 像素容差：GT 像素只要落在
+    pred 線段的容差膨脹範圍內即視為重疊（反之亦然），避免兩條近乎
+    重合的細線因未逐像素對齊而被誤判為各自獨立。
 
     Args:
-        image_path: 原始 image.png 路徑（存在時優先使用，否則用 roi_image）
-        roi_image:  evaluate_sample 中的已處理 ROI 灰階影像（fallback）
+        image_path: 保留參數（目前未使用，背景固定為純黑）
+        roi_image:  evaluate_sample 中的已處理 ROI 影像（僅用於取得畫布尺寸）
         pred_graph: 預測的重建圖
         gt_graph:   GT 拓樸圖
         vis_dir:    輸出目錄
+        match_tolerance_px: 重疊判定的膨脹半徑（像素）。由呼叫端依每個
+            樣本的 px_um_ratio 換算（1.28 µm / px_um_ratio），使不同
+            解析度樣本的物理容差一致。
     """
-    # --- 背景：優先使用原始圖像 ---
-    if image_path is not None and image_path.exists():
-        bg = cv2.imread(str(image_path), cv2.IMREAD_COLOR)[:, :, 1]  # BGR → RGB
-        bg = cv2.cvtColor(bg, cv2.COLOR_GRAY2BGR)  # 灰階轉彩色
-        if bg is None:
-            bg = cv2.cvtColor(roi_image, cv2.COLOR_GRAY2BGR)
-    else:
-        if roi_image.ndim == 2:
-            bg = cv2.cvtColor(roi_image, cv2.COLOR_GRAY2BGR)
-        else:
-            bg = roi_image.copy()
+    # --- 背景：純黑畫布（尺寸取自 roi_image）---
+    h, w = roi_image.shape[:2]
+    canvas = np.zeros((h, w, 3), dtype=np.uint8)
 
-    canvas = bg.copy()
-    _draw_graph(canvas, gt_graph, _COLOR_GT, thickness=1)
-    _draw_graph(canvas, pred_graph, _COLOR_PRED, thickness=1)
+    gt_mask = _rasterize_graph(canvas.shape, gt_graph, thickness=1)
+    pred_mask = _rasterize_graph(canvas.shape, pred_graph, thickness=1)
+
+    # 容差膨脹後求交集，分類為 GT-only / Pred-only / 重疊
+    if match_tolerance_px > 0:
+        ksize = 2 * match_tolerance_px + 1
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ksize, ksize))
+        gt_dil = cv2.dilate(gt_mask.astype(np.uint8), kernel) > 0
+        pred_dil = cv2.dilate(pred_mask.astype(np.uint8), kernel) > 0
+    else:
+        gt_dil, pred_dil = gt_mask, pred_mask
+
+    overlap = (gt_mask & pred_dil) | (pred_mask & gt_dil)
+    gt_only = gt_mask & ~pred_dil
+    pred_only = pred_mask & ~gt_dil
+
+    canvas[gt_only] = _COLOR_GT
+    canvas[pred_only] = _COLOR_PRED
+    canvas[overlap] = _COLOR_OVERLAP
+
+    # --- 圖例 ---
+    legend = [
+        ("GT only", _COLOR_GT),
+        ("Pred only", _COLOR_PRED),
+        ("Overlap", _COLOR_OVERLAP),
+    ]
+    for i, (text, color) in enumerate(legend):
+        y = 18 + i * 20
+        cv2.rectangle(canvas, (8, y - 10), (22, y + 4), color, -1)
+        cv2.putText(
+            canvas, text, (28, y + 2), cv2.FONT_HERSHEY_SIMPLEX,
+            0.5, (255, 255, 255), 1, cv2.LINE_AA,
+        )
 
     vis_dir.mkdir(parents=True, exist_ok=True)
     out_path = vis_dir / f"{sample_id}.png"
@@ -575,16 +616,20 @@ class DatasetEvaluator:
                     hd95 *= ratio
                     hd95_pred_to_gt *= ratio
                     hd95_gt_to_pred *= ratio
+                    avg_dist *= ratio
+                    d_pred_to_gt *= ratio
+                    d_gt_to_pred *= ratio
                 elif self.px_um_ratios:
                     self.logger.warning(
-                        f"樣本 {sample_id} 未在 px_um.json 中找到 ratio — HD95 仍為像素單位"
+                        f"樣本 {sample_id} 未在 px_um.json 中找到 ratio — HD95 與 avg_hd 仍為像素單位"
                     )
-
+                        
                 num_nodes_gt = graph_gt.number_of_nodes()
                 num_edges_gt = graph_gt.number_of_edges()
-
+                t_um = 1.28
+                tolerance_px = int(t_um / (ratio if ratio is not None else 1.28))
                 cld, tprec, tsens = compute_cldice(
-                    extract_result.graph, roi_label, tolerance_px=1
+                    extract_result.graph, roi_label, tolerance_px=tolerance_px
                 )
 
                 if self.visualize:
@@ -595,6 +640,7 @@ class DatasetEvaluator:
                         pred_graph=extract_result.graph,
                         gt_graph=graph_gt,
                         vis_dir=self.vis_dir,
+                        match_tolerance_px=tolerance_px,
                     )
 
             else:

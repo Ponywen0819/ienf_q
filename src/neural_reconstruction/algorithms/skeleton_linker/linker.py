@@ -45,7 +45,7 @@ class SkeletonLinker:
         self,
         offset_px: int = 50,
         segment_length: float = 3.0,
-        min_tree_components: int = 0,
+        min_tree_components: int =  5,
     ):
         self.offset_px = offset_px
         self.segment_length = segment_length

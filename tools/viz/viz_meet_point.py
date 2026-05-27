@@ -220,9 +220,9 @@ other_mask = (owner_crop > 0) & (owner_crop != A_ID) & (owner_crop != B_ID)
 disp[other_mask] = 0.55 * disp[other_mask] + 0.45 * OTHER_COLOR
 
 a_terr = owner_crop == A_ID
-disp[a_terr] = 0.45 * disp[a_terr] + 0.55 * A_COLOR
+disp[a_terr] = 0.75 * disp[a_terr] + 0.25 * A_COLOR
 b_terr = owner_crop == B_ID
-disp[b_terr] = 0.45 * disp[b_terr] + 0.55 * B_COLOR
+disp[b_terr] = 0.75 * disp[b_terr] + 0.25 * B_COLOR
 
 # Source (annotation) pixels solid
 disp[labels_crop == A_ID] = A_COLOR
@@ -273,12 +273,10 @@ def draw_seed_labels(ax) -> None:
             ty, tx = this_c[0] - label_offset, this_c[1]
         ty = float(np.clip(ty, margin, CROP_H - margin))
         tx = float(np.clip(tx, margin, CROP_W - margin))
-        lum = 0.299 * col[0] + 0.587 * col[1] + 0.114 * col[2]
-        stroke = "black" if lum > 0.6 else "white"
         ax.text(
-            tx, ty, txt, color=tuple(col), fontsize=18, fontweight="bold",
+            tx, ty, txt, color="yellow", fontsize=18, fontweight="bold",
             ha="center", va="center", zorder=5,
-            path_effects=[pe.withStroke(linewidth=3.0, foreground=stroke)],
+            # path_effects=[pe.withStroke(linewidth=2.5, foreground="white")],
         )
 
 
@@ -301,7 +299,8 @@ draw_seed_labels(ax)
 
 divider = make_axes_locatable(ax)
 cax = divider.append_axes("right", size="4%", pad=0.04)
-fig.colorbar(sc, cax=cax, label=r"meeting cost $w = D_A + D_B$")
+cbar = fig.colorbar(sc, cax=cax)
+cbar.ax.tick_params(labelsize=16, colors="black")
 
 out_path = Path(__file__).parent / "viz_meet_point.png"
 fig.savefig(out_path, dpi=200, bbox_inches="tight")

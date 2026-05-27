@@ -11,14 +11,12 @@ Algorithm:
 
 import logging
 
-import cv2
 import numpy as np
 import networkx as nx
 
-from neural_reconstruction.core.preprocessing import dilate_epidermis_vertically
+from neural_reconstruction.core.preprocessing import PreprocessingPipeline
 from neural_reconstruction.common.data_types import LinkerResult
 
-from .cost_map import build_enhanced_image, build_cost_map
 from .dijkstra import (
     get_components,
     multi_source_dijkstra,
@@ -58,8 +56,7 @@ class AnnotationGrowLinker:
         prune_threshold: float = 20.0,
         # Subtree filtering
         min_tree_components: int = 5,
-        # Skeletonization
-        segment_length: float = 100.0,
+        stub_length_threshold: int = 5,
     ):
         self.offset_px = offset_px
         self.bg_kernel_size = bg_kernel_size
@@ -70,7 +67,7 @@ class AnnotationGrowLinker:
         self.connectivity = connectivity
         self.prune_threshold = prune_threshold
         self.min_tree_components = min_tree_components
-        self.segment_length = segment_length
+        self.stub_length_threshold = stub_length_threshold
 
     def run(
         self,
@@ -84,62 +81,47 @@ class AnnotationGrowLinker:
             mask:       epidermis mask (H, W)
             annotation: binary annotation / weka output (H, W)
         """
-        # ── 1. Extract green channel ──────────────────────────────────────
-        if image.ndim == 3:
-            green = image[:, :, 1]
-        else:
-            green = image
-
+        # ── 1. Shared preprocessing ───────────────────────────────────────
+        # Keep a 2-D copy of the raw epidermis mask for crossing analysis.
         if mask.ndim == 3:
             mask = mask[:, :, 0]
-        if annotation.ndim == 3:
-            annotation = annotation[:, :, 0]
 
-        logger.info(f"Input image: {green.shape}")
-
-        # ── 2. Preprocess ─────────────────────────────────────────────────
-        roi_mask = dilate_epidermis_vertically(mask, offset_px=self.offset_px)
-
-        roi_image = build_enhanced_image(
-            green=green,
-            roi_mask=roi_mask,
+        pre = PreprocessingPipeline(
+            offset_px=self.offset_px,
             bg_kernel_size=self.bg_kernel_size,
             clahe_clip=self.clahe_clip,
             clahe_grid=self.clahe_grid,
-            sato_sigmas=range(self.sato_sigmas_start, self.sato_sigmas_stop),
-        )
-
-        roi_annotation = cv2.bitwise_and(annotation, annotation, mask=roi_mask)
-        cost_map = build_cost_map(roi_image)
-
+            sato_sigmas_start=self.sato_sigmas_start,
+            sato_sigmas_stop=self.sato_sigmas_stop,
+        ).run(image, mask, annotation)
         logger.info("Preprocessing done")
 
-        # ── 3. Connected components ───────────────────────────────────────
-        annotation_bin = (roi_annotation > 127).astype(np.uint8)
+        # ── 2. Connected components ───────────────────────────────────────
+        annotation_bin = (pre.roi_annotation > 127).astype(np.uint8)
         annot_labeled = get_components(annotation_bin)
         n_components = int(annot_labeled.max())
         logger.info(f"Annotation components: {n_components}")
 
-        # ── 4. Multi-source Dijkstra ──────────────────────────────────────
+        # ── 3. Multi-source Dijkstra ──────────────────────────────────────
 
         owner_map, dist_map, prev_y, prev_x = multi_source_dijkstra(
-            cost_map,
+            pre.cost_map,
             annot_labeled,
             connectivity=self.connectivity,
-            roi_mask=(roi_mask > 127),
+            roi_mask=(pre.roi_mask > 127),
         )
         logger.info(
             f"Dijkstra done — pixels reached: {(owner_map > 0).sum():,} "
             f"({(owner_map > 0).mean() * 100:.1f}%)"
         )
 
-        # ── 5. Meeting points → component graph ───────────────────────────
+        # ── 4. Meeting points → component graph ───────────────────────────
         connections = find_meeting_points(owner_map, dist_map, prev_y, prev_x)
         logger.info(f"Meeting points found: {len(connections)} component pairs")
 
         G = build_component_graph(connections, n_components)
 
-        # ── 6. Prune + MST ────────────────────────────────────────────────
+        # ── 5. Prune + MST ────────────────────────────────────────────────
         G_pruned = prune_edges(G, threshold=self.prune_threshold)
         logger.info(
             f"After pruning: {G_pruned.number_of_edges()} edges remain "
@@ -152,11 +134,11 @@ class AnnotationGrowLinker:
             f"{nx.number_connected_components(mst)} trees"
         )
 
-        # ── 7. Per-CC skeleton → pixel-level graph ───────────────────────
+        # ── 6. Per-CC skeleton → pixel-level graph ───────────────────────
         result_graph = build_result_graph(
             mst,
             annotation_bin,
-            segment_length=self.segment_length,
+            segment_length=500,
         )
         logger.info(
             f"Result graph: {result_graph.number_of_nodes()} nodes, "
@@ -167,11 +149,13 @@ class AnnotationGrowLinker:
             mask,
             annot_labeled,
             min_tree_components=self.min_tree_components,
+            stub_length_threshold=self.stub_length_threshold
+
         )
         return LinkerResult(
-            annotation=roi_annotation,
-            image=roi_image,
-            mask=roi_mask,
+            annotation=pre.roi_annotation,
+            image=pre.roi_image,
+            mask=pre.roi_mask,
             graph=labeled_graph,
             valid_count=valid_count,
         )

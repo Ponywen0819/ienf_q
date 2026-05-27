@@ -20,6 +20,8 @@ Stage dependency chain:
   pruned_graph   ← (dijkstra params) + prune_threshold
   mst            ← (same as pruned_graph)
   result_graph   ← (pruned_graph params) + segment_length
+  labeled_graph  ← (result_graph params) + stub_length_threshold, min_tree_components
+                   (stub pruning + region labeling via crossing analysis)
   roi_gt         ← offset_px  (GT label masked to ROI, for metrics)
   gt_points      ← offset_px  (extracted GT topology points, for HD95)
 
@@ -61,10 +63,12 @@ from neural_reconstruction.algorithms.annotation_grow.graph_builder import (
     minimum_spanning_forest,
 )
 from neural_reconstruction.algorithms.annotation_grow.skeleton import build_result_graph
+from neural_reconstruction.core.crosses_detection import run_crossing_analysis
 from neural_reconstruction.core.preprocessing import dilate_epidermis_vertically
 from neural_reconstruction.core.evaluation import (
     extract_graph_points,
     compute_hd95,
+    compute_average_hausdorff_distance,
     compute_cldice,
 )
 from neural_reconstruction.core.topology import TopologyBuilder
@@ -79,7 +83,10 @@ DEFAULT_PARAM_GRID: Dict[str, List[Any]] = {
     # "clahe_clip": [10.0, 20.0, 30.0, 40.0, 50.0],
     # "sato_sigmas_start": [i for i in range(1, 6) ],
     # "sato_sigmas_stop": [i+1 for i in range(1, 6)],
-    "prune_threshold": [10.0, 20.0, 30.0, 40.0, 50.0],
+    # "prune_threshold": [10.0, 20.0, 30.0, 40.0, 50.0],
+    # "stub_length_threshold" : [0, 3, 5, 7, 9],
+    "min_tree_components": [1,3, 5, 7, 9, 11],
+
 }
 
 FIXED_PARAMS: Dict[str, Any] = {
@@ -92,12 +99,27 @@ FIXED_PARAMS: Dict[str, Any] = {
     "connectivity": 8,
     "prune_threshold": 20.0,
     "segment_length": 100.0,
+    "stub_length_threshold": 5,
+    "min_tree_components": 5,
 }
 
-CLDICE_TOLERANCE_PX = 1
+# clDice spatial tolerance as a physical distance (micrometres). It is
+# converted to pixels *per sample* via px_um.json so the slack is identical
+# across acquisition resolutions: tolerance_px = CLDICE_TOLERANCE_UM / px_um.
+CLDICE_TOLERANCE_UM = 1.28
 
-SORT_KEYS = ("hd95_mean", "cldice_mean", "tprec_mean", "tsens_mean")
-ASC_METRICS = {"hd95_mean"}
+SORT_KEYS = (
+    # "hd95_mean",
+    # "avg_hd_mean",
+    # "cldice_mean",
+    # "tprec_mean",
+    # "tsens_mean",
+    "count_mae",
+    "count_rmse",
+    "count_pearson",
+)
+# Lower-is-better metrics; everything else (cldice, tprec, tsens, pearson) is higher-is-better.
+ASC_METRICS = {"hd95_mean", "avg_hd_mean", "count_mae", "count_rmse"}
 
 
 def _is_valid_combination(params: Dict[str, Any]) -> bool:
@@ -130,9 +152,11 @@ class SampleData:
 @dataclass
 class SampleMetrics:
     hd95: Optional[float]
+    avg_hd: Optional[float]
     cldice: Optional[float]
     tprec: Optional[float]
     tsens: Optional[float]
+    pred_count: Optional[int] = None  # predicted crossing count; None on failure
 
 
 @dataclass
@@ -144,6 +168,12 @@ class GridSearchResult:
     hd95_min: Optional[float]
     hd95_max: Optional[float]
     hd95_n: int
+    avg_hd_mean: Optional[float]
+    avg_hd_median: Optional[float]
+    avg_hd_std: Optional[float]
+    avg_hd_min: Optional[float]
+    avg_hd_max: Optional[float]
+    avg_hd_n: int
     cldice_mean: Optional[float]
     cldice_median: Optional[float]
     cldice_std: Optional[float]
@@ -152,6 +182,12 @@ class GridSearchResult:
     cldice_n: int
     tprec_mean: Optional[float]
     tsens_mean: Optional[float]
+    # Crossing-count metrics: aggregated across samples that have GT in count.json.
+    # MAE = mean(|pred-gt|), RMSE = sqrt(mean((pred-gt)^2)), Pearson = correlation.
+    count_mae: Optional[float]
+    count_rmse: Optional[float]
+    count_pearson: Optional[float]
+    count_n: int
     num_success: int
     num_skipped: int
     num_failed: int
@@ -210,13 +246,15 @@ def _run_staged_pipeline(
     cache: StageCache,
     sample: SampleData,
     params: Dict[str, Any],
-) -> Tuple[np.ndarray, nx.Graph]:
+) -> Tuple[np.ndarray, nx.Graph, int]:
     """
     Execute all pipeline stages for one sample, reusing cached intermediate
     outputs wherever the governing parameters match a prior computation.
 
     Returns:
-        (roi_mask, result_graph)
+        (roi_mask, labeled_graph, pred_count)  — labeled_graph is the
+        post-crossing-analysis graph (stubs pruned, segments labeled), and
+        pred_count is the effective crossing count produced by the same stage.
     """
     sid = sample.sample_id
     offset_px: int = params["offset_px"]
@@ -228,6 +266,8 @@ def _run_staged_pipeline(
     connectivity: int = params["connectivity"]
     prune_threshold: float = params["prune_threshold"]
     segment_length: float = params["segment_length"]
+    stub_length_threshold: int = params["stub_length_threshold"]
+    min_tree_components: int = params["min_tree_components"]
 
     # Cumulative param tuples for each stage boundary
     mask_p = (offset_px,)
@@ -237,6 +277,7 @@ def _run_staged_pipeline(
     dijkstra_p = preproc_p + (connectivity,)
     pruned_p = dijkstra_p + (prune_threshold,)
     result_p = pruned_p + (segment_length,)
+    labeled_p = result_p + (stub_length_threshold, min_tree_components)
 
     # Stage: roi_mask
     roi_mask: np.ndarray = _cached(
@@ -332,7 +373,22 @@ def _run_staged_pipeline(
         lambda: build_result_graph(mst, annotation_bin, segment_length=segment_length),
     )
 
-    return roi_mask, result_graph
+    # Stage: labeled_graph — crossing analysis (stub pruning + region labeling).
+    # `run_crossing_analysis` mutates the graph in place, so pass a copy to keep
+    # the cached `result_graph` clean for reuse by other combinations.
+    pred_count, labeled_graph = _cached(
+        cache,
+        (sid, "labeled_graph") + labeled_p,
+        lambda: run_crossing_analysis(
+            result_graph.copy(),
+            sample.mask,
+            annot_labeled,
+            min_tree_components=min_tree_components,
+            stub_length_threshold=stub_length_threshold,
+        ),
+    )
+
+    return roi_mask, labeled_graph, int(pred_count)
 
 
 def _apply_bg_removal(
@@ -457,7 +513,7 @@ def _evaluate_sample(
     cache: StageCache,
     sample: SampleData,
     params: Dict[str, Any],
-    cldice_tolerance_px: int,
+    cldice_tolerance_um: float,
     logger: logging.Logger,
 ) -> Optional[SampleMetrics]:
     """
@@ -468,39 +524,65 @@ def _evaluate_sample(
         return None
 
     try:
-        roi_mask, result_graph = _run_staged_pipeline(cache, sample, params)
+        roi_mask, pred_graph, pred_count = _run_staged_pipeline(cache, sample, params)
     except Exception as e:
         logger.debug(f"Sample {sample.sample_id} pipeline failed: {e}", exc_info=True)
-        return SampleMetrics(hd95=None, cldice=None, tprec=None, tsens=None)
+        return SampleMetrics(
+            hd95=None,
+            avg_hd=None,
+            cldice=None,
+            tprec=None,
+            tsens=None,
+            pred_count=None,
+        )
 
     offset_px: int = params["offset_px"]
     roi_gt = _get_roi_gt(cache, sample.sample_id, sample.gt_label, roi_mask, offset_px)
 
+    # HD95 and average Hausdorff distance share the same point sets; both are
+    # scaled to microns when a px/um ratio is available.
     hd95: Optional[float] = None
+    avg_hd: Optional[float] = None
     try:
         gt_pts = _get_gt_points(cache, sample.sample_id, roi_gt, offset_px)
-        pred_pts = extract_graph_points(result_graph)
+        pred_pts = extract_graph_points(pred_graph)
+        scale = sample.px_um_ratio if sample.px_um_ratio is not None else 1.0
         hd95_val, _, _ = compute_hd95(pred_pts, gt_pts)
-        hd95 = (
-            hd95_val * sample.px_um_ratio
-            if sample.px_um_ratio is not None
-            else hd95_val
-        )
+        hd95 = hd95_val * scale
+        avg_hd_val, _, _ = compute_average_hausdorff_distance(pred_pts, gt_pts)
+        avg_hd = avg_hd_val * scale
     except Exception as e:
-        logger.debug(f"Sample {sample.sample_id} HD95 failed: {e}", exc_info=True)
+        logger.debug(
+            f"Sample {sample.sample_id} Hausdorff failed: {e}", exc_info=True
+        )
+
+    # clDice tolerance is a fixed physical distance (microns) converted to
+    # pixels per sample, so the spatial slack is identical across acquisition
+    # resolutions: tolerance_px = cldice_tolerance_um / px_um_ratio.
+    if sample.px_um_ratio is not None and sample.px_um_ratio > 0:
+        cldice_tol_px = round(cldice_tolerance_um / sample.px_um_ratio)
+    else:
+        cldice_tol_px = round(cldice_tolerance_um)
 
     cldice: Optional[float] = None
     tprec: Optional[float] = None
     tsens: Optional[float] = None
     try:
         cld, tp, ts = compute_cldice(
-            result_graph, roi_gt, tolerance_px=cldice_tolerance_px
+            pred_graph, roi_gt, tolerance_px=cldice_tol_px
         )
         cldice, tprec, tsens = cld, tp, ts
     except Exception as e:
         logger.debug(f"Sample {sample.sample_id} clDice failed: {e}", exc_info=True)
 
-    return SampleMetrics(hd95=hd95, cldice=cldice, tprec=tprec, tsens=tsens)
+    return SampleMetrics(
+        hd95=hd95,
+        avg_hd=avg_hd,
+        cldice=cldice,
+        tprec=tprec,
+        tsens=tsens,
+        pred_count=pred_count,
+    )
 
 
 # ── Grid search runner ───────────────────────────────────────────────────────
@@ -515,23 +597,26 @@ class GridSearchRunner:
         fixed_params: Dict[str, Any],
         sort_by: str = "hd95_mean",
         sample_ids: Optional[List[str]] = None,
-        cldice_tolerance_px: int = CLDICE_TOLERANCE_PX,
+        cldice_tolerance_um: float = CLDICE_TOLERANCE_UM,
     ):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.param_grid = param_grid
         self.fixed_params = dict(fixed_params)
         self.sort_by = sort_by
-        self.cldice_tolerance_px = cldice_tolerance_px
+        self.cldice_tolerance_um = cldice_tolerance_um
         self.logger = logging.getLogger(__name__)
 
         self.px_um_ratios = self._load_px_um_ratios(data_dir)
+        self.gt_counts = self._load_gt_counts(data_dir)
         raw_samples = DatasetLoader(data_dir).load_samples(sample_ids)
         self.samples = self._load_samples(raw_samples)
 
         n_with_label = sum(1 for s in self.samples if s.gt_label is not None)
+        n_with_count = sum(1 for s in self.samples if s.sample_id in self.gt_counts)
         self.logger.info(
-            f"Loaded {len(self.samples)} samples ({n_with_label} with GT label)"
+            f"Loaded {len(self.samples)} samples "
+            f"({n_with_label} with GT label, {n_with_count} with GT count)"
         )
         if n_with_label == 0:
             raise RuntimeError(
@@ -548,6 +633,18 @@ class GridSearchRunner:
             return {}
         with open(px_um_path, encoding="utf-8") as f:
             return json.load(f)
+
+    @staticmethod
+    def _load_gt_counts(data_dir: Path) -> Dict[str, int]:
+        count_path = Path(data_dir) / "count.json"
+        if not count_path.exists():
+            logging.getLogger(__name__).warning(
+                f"count.json not found at {count_path} — "
+                f"count MAE/RMSE/Pearson will not be computed"
+            )
+            return {}
+        with open(count_path, encoding="utf-8") as f:
+            return {k: int(v) for k, v in json.load(f).items()}
 
     def _load_samples(self, raw: List[SampleFiles]) -> List[SampleData]:
         samples = []
@@ -606,7 +703,7 @@ class GridSearchRunner:
 
             for i, params in enumerate(combinations):
                 metrics = _evaluate_sample(
-                    cache, sample, params, self.cldice_tolerance_px, self.logger
+                    cache, sample, params, self.cldice_tolerance_um, self.logger
                 )
                 combo_metrics[i].append(metrics)
 
@@ -669,9 +766,12 @@ class GridSearchRunner:
                         "sample_id": sample.sample_id,
                         "status": "success",
                         "hd95": metrics.hd95,
+                        "avg_hd": metrics.avg_hd,
                         "cldice": metrics.cldice,
                         "tprec": metrics.tprec,
                         "tsens": metrics.tsens,
+                        "pred_count": metrics.pred_count,
+                        "gt_count": self.gt_counts.get(sample.sample_id),
                     }
                 sample_rows.append(row)
 
@@ -690,12 +790,16 @@ class GridSearchRunner:
         self, params: Dict[str, Any], metrics_list: List[Optional[SampleMetrics]]
     ) -> GridSearchResult:
         hd95_vals: List[float] = []
+        avg_hd_vals: List[float] = []
         cldice_vals: List[float] = []
         tprec_vals: List[float] = []
         tsens_vals: List[float] = []
+        pred_counts: List[int] = []
+        gt_counts: List[int] = []
         num_success = num_skipped = num_failed = 0
 
-        for metrics in metrics_list:
+        # metrics_list is ordered parallel to self.samples
+        for sample, metrics in zip(self.samples, metrics_list):
             if metrics is None:
                 num_skipped += 1
                 continue
@@ -705,12 +809,18 @@ class GridSearchRunner:
             num_success += 1
             if metrics.hd95 is not None:
                 hd95_vals.append(metrics.hd95)
+            if metrics.avg_hd is not None:
+                avg_hd_vals.append(metrics.avg_hd)
             if metrics.cldice is not None:
                 cldice_vals.append(metrics.cldice)
             if metrics.tprec is not None:
                 tprec_vals.append(metrics.tprec)
             if metrics.tsens is not None:
                 tsens_vals.append(metrics.tsens)
+            gt = self.gt_counts.get(sample.sample_id)
+            if metrics.pred_count is not None and gt is not None:
+                pred_counts.append(metrics.pred_count)
+                gt_counts.append(gt)
 
         def _stats(vals: List[float]):
             if not vals:
@@ -725,7 +835,11 @@ class GridSearchRunner:
             )
 
         h_mn, h_md, h_sd, h_mi, h_mx = _stats(hd95_vals)
+        a_mn, a_md, a_sd, a_mi, a_mx = _stats(avg_hd_vals)
         c_mn, c_md, c_sd, c_mi, c_mx = _stats(cldice_vals)
+        count_mae, count_rmse, count_pearson = self._count_metrics(
+            pred_counts, gt_counts
+        )
 
         return GridSearchResult(
             params=params,
@@ -735,6 +849,12 @@ class GridSearchRunner:
             hd95_min=h_mi,
             hd95_max=h_mx,
             hd95_n=len(hd95_vals),
+            avg_hd_mean=a_mn,
+            avg_hd_median=a_md,
+            avg_hd_std=a_sd,
+            avg_hd_min=a_mi,
+            avg_hd_max=a_mx,
+            avg_hd_n=len(avg_hd_vals),
             cldice_mean=c_mn,
             cldice_median=c_md,
             cldice_std=c_sd,
@@ -743,10 +863,36 @@ class GridSearchRunner:
             cldice_n=len(cldice_vals),
             tprec_mean=float(np.mean(tprec_vals)) if tprec_vals else None,
             tsens_mean=float(np.mean(tsens_vals)) if tsens_vals else None,
+            count_mae=count_mae,
+            count_rmse=count_rmse,
+            count_pearson=count_pearson,
+            count_n=len(pred_counts),
             num_success=num_success,
             num_skipped=num_skipped,
             num_failed=num_failed,
         )
+
+    @staticmethod
+    def _count_metrics(
+        pred: List[int], gt: List[int]
+    ) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+        """MAE, RMSE, Pearson r across paired predicted vs GT crossing counts.
+
+        Pearson is undefined when n < 2 or either series has zero variance; in
+        those cases it is returned as None while MAE/RMSE remain computable.
+        """
+        if not pred:
+            return None, None, None
+        p = np.asarray(pred, dtype=float)
+        g = np.asarray(gt, dtype=float)
+        diff = p - g
+        mae = float(np.mean(np.abs(diff)))
+        rmse = float(np.sqrt(np.mean(diff * diff)))
+        if len(p) >= 2 and p.std() > 0 and g.std() > 0:
+            pearson = float(np.corrcoef(p, g)[0, 1])
+        else:
+            pearson = None
+        return mae, rmse, pearson
 
     def _iter_combinations(self):
         keys = list(self.param_grid.keys())
@@ -778,7 +924,13 @@ class GridSearchRunner:
         param_str = ", ".join(f"{k}={result.params[k]}" for k in grid_keys)
         h = f"{result.hd95_mean:.4f}" if result.hd95_mean is not None else "N/A"
         c = f"{result.cldice_mean:.4f}" if result.cldice_mean is not None else "N/A"
-        self.logger.debug(f"  [{param_str}] → hd95={h}  cldice={c}")
+        mae = f"{result.count_mae:.4f}" if result.count_mae is not None else "N/A"
+        rmse = f"{result.count_rmse:.4f}" if result.count_rmse is not None else "N/A"
+        pr = f"{result.count_pearson:.4f}" if result.count_pearson is not None else "N/A"
+        self.logger.debug(
+            f"  [{param_str}] → hd95={h}  cldice={c}  "
+            f"mae={mae}  rmse={rmse}  pearson={pr}"
+        )
 
     # ── Output ───────────────────────────────────────────────────────────────
 
@@ -796,6 +948,12 @@ class GridSearchRunner:
             hd95_min=r.hd95_min,
             hd95_max=r.hd95_max,
             hd95_n=r.hd95_n,
+            avg_hd_mean=r.avg_hd_mean,
+            avg_hd_median=r.avg_hd_median,
+            avg_hd_std=r.avg_hd_std,
+            avg_hd_min=r.avg_hd_min,
+            avg_hd_max=r.avg_hd_max,
+            avg_hd_n=r.avg_hd_n,
             cldice_mean=r.cldice_mean,
             cldice_median=r.cldice_median,
             cldice_std=r.cldice_std,
@@ -804,6 +962,10 @@ class GridSearchRunner:
             cldice_n=r.cldice_n,
             tprec_mean=r.tprec_mean,
             tsens_mean=r.tsens_mean,
+            count_mae=r.count_mae,
+            count_rmse=r.count_rmse,
+            count_pearson=r.count_pearson,
+            count_n=r.count_n,
             num_success=r.num_success,
             num_skipped=r.num_skipped,
             num_failed=r.num_failed,
@@ -819,7 +981,7 @@ class GridSearchRunner:
                     "fixed_params": self._jsonable(self.fixed_params),
                     "sort_by": self.sort_by,
                     "num_samples": len(self.samples),
-                    "cldice_tolerance_px": self.cldice_tolerance_px,
+                    "cldice_tolerance_um": self.cldice_tolerance_um,
                     "results": [self._result_to_dict(r) for r in results],
                 },
                 f,
@@ -841,28 +1003,32 @@ class GridSearchRunner:
     def _print_top_results(self, results: List[GridSearchResult], top_n: int = 10):
         valid = [r for r in results if getattr(r, self.sort_by) is not None]
         order = "asc" if self.sort_by in ASC_METRICS else "desc"
-        print("\n" + "=" * 110)
+        print("\n" + "=" * 140)
         print(
             f"Staged Annotation-Grow Grid Search — Top {min(top_n, len(valid))} "
             f"(sorted by {self.sort_by}, {order})"
         )
-        print("=" * 110)
+        print("=" * 140)
         grid_keys = list(self.param_grid.keys())
         print(
-            f"{'Rank':>4}  {'HD95':>8}  {'clDice':>8}  {'Tprec':>8}  {'Tsens':>8}  "
-            f"{'n_h':>4}  {'n_c':>4}  Params"
+            f"{'Rank':>4}  {'HD95':>8}  {'AvgHD':>8}  {'clDice':>8}  "
+            f"{'Tprec':>8}  {'Tsens':>8}  {'MAE':>7}  {'RMSE':>7}  {'Pears':>7}  "
+            f"{'n_h':>4}  {'n_c':>4}  {'n_q':>4}  Params"
         )
-        print("-" * 110)
+        print("-" * 140)
 
-        def _fmt(v):
-            return f"{v:.4f}" if v is not None else "  N/A "
+        def _fmt(v, width=8):
+            return f"{v:.4f}" if v is not None else f"{'N/A':>{width}}"
 
         for rank, r in enumerate(valid[:top_n], start=1):
             param_str = "  ".join(f"{k}={r.params[k]}" for k in grid_keys)
             print(
-                f"{rank:>4}  {_fmt(r.hd95_mean):>8}  {_fmt(r.cldice_mean):>8}  "
+                f"{rank:>4}  {_fmt(r.hd95_mean):>8}  {_fmt(r.avg_hd_mean):>8}  "
+                f"{_fmt(r.cldice_mean):>8}  "
                 f"{_fmt(r.tprec_mean):>8}  {_fmt(r.tsens_mean):>8}  "
-                f"{r.hd95_n:>4}  {r.cldice_n:>4}  {param_str}"
+                f"{_fmt(r.count_mae, 7):>7}  {_fmt(r.count_rmse, 7):>7}  "
+                f"{_fmt(r.count_pearson, 7):>7}  "
+                f"{r.hd95_n:>4}  {r.cldice_n:>4}  {r.count_n:>4}  {param_str}"
             )
 
         if valid:
@@ -871,11 +1037,19 @@ class GridSearchRunner:
             for k, v in best.params.items():
                 print(f"  {k}: {v}")
             if best.hd95_mean is not None:
-                print(f"  hd95_mean:   {best.hd95_mean:.4f}")
+                print(f"  hd95_mean:     {best.hd95_mean:.4f}")
+            if best.avg_hd_mean is not None:
+                print(f"  avg_hd_mean:   {best.avg_hd_mean:.4f}")
             if best.cldice_mean is not None:
-                print(f"  cldice_mean: {best.cldice_mean:.4f}")
+                print(f"  cldice_mean:   {best.cldice_mean:.4f}")
+            if best.count_mae is not None:
+                print(f"  count_mae:     {best.count_mae:.4f}  (n={best.count_n})")
+            if best.count_rmse is not None:
+                print(f"  count_rmse:    {best.count_rmse:.4f}")
+            if best.count_pearson is not None:
+                print(f"  count_pearson: {best.count_pearson:.4f}")
 
-        print("=" * 110 + "\n")
+        print("=" * 140 + "\n")
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
@@ -927,10 +1101,14 @@ def main():
         default="hd95_mean",
     )
     parser.add_argument(
-        "--cldice-tolerance",
-        type=int,
-        default=CLDICE_TOLERANCE_PX,
-        help=f"clDice tolerance radius in pixels (default: {CLDICE_TOLERANCE_PX})",
+        "--cldice-tolerance-um",
+        type=float,
+        default=CLDICE_TOLERANCE_UM,
+        help=(
+            "clDice tolerance as a physical distance in micrometres; converted "
+            "to pixels per sample via px_um.json "
+            f"(default: {CLDICE_TOLERANCE_UM})"
+        ),
     )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
@@ -960,7 +1138,10 @@ def main():
     logger.info(f"Data dir:         {args.data_dir}")
     logger.info(f"Output dir:       {args.output_dir}")
     logger.info(f"Sort by:          {args.sort_by}")
-    logger.info(f"clDice tolerance: {args.cldice_tolerance} px")
+    logger.info(
+        f"clDice tolerance: {args.cldice_tolerance_um} um "
+        f"(per-sample px via px_um.json)"
+    )
     logger.info(f"Param grid:       {param_grid}")
     logger.info(f"Fixed params:     {fixed_params}")
     logger.info(f"Combinations:     {n_combinations}")
@@ -972,7 +1153,7 @@ def main():
         fixed_params=fixed_params,
         sort_by=args.sort_by,
         sample_ids=args.sample_ids,
-        cldice_tolerance_px=args.cldice_tolerance,
+        cldice_tolerance_um=args.cldice_tolerance_um,
     )
     runner.run()
 

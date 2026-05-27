@@ -167,9 +167,59 @@ for ny, nx_ in seed_graph.nodes():
     if 0 <= ny < H and 0 <= nx_ < W:
         skeleton[ny, nx_] = True
 
-# Endpoints (graph degree 1) and branch points (degree >= 3)
+# Endpoints (graph degree 1) and branch points (degree >= 3); degree-2
+# seed nodes are interior "middle" nodes inserted by TopologyBuilder along
+# long skeleton paths.
 endpoint_nodes = [n for n in seed_graph.nodes() if seed_graph.degree(n) == 1]
 branch_nodes = [n for n in seed_graph.nodes() if seed_graph.degree(n) >= 3]
+middle_nodes = [n for n in seed_graph.nodes() if seed_graph.degree(n) == 2]
+
+
+def _skeleton_nodes(skel: np.ndarray) -> tuple[list, list]:
+    """Return (endpoints, branch_points) [(y, x), ...] from a 1-px binary skeleton.
+
+    Endpoints are pixels with exactly one 8-neighbour. Branch points use the
+    crossing number A(P) — the count of contiguous neighbour runs around the
+    pixel: a real junction has A >= 3, while a plain path pixel (even a diagonal
+    "staircase" one with three neighbours) has A <= 2, so this avoids the false
+    branches that a raw neighbour count produces. Branch pixels still cluster
+    around a junction, so each connected cluster is collapsed to one centroid.
+    Used to mark the raw skeleton (which has no topology graph) like bs_6.
+    """
+    skel_u8 = skel.astype(np.uint8)
+    on = skel_u8 == 1
+
+    nbr_kernel = np.array([[1, 1, 1], [1, 0, 1], [1, 1, 1]], dtype=np.uint8)
+    nbr = cv2.filter2D(skel_u8, -1, nbr_kernel, borderType=cv2.BORDER_CONSTANT)
+    endpoints = [(int(y), int(x)) for y, x in zip(*np.where(on & (nbr == 1)))]
+
+    # Crossing number: walk the 8 neighbours clockwise, count 0->1 transitions.
+    h, w = skel_u8.shape
+    padded = np.pad(skel_u8, 1)
+    offsets = [(-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1)]
+    ring = np.stack(
+        [padded[1 + dy : 1 + dy + h, 1 + dx : 1 + dx + w] for dy, dx in offsets],
+        axis=0,
+    )
+    nxt = np.roll(ring, -1, axis=0)
+    crossing = ((ring == 0) & (nxt == 1)).sum(axis=0)
+
+    # Junction pixels within a few px belong to the same junction; dilate before
+    # labelling so they merge, then take one centroid per group.
+    branch_mask = on & (crossing >= 3)
+    merge_disk = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    branch_grouped = cv2.dilate(branch_mask.astype(np.uint8), merge_disk)
+    branch_labeled = ski.measure.label(branch_grouped, connectivity=2)
+    branches = []
+    for rid in range(1, int(branch_labeled.max()) + 1):
+        ys, xs = np.where((branch_labeled == rid) & branch_mask)
+        if len(ys) == 0:
+            continue
+        branches.append((int(round(ys.mean())), int(round(xs.mean()))))
+    return endpoints, branches
+
+
+raw_endpoint_nodes, raw_branch_nodes = _skeleton_nodes(raw_skeleton)
 
 print(
     f"bridge px: {int(bridge_mask.sum())}  ->  dilated: {int(bridge_dilated.sum())}  "
@@ -246,12 +296,8 @@ print(f"Figure 1 MST edge: a={A_ID}, b={B_ID}  (in-crop path length={IN_CROP_LEN
 A_COLOR = palette[A_ID]
 B_COLOR = palette[B_ID]
 
-# Territory background for figure 1 (standard crop)
+# Background for figure 1 (standard crop) — annotation only, no territory.
 disp1 = faded_bg.copy()
-other_terr = (owner_crop > 0) & (owner_crop != A_ID) & (owner_crop != B_ID)
-disp1[other_terr] = 0.6 * disp1[other_terr] + 0.4 * OTHER_COLOR
-disp1[owner_crop == A_ID] = 0.5 * disp1[owner_crop == A_ID] + 0.5 * A_COLOR
-disp1[owner_crop == B_ID] = 0.5 * disp1[owner_crop == B_ID] + 0.5 * B_COLOR
 disp1[labels_crop == A_ID] = A_COLOR
 disp1[labels_crop == B_ID] = B_COLOR
 disp1[roi_crop == 0] = 0.0
@@ -271,27 +317,25 @@ def _draw_fig1(ax):
     )
     ax.scatter(
         [path_px[0], path_px[-1]], [path_py[0], path_py[-1]],
-        marker="o", s=80, c="white", edgecolors="black", linewidths=1.2, zorder=4,
+        marker="o", s=50, c="white", edgecolors="none", zorder=4,
     )
     ax.scatter(
-        [mp_x], [mp_y], marker="o", s=90,
-        c="yellow", edgecolors="black", linewidths=1.0, zorder=5,
+        [mp_x], [mp_y], marker="o", s=50,
+        c="yellow", edgecolors="none", zorder=5,
     )
-    for txt, col, ex, ey in (
-        ("a", A_COLOR, path_px[0], path_py[0]),
-        ("b", B_COLOR, path_px[-1], path_py[-1]),
+    for txt, ex, ey in (
+        ("a", path_px[0], path_py[0]),
+        ("b", path_px[-1], path_py[-1]),
     ):
         ddx = ex - mp_x
         ddy = ey - mp_y
         norm = float(np.hypot(ddx, ddy)) or 1.0
         lx = float(np.clip(ex + 15.0 * ddx / norm, 12, CROP_W - 12))
         ly = float(np.clip(ey + 15.0 * ddy / norm, 12, CROP_H - 12))
-        lum = 0.299 * col[0] + 0.587 * col[1] + 0.114 * col[2]
-        stroke = "black" if lum > 0.6 else "white"
         ax.text(
-            lx, ly, txt, color=tuple(col), fontsize=16, fontweight="bold",
+            lx, ly, txt, color="yellow", fontsize=16, fontweight="bold",
             ha="center", va="center", zorder=6,
-            path_effects=[pe.withStroke(linewidth=2.5, foreground=stroke)],
+            path_effects=[pe.withStroke(linewidth=2.5, foreground="black")],
         )
 
 
@@ -325,17 +369,66 @@ def _crop_local_xy(nodes):
 
 ep_xs, ep_ys = _crop_local_xy(endpoint_nodes)
 bp_xs, bp_ys = _crop_local_xy(branch_nodes)
+mid_xs, mid_ys = _crop_local_xy(middle_nodes)
+raw_ep_xs, raw_ep_ys = _crop_local_xy(raw_endpoint_nodes)
+raw_bp_xs, raw_bp_ys = _crop_local_xy(raw_branch_nodes)
 ENDPOINT_COLOR = "#ff5020"  # orange-red
 BRANCH_COLOR = "#3399ff"    # blue
 
 
+def _pick_middle_node_between_branch_and_endpoint():
+    """Pick the midpoint of an edge path connecting a branch point and an
+    endpoint, visible inside the crop. TopologyBuilder only inserts degree-2
+    seeds on paths longer than segment_length, so for short paths we synthesise
+    a "middle node" position from the edge's path coordinates."""
+    bp_set = set(branch_nodes)
+    ep_set = set(endpoint_nodes)
+    best = None
+    best_len = -1
+    for u, v, data in seed_graph.edges(data=True):
+        if not (
+            (u in bp_set and v in ep_set) or (u in ep_set and v in bp_set)
+        ):
+            continue
+        path = data.get("path")
+        if path is None or len(path) < 3:
+            continue
+        my, mx_ = path[len(path) // 2]
+        if not (CROP_Y0 <= my < CROP_Y0 + CROP_H and CROP_X0 <= mx_ < CROP_X0 + CROP_W):
+            continue
+        if len(path) > best_len:
+            best_len = len(path)
+            best = (int(my), int(mx_))
+    return best
+
+
+highlight_mid = _pick_middle_node_between_branch_and_endpoint()
+
+
 def _draw_skeleton_markers(ax):
     ax.scatter(
-        bp_xs, bp_ys, s=46, c=BRANCH_COLOR, edgecolors="black",
+        bp_xs, bp_ys, s=110, c=BRANCH_COLOR, edgecolors="none", zorder=4,
+    )
+    ax.scatter(
+        ep_xs, ep_ys, s=110, c=ENDPOINT_COLOR, edgecolors="none", zorder=4,
+    )
+    # Highlight one degree-2 "middle" seed node in yellow — a node sitting
+    # along the chain between a branch point and an endpoint.
+    if highlight_mid is not None:
+        my, mx_ = highlight_mid
+        ax.scatter(
+            [mx_ - CROP_X0], [my - CROP_Y0], s=180, c="yellow",
+            edgecolors="none", zorder=5,
+        )
+
+
+def _draw_raw_skeleton_markers(ax):
+    ax.scatter(
+        raw_bp_xs, raw_bp_ys, s=46, c=BRANCH_COLOR, edgecolors="black",
         linewidths=0.6, zorder=4,
     )
     ax.scatter(
-        ep_xs, ep_ys, s=46, c=ENDPOINT_COLOR, edgecolors="black",
+        raw_ep_xs, raw_ep_ys, s=46, c=ENDPOINT_COLOR, edgecolors="black",
         linewidths=0.6, zorder=4,
     )
 
@@ -374,11 +467,17 @@ def _draw_raw_stub_circles(ax):
         )
 
 
-# Figure 5 — raw skeleton, before short-stub removal (two removed stubs circled)
+# Figure 5 — raw skeleton, before short-stub removal: endpoint / branch-point
+# markers (same style as bs_6) plus two removed stubs circled.
+def _draw_raw_skeleton_fig(ax):
+    _draw_raw_skeleton_markers(ax)
+    _draw_raw_stub_circles(ax)
+
+
 render_mask_layers(
     [(raw_skeleton, SKELETON_COLOR)],
     "viz_bs_5_skeleton_raw.png",
-    extra=_draw_raw_stub_circles,
+    extra=_draw_raw_skeleton_fig,
 )
 # Same raw skeleton, plain (no stub-highlight circles).
 render_mask_layers(
@@ -396,10 +495,16 @@ render_mask_layers(
     [(skeleton, SKELETON_COLOR)],
     "viz_bs_6_skeleton_plain.png",
 )
-# Same plain skeleton, but with the same red circles as bs_5 marking where
-# the stubs *were* — the spots are now empty, showing what got cleaned up.
+# Same skeleton with endpoint / branch-point markers AND the same red circles
+# as bs_5 marking where the stubs *were* — the circled spots are now empty,
+# showing what short-stub removal cleaned up.
+def _draw_skeleton_fig_circles(ax):
+    _draw_skeleton_markers(ax)
+    _draw_raw_stub_circles(ax)
+
+
 render_mask_layers(
     [(skeleton, SKELETON_COLOR)],
     "viz_bs_6_skeleton_circles.png",
-    extra=_draw_raw_stub_circles,
+    extra=_draw_skeleton_fig_circles,
 )

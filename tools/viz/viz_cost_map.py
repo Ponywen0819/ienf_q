@@ -43,7 +43,7 @@ from neural_reconstruction.core.crosses_detection import (
 
 BASE_PATH = Path("/home/pony/projects/ienf_q/")
 IMAGE_ID = "S222-2_a"
-BASE_PATH = BASE_PATH / f"data_0331/{IMAGE_ID}"
+BASE_PATH = BASE_PATH / f"data_0510/{IMAGE_ID}"
 
 image = np.array(cv2.imread(f"{BASE_PATH}/image.png", cv2.IMREAD_COLOR_RGB))
 CROP_Y0, CROP_X0, CROP_H, CROP_W = 666, 4700, 200, 200
@@ -67,12 +67,12 @@ background = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel)
 image = cv2.subtract(image, background)
 
 tileGridSize = 768
-clahe = cv2.createCLAHE(clipLimit=20.0, tileGridSize=(tileGridSize, tileGridSize))
+clahe = cv2.createCLAHE(clipLimit=30.0, tileGridSize=(tileGridSize, tileGridSize))
 image = clahe.apply(image)
 
-image = cv2.bitwise_and(image, image, mask=roi_mask)
-image = ski.filters.sato(image, sigmas=range(3, 8), black_ridges=False)
+image = ski.filters.sato(image, sigmas=range(1, 4), black_ridges=False)
 image = (image - image.min()) / (image.max() - image.min()) * 255
+# image = cv2.bitwise_and(image, image, mask=roi_mask)
 image = image.astype(np.uint8)
 cost_map = np.exp(1.0 - (image.astype(np.float32) / 255.0)) - 1.0
 

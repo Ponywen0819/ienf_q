@@ -198,9 +198,10 @@ def build_linker(algorithm: str) -> Any:
             clahe_clip=30.0,
             sato_sigmas_start=1,
             sato_sigmas_stop=4,
-            segment_length=5.0,
-            search_radius=50.0,
-            min_component_length=3.0,
+            segment_length=3.0,
+            search_radius=20.0,
+            min_component_length=5.0,
+            min_tree_components=5,
         )
     elif algorithm == "annotation_grow":
         return AnnotationGrowLinker(
@@ -211,6 +212,7 @@ def build_linker(algorithm: str) -> Any:
             sato_sigmas_start=1,
             sato_sigmas_stop=4,
             prune_threshold=20.0,
+            min_tree_components=0,
         )
     elif algorithm == "label":
         return LabelLinker(offset_px=50)

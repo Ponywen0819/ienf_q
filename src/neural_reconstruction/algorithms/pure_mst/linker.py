@@ -10,22 +10,16 @@
 """
 
 import logging
-from typing import Optional
 
 import numpy as np
 import networkx as nx
 from scipy.spatial import KDTree
 from skimage.measure import label
-import cv2
 
 from neural_reconstruction.core.topology import TopologyBuilder
 from neural_reconstruction.core.pathfinding import PathFinder
 from neural_reconstruction.common.data_types import LinkerResult
-from neural_reconstruction.core.preprocessing import dilate_epidermis_vertically
-from neural_reconstruction.algorithms.annotation_grow.cost_map import (
-    build_enhanced_image,
-    build_cost_map,
-)
+from neural_reconstruction.core.preprocessing import PreprocessingPipeline
 from neural_reconstruction.core.crosses_detection import run_crossing_analysis
 
 logger = logging.getLogger(__name__)
@@ -91,25 +85,25 @@ class PureMstLinker:
         """
         logger.info("1. 圖像預處理...")
 
-        if len(image.shape) == 3:
-            image = image[:, :, 1]  # 綠色通道
+        # 保留 2D 原始表皮遮罩供交叉分析使用
+        if mask.ndim == 3:
+            mask = mask[:, :, 0]
 
-        roi_mask = dilate_epidermis_vertically(mask, offset_px=self.offset_px)
-
-        roi_image = build_enhanced_image(
-            green=image,
-            roi_mask=roi_mask,
+        pre = PreprocessingPipeline(
+            offset_px=self.offset_px,
             bg_kernel_size=self.bg_kernel_size,
             clahe_clip=self.clahe_clip,
             clahe_grid=self.clahe_grid,
-            sato_sigmas=range(self.sato_sigmas_start, self.sato_sigmas_stop),
-        )
+            sato_sigmas_start=self.sato_sigmas_start,
+            sato_sigmas_stop=self.sato_sigmas_stop,
+        ).run(image, mask, annotation)
 
-        roi_annotation = cv2.bitwise_and(annotation, annotation, mask=roi_mask)
         annot_labeled = np.asarray(
-            label((roi_annotation > 0).astype(np.uint8), connectivity=2)
+            label((pre.roi_annotation > 0).astype(np.uint8), connectivity=2)
         )
-        reconstruction_graph = self._run_reconstruction(roi_annotation, roi_image)
+        reconstruction_graph = self._run_reconstruction(
+            pre.roi_annotation, pre.roi_image, pre.cost_map
+        )
 
         valid_count, labeled_graph = run_crossing_analysis(
             reconstruction_graph,
@@ -119,9 +113,9 @@ class PureMstLinker:
         )
 
         return LinkerResult(
-            annotation=roi_annotation,
-            image=roi_image,
-            mask=roi_mask,
+            annotation=pre.roi_annotation,
+            image=pre.roi_image,
+            mask=pre.roi_mask,
             graph=labeled_graph,
             valid_count=valid_count,
         )
@@ -130,6 +124,7 @@ class PureMstLinker:
         self,
         annotation: np.ndarray,
         image: np.ndarray,
+        cost_map: np.ndarray,
     ) -> nx.Graph:
         """
         運行 MST 重建（不含預處理）
@@ -137,6 +132,7 @@ class PureMstLinker:
         Args:
             annotation: 二值化標註影像 (0/255 或 0/1)
             image: 影像 (uint8, 0-255)
+            cost_map: 由前處理產生的成本圖 (float32)
 
         Returns:
             MST 森林 (nx.Graph)
@@ -166,9 +162,7 @@ class PureMstLinker:
         for _, _, data in global_graph.edges(data=True):
             data["weight"] = 1e-5
 
-        # 3. 元件間路徑查找
-        cost_map = build_cost_map(image)
-
+        # 3. 元件間路徑查找（cost_map 由前處理階段提供）
         path_finder = PathFinder(cost_map)
         topology_points = np.array(list(global_graph.nodes()))
 

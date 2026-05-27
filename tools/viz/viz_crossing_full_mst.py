@@ -1,16 +1,23 @@
-"""Visualise crossing-point detection and effective-crossing counting.
+"""Full-image crossing visualisation — Pure-MST reconstruction variant.
 
-Reuses the exact crop and preprocessing pipeline of viz_region_grow.py, builds
-the same pixel-level topology skeleton as viz_bridge_skeleton.py (figure 6),
-then operates on it as a pixel graph (every skeleton pixel is a node, 8-adjacency
-gives edges):
+Companion to viz_crossing_full.py for A/B comparison. Everything is held fixed
+between the two scripts (preprocessing, crossing/effective-crossing logic,
+figures) EXCEPT the reconstruction algorithm:
 
-  viz_crossing_points.png    — crossing points: skeleton pixels adjacent to a
-                               skeleton pixel of the other region (epidermis /
-                               dermis, per the epidermis mask M)
-  viz_crossing_effective.png — effective crossing segments coloured; a segment
-                               is effective iff it crosses the DEJ and has
-                               >= L_MIN pixel-path length in BOTH regions.
+  viz_crossing_full.py      — annotation-grow: multi-source Dijkstra meeting
+                              points -> component graph -> tau-prune -> MST,
+                              then bridges dilated + unioned with the
+                              annotation and re-skeletonised.
+  viz_crossing_full_mst.py  — pure MST: TopologyBuilder seed graph on the
+                              annotation -> PathFinder inter-component paths
+                              -> nx minimum spanning tree (PureMstLinker).
+
+The skeleton here is taken directly from the MST graph — every edge `path`
+plus every node pixel — with no dilation / union / re-skeletonisation.
+
+  viz_crossing_full_mst_points.png    — crossing points over the full image
+  viz_crossing_full_mst_effective.png — effective crossing segments coloured
+  viz_crossing_full_mst_coverage.png  — subtree annotation coverage
 
 Region of a pixel: epidermis if M > 0, dermis otherwise.
 """
@@ -24,32 +31,31 @@ import skimage as ski
 from scipy.ndimage import convolve
 
 from neural_reconstruction.core.preprocessing import dilate_epidermis_vertically
-from neural_reconstruction.core.topology import TopologyBuilder
-from neural_reconstruction.algorithms.annotation_grow.dijkstra import (
-    get_components,
-    multi_source_dijkstra,
-)
-from neural_reconstruction.algorithms.annotation_grow.graph_builder import (
-    find_meeting_points,
-    build_component_graph,
-    prune_edges,
-    minimum_spanning_forest,
-)
+from neural_reconstruction.algorithms.annotation_grow.dijkstra import get_components
+from neural_reconstruction.algorithms.pure_mst import PureMstLinker
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Config / crop (shared with viz_region_grow.py)
+# Config (shared with viz_crossing_full.py — no crop here, the full image is used)
 # ─────────────────────────────────────────────────────────────────────────────
 BASE_PATH = Path("/home/pony/projects/ienf_q/")
-IMAGE_ID = "S222-2_a"
-BASE_PATH = BASE_PATH / f"data_0331/{IMAGE_ID}"
-CROP_Y0, CROP_X0, CROP_H, CROP_W = 666, 4700, 200, 200
+IMAGE_ID = "S1401-2_b"
+BASE_PATH = BASE_PATH / f"data_0510/{IMAGE_ID}"
 
-PRUNE_THRESHOLD = 20.0   # tau
-DILATE_RADIUS = 1        # r_d
-SEGMENT_LENGTH = 100.0   # build_seed_graph segmentation
 L_MIN = 5.0              # minimum per-region path length for an effective crossing
-MIN_TREE_COMPONENTS = 1  # min annotation components a subtree must cover to count
+MIN_TREE_COMPONENTS = 5  # min annotation components a subtree must cover to count
 COVER_NEIGHBORHOOD = 3   # half-window when checking annotation coverage
+
+# Pure-MST reconstruction parameters (PureMstLinker._run_reconstruction).
+SEGMENT_LENGTH = 100.0      # TopologyBuilder seed spacing on the annotation
+SEARCH_RADIUS = 20.0        # PathFinder inter-component search radius
+MIN_COMPONENT_LENGTH = 10.0 # drop reconstructed subtrees shorter than this
+
+# Render geometry. Markers are sized for the full-image render (much smaller
+# than viz_crossing.py, which is tuned for the 200x200 crop).
+FIG_LONG_SIDE = 22.0          # inches on the longer axis
+FIG_DPI = 200
+CROSSING_MARKER_SIZE = 26
+TOPOLOGY_MARKER_SIZE = 9
 
 SKELETON_COLOR = np.array([1.00, 1.00, 1.00], dtype=np.float32)   # white
 EFFECTIVE_COLOR = np.array([0.20, 0.90, 0.35], dtype=np.float32)  # green
@@ -60,13 +66,8 @@ BRANCH_COLOR = "#3399ff"     # blue — matches bs_6
 EPIDERMIS_TINT = np.array([0.60, 0.45, 0.32], dtype=np.float32)   # warm
 
 
-def crop(arr):
-    """Return the fixed crop used by the paper visualizations."""
-    return arr[CROP_Y0 : CROP_Y0 + CROP_H, CROP_X0 : CROP_X0 + CROP_W]
-
-
 # ─────────────────────────────────────────────────────────────────────────────
-# Preprocessing pipeline (identical to viz_region_grow.py)
+# Preprocessing pipeline (identical to viz_crossing_full.py)
 # ─────────────────────────────────────────────────────────────────────────────
 green_raw = np.array(cv2.imread(f"{BASE_PATH}/image.png", cv2.IMREAD_COLOR_RGB))[:, :, 1]
 image = green_raw.copy()
@@ -78,62 +79,46 @@ kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
 background = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel)
 image = cv2.subtract(image, background)
 
-clahe = cv2.createCLAHE(clipLimit=20.0, tileGridSize=(768, 768))
+clahe = cv2.createCLAHE(clipLimit=30.0, tileGridSize=(768, 768))
 image = clahe.apply(image)
 
 image = cv2.bitwise_and(image, image, mask=roi_mask)
-image = ski.filters.sato(image, sigmas=range(3, 8), black_ridges=False)
+image = ski.filters.sato(image, sigmas=range(1, 4), black_ridges=False)
 image = (image - image.min()) / (image.max() - image.min()) * 255
 image = image.astype(np.uint8)
-cost_map = np.exp(1.0 - (image.astype(np.float32) / 255.0)) - 1.0
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Dijkstra -> component graph -> tau-pruning -> MST
+# Pure-MST reconstruction (PureMstLinker). Reuses the script's own preprocessed
+# `image` so the only difference vs viz_crossing_full.py is the reconstruction
+# algorithm. `_run_reconstruction` builds the cost map (exp(1-norm)-1, identical
+# to the annotation-grow cost map), the TopologyBuilder seed graph, PathFinder
+# inter-component edges, and the nx minimum spanning tree.
 # ─────────────────────────────────────────────────────────────────────────────
 annotation_roi = cv2.bitwise_and(annotation, annotation, mask=roi_mask)
 annotation_bin = (annotation_roi > 127).astype(np.uint8)
 annot_labeled = get_components(annotation_bin)
-n_components = int(annot_labeled.max())
 
-owner_map, dist_map, prev_y, prev_x = multi_source_dijkstra(
-    cost_map=cost_map,
-    annot_labeled=annot_labeled,
-    connectivity=8,
-    roi_mask=(roi_mask > 127),
-)
-
-connections = find_meeting_points(owner_map, dist_map, prev_y, prev_x)
-G = build_component_graph(connections, n_components)
-G_pruned = prune_edges(G, threshold=PRUNE_THRESHOLD)
-mst = minimum_spanning_forest(G_pruned)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Bridge mask -> dilation -> union -> pixel-level topology skeleton
-# ─────────────────────────────────────────────────────────────────────────────
 H, W = annotation_bin.shape
 
-bridge_mask = np.zeros((H, W), dtype=np.uint8)
-for _, _, data in mst.edges(data=True):
-    for py, px in data.get("path", []):
-        if 0 <= py < H and 0 <= px < W:
-            bridge_mask[py, px] = 1
-
-ksize = DILATE_RADIUS * 2 + 1
-disk = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ksize, ksize))
-bridge_dilated = cv2.dilate(bridge_mask, disk).astype(bool)
-union = (annotation_bin > 0) | bridge_dilated
-
-seed_graph = TopologyBuilder(segment_length=SEGMENT_LENGTH).build_seed_graph(
-    union.astype(np.uint8)
+linker = PureMstLinker(
+    segment_length=SEGMENT_LENGTH,
+    search_radius=SEARCH_RADIUS,
+    min_component_length=MIN_COMPONENT_LENGTH,
+    min_tree_components=MIN_TREE_COMPONENTS,
 )
+mst = linker._run_reconstruction(annotation_roi, image)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Skeleton straight from the MST graph: every edge path + every node pixel.
+# ─────────────────────────────────────────────────────────────────────────────
 skeleton = np.zeros((H, W), dtype=bool)
-for _u, _v, data in seed_graph.edges(data=True):
+for _u, _v, data in mst.edges(data=True):
     for py, px in data.get("path", []):
         if 0 <= py < H and 0 <= px < W:
             skeleton[py, px] = True
-for ny, nx_ in seed_graph.nodes():
+for ny, nx_ in mst.nodes():
     if 0 <= ny < H and 0 <= nx_ < W:
         skeleton[ny, nx_] = True
 
@@ -147,10 +132,9 @@ epi = mask > 0
 # ─────────────────────────────────────────────────────────────────────────────
 # Subtree annotation coverage — for each skeleton connected component (a
 # reconstructed subtree), count how many distinct annotation components it
-# touches (within a small neighborhood, since skeleton pixels need not land
-# exactly on annotation pixels). Subtrees covering fewer than
-# MIN_TREE_COMPONENTS are excluded from the crossing count, matching
-# `_exclude_small_subtrees_from_count` in core/crosses_detection/pipeline.py.
+# touches. Subtrees covering fewer than MIN_TREE_COMPONENTS are excluded from
+# the crossing count, matching `_exclude_small_subtrees_from_count` in
+# core/crosses_detection/pipeline.py.
 # ─────────────────────────────────────────────────────────────────────────────
 skel_cc_labels = ski.measure.label(skeleton, connectivity=2)
 n_cc = int(skel_cc_labels.max())
@@ -176,33 +160,30 @@ qualifying_mask = np.isin(
 )
 excluded_mask = skeleton & ~qualifying_mask
 
-# Topology markers (matches viz_bridge_skeleton bs_6): endpoints = degree-1,
-# branch points = degree>=3 in the pixel-level seed graph.
-endpoint_nodes = [n for n in seed_graph.nodes() if seed_graph.degree(n) == 1]
-branch_nodes = [n for n in seed_graph.nodes() if seed_graph.degree(n) >= 3]
+# Topology markers: endpoints = degree-1, branch points = degree>=3 in the MST.
+endpoint_nodes = [n for n in mst.nodes() if mst.degree(n) == 1]
+branch_nodes = [n for n in mst.nodes() if mst.degree(n) >= 3]
 
 
-def _crop_local_xy(nodes):
-    xs, ys = [], []
-    for ny, nx_ in nodes:
-        if CROP_Y0 <= ny < CROP_Y0 + CROP_H and CROP_X0 <= nx_ < CROP_X0 + CROP_W:
-            xs.append(nx_ - CROP_X0)
-            ys.append(ny - CROP_Y0)
+def _node_xy(nodes):
+    """Split (y, x) node tuples into parallel x / y lists (full-image coords)."""
+    xs = [nx_ for _ny, nx_ in nodes]
+    ys = [ny for ny, _nx in nodes]
     return xs, ys
 
 
-ep_xs, ep_ys = _crop_local_xy(endpoint_nodes)
-bp_xs, bp_ys = _crop_local_xy(branch_nodes)
+ep_xs, ep_ys = _node_xy(endpoint_nodes)
+bp_xs, bp_ys = _node_xy(branch_nodes)
 
 
 def _draw_topology_markers(ax):
     ax.scatter(
-        bp_xs, bp_ys, s=46, c=BRANCH_COLOR, edgecolors="black",
-        linewidths=0.6, zorder=4,
+        bp_xs, bp_ys, s=TOPOLOGY_MARKER_SIZE, c=BRANCH_COLOR, edgecolors="black",
+        linewidths=0.4, zorder=4,
     )
     ax.scatter(
-        ep_xs, ep_ys, s=46, c=ENDPOINT_COLOR, edgecolors="black",
-        linewidths=0.6, zorder=4,
+        ep_xs, ep_ys, s=TOPOLOGY_MARKER_SIZE, c=ENDPOINT_COLOR, edgecolors="black",
+        linewidths=0.4, zorder=4,
     )
 
 
@@ -296,7 +277,8 @@ for sid in range(1, int(seg_labels.max()) + 1):
 effective_mask = np.isin(seg_labels, list(effective_ids)) if effective_ids else np.zeros_like(skeleton)
 
 print(
-    f"skeleton px: {int(skeleton.sum())}  crossing points: {int(crossing_pts.sum())}  "
+    f"[pure-mst]  skeleton px: {int(skeleton.sum())}  "
+    f"crossing points: {int(crossing_pts.sum())}  "
     f"crossing segments: {n_crossing_segments}  "
     f"effective (N_cross): {len(effective_ids)}  "
     f"excluded by coverage<{MIN_TREE_COMPONENTS}: {n_excluded_by_coverage}  "
@@ -305,53 +287,20 @@ print(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Shared crop tiles + backgrounds
-#   - tinted_bg (figure 1): warm tint on the epidermis side of the DEJ
-#   - plain_bg  (figures 2-3): no tint; the epidermis lower boundary is
-#                              indicated separately as a red dashed line
+# Faded background with epidermis tint (full image)
 # ─────────────────────────────────────────────────────────────────────────────
-green_crop = crop(green_raw)
-roi_crop = crop(roi_mask)
-epi_crop = crop(epi)
-
-tinted_bg = np.stack([green_crop] * 3, axis=-1).astype(np.float32) / 255.0 * 0.5
-tinted_bg[epi_crop] = 0.7 * tinted_bg[epi_crop] + 0.3 * EPIDERMIS_TINT
-tinted_bg[roi_crop == 0] = 0.0
-
-faded_bg_plain = np.stack([green_crop] * 3, axis=-1).astype(np.float32) / 255.0 * 0.5
-faded_bg_plain[roi_crop == 0] = 0.0
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Lower boundary of the epidermis: per-column bottommost mask pixel.
-# Drawn as a red dashed line on figures 2 and 3 to indicate the DEJ without
-# colour-tinting the whole epidermis area.
-# ─────────────────────────────────────────────────────────────────────────────
-_binary_mask = mask > 0
-_col_has = _binary_mask.any(axis=0)
-_max_y_full = np.where(
-    _col_has, H - 1 - np.argmax(_binary_mask[::-1], axis=0), -1
-)
-_xs_full = np.arange(W)
-_lb_inside = (
-    (_xs_full >= CROP_X0) & (_xs_full < CROP_X0 + CROP_W)
-    & (_max_y_full >= CROP_Y0) & (_max_y_full < CROP_Y0 + CROP_H)
-)
-_lower_xs = (_xs_full[_lb_inside] - CROP_X0).astype(float)
-_lower_ys = (_max_y_full[_lb_inside] - CROP_Y0).astype(float)
-
-
-def _draw_lower_boundary(ax) -> None:
-    if len(_lower_xs):
-        ax.plot(
-            _lower_xs, _lower_ys, color="yellow", linestyle="--",
-            linewidth=1.8, zorder=4,
-        )
+faded_bg = np.stack([green_raw] * 3, axis=-1).astype(np.float32) / 255.0 * 0.5
+faded_bg[epi] = 0.7 * faded_bg[epi] + 0.3 * EPIDERMIS_TINT
+faded_bg[roi_mask == 0] = 0.0
 
 
 def save_fig(disp: np.ndarray, out_name: str, extra=None) -> None:
     h, w = disp.shape[:2]
-    fig, ax = plt.subplots(figsize=(6.0, 6.0), constrained_layout=True)
+    if w >= h:
+        figsize = (FIG_LONG_SIDE, FIG_LONG_SIDE * h / w)
+    else:
+        figsize = (FIG_LONG_SIDE * w / h, FIG_LONG_SIDE)
+    fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
     ax.imshow(disp)
     ax.axis("off")
     ax.set_xlim(-0.5, w - 0.5)
@@ -359,99 +308,76 @@ def save_fig(disp: np.ndarray, out_name: str, extra=None) -> None:
     if extra is not None:
         extra(ax)
     out_path = Path(__file__).parent / out_name
-    fig.savefig(out_path, dpi=200, bbox_inches="tight")
+    fig.savefig(out_path, dpi=FIG_DPI, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved: {out_path}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Figure 1 — crossing points. Same plain background + dashed DEJ line as
-# the coverage figure (fig 3); crossing-point markers use a star so they're
-# distinct from the orange endpoint markers.
+# Figure 1 — crossing points
 # ─────────────────────────────────────────────────────────────────────────────
-disp1 = faded_bg_plain.copy()
-disp1[crop(excluded_mask)] = EXCLUDED_COLOR
-disp1[crop(qualifying_mask)] = SKELETON_COLOR
-cp_ys, cp_xs = np.where(crop(crossing_pts))
+disp1 = faded_bg.copy()
+disp1[excluded_mask] = EXCLUDED_COLOR
+disp1[qualifying_mask] = SKELETON_COLOR
+cp_ys, cp_xs = np.where(crossing_pts)
 
 
 def _draw_crossing_points(ax):
-    _draw_lower_boundary(ax)
     _draw_topology_markers(ax)
     ax.scatter(
-        cp_xs, cp_ys, s=140, c=CROSSING_POINT_COLOR, marker="*",
-        edgecolors="black", linewidths=0.7, zorder=5,
+        cp_xs, cp_ys, s=CROSSING_MARKER_SIZE, c=CROSSING_POINT_COLOR, marker="*",
+        edgecolors="black", linewidths=0.4, zorder=5,
     )
 
 
-save_fig(disp1, "viz_crossing_points.png", extra=_draw_crossing_points)
+save_fig(disp1, "viz_crossing_full_mst_points.png", extra=_draw_crossing_points)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Figure 2 — effective crossing segments coloured, with topology markers.
-# Epidermis area is left untinted; the DEJ is indicated by a red dashed
-# lower-boundary line drawn over the figure.
+# Figure 2 — effective crossing segments coloured, with topology markers
 # ─────────────────────────────────────────────────────────────────────────────
-disp2 = faded_bg_plain.copy()
-disp2[crop(excluded_mask)] = EXCLUDED_COLOR
-disp2[crop(qualifying_mask)] = SKELETON_COLOR
-disp2[crop(effective_mask)] = EFFECTIVE_COLOR
+disp2 = faded_bg.copy()
+disp2[excluded_mask] = EXCLUDED_COLOR
+disp2[qualifying_mask] = SKELETON_COLOR
+disp2[effective_mask] = EFFECTIVE_COLOR
 
-
-def _draw_fig2(ax):
-    _draw_lower_boundary(ax)
-    _draw_topology_markers(ax)
-
-
-save_fig(disp2, "viz_crossing_effective.png", extra=_draw_fig2)
+save_fig(disp2, "viz_crossing_full_mst_effective.png", extra=_draw_topology_markers)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Figure 3 — subtree annotation coverage. No epidermis tint / ROI overlay
-# here; the original annotation components are drawn directly so each subtree
-# can be visually associated with the components it covers. Qualifying
-# subtrees (>= MIN_TREE_COMPONENTS covered annotations) are drawn in white;
-# excluded subtrees are drawn dim gray. Each subtree is labelled at its
-# centroid with the number of annotation components it covers.
+# Figure 3 — subtree annotation coverage. Only qualifying subtrees are labelled
+# with their coverage count (labelling every CC would clutter the full image).
 # ─────────────────────────────────────────────────────────────────────────────
 ANNOT_COLOR = np.array([0.30, 0.65, 1.00], dtype=np.float32)  # blue
 
-disp3 = faded_bg_plain.copy()
-disp3[crop(annotation_bin > 0)] = ANNOT_COLOR
-disp3[crop(excluded_mask)] = EXCLUDED_COLOR
-disp3[crop(qualifying_mask)] = SKELETON_COLOR
+plain_bg = np.stack([green_raw] * 3, axis=-1).astype(np.float32) / 255.0 * 0.5
+disp3 = plain_bg.copy()
+disp3[annotation_bin > 0] = ANNOT_COLOR
+disp3[excluded_mask] = EXCLUDED_COLOR
+disp3[qualifying_mask] = SKELETON_COLOR
 
-cc_label_positions: list[tuple[int, int, int, bool]] = []  # (x, y, count, qualifying)
-for cc_id, count in cc_coverage_count.items():
+cc_label_positions: list[tuple[int, int, int]] = []  # (x, y, count)
+for cc_id in qualifying_ccs:
     ys_cc, xs_cc = np.where(skel_cc_labels == cc_id)
-    in_crop = (
-        (ys_cc >= CROP_Y0)
-        & (ys_cc < CROP_Y0 + CROP_H)
-        & (xs_cc >= CROP_X0)
-        & (xs_cc < CROP_X0 + CROP_W)
-    )
-    if not in_crop.any():
-        continue
-    cy = int(ys_cc[in_crop].mean()) - CROP_Y0
-    cx = int(xs_cc[in_crop].mean()) - CROP_X0
-    cc_label_positions.append((cx, cy, count, cc_id in qualifying_ccs))
+    cy = int(ys_cc.mean())
+    cx = int(xs_cc.mean())
+    cc_label_positions.append((cx, cy, cc_coverage_count[cc_id]))
 
 
 def _draw_coverage_labels(ax):
-    _draw_lower_boundary(ax)
-    for cx, cy, count, ok in cc_label_positions:
+    for cx, cy, count in cc_label_positions:
         ax.text(
             cx, cy, str(count),
-            color="white" if ok else "#ffd0d0",
-            fontsize=11, fontweight="bold",
+            color="white",
+            fontsize=9, fontweight="bold",
             ha="center", va="center",
             bbox=dict(
                 boxstyle="round,pad=0.18",
-                facecolor=("#228b3a" if ok else "#992020"),
+                facecolor="#228b3a",
                 edgecolor="black", linewidth=0.5, alpha=0.85,
             ),
             zorder=5,
         )
 
 
-save_fig(disp3, "viz_crossing_coverage.png", extra=_draw_coverage_labels)
+save_fig(disp3, "viz_crossing_full_mst_coverage.png", extra=_draw_coverage_labels)

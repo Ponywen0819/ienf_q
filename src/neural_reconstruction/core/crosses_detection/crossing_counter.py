@@ -44,7 +44,7 @@ class CrossingCounter:
         self,
         graph: nx.Graph,
         epidermis_mask: Optional[np.ndarray] = None,
-        min_region_length: float = 5.0,
+        min_region_length: float =0,
     ) -> Dict:
         """
         Count effective crossings from an annotated topology graph.

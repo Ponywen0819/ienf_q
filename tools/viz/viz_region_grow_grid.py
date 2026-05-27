@@ -58,7 +58,7 @@ def build_cost_map() -> np.ndarray:
         (2, 1): 0.35,
         (2, 2): 0.35,
         (1, 3): 0.60,
-        (2, 3): 0.60,
+        (2, 3): 0.90,
         (3, 3): 0.60,
         (4, 3): 0.50,
         (4, 4): 0.50,
@@ -189,6 +189,30 @@ def capture_first_expansion(cost_map: np.ndarray) -> tuple[dict, tuple]:
     state = init_search_state(cost_map)
     absorbed = absorb_next_cell(state, cost_map)
     return deepcopy(state), absorbed
+
+
+def capture_after_n_expansions(
+    cost_map: np.ndarray, n: int
+) -> tuple[dict, tuple[float, int, int, int]]:
+    """Return the state after n frontier cells have been absorbed."""
+    if n < 1:
+        raise ValueError("n must be at least 1")
+    state = init_search_state(cost_map)
+    last_absorbed = absorb_next_cell(state, cost_map)
+    for _ in range(n - 1):
+        last_absorbed = absorb_next_cell(state, cost_map)
+    return deepcopy(state), last_absorbed
+
+
+def capture_frontier_after_n_expansions(
+    cost_map: np.ndarray, n: int
+) -> tuple[dict, tuple]:
+    """Return the state after n absorptions, plus the next frontier choice."""
+    state = init_search_state(cost_map)
+    for _ in range(n):
+        absorb_next_cell(state, cost_map)
+    next_choice = peek_next_frontier(state)
+    return deepcopy(state), next_choice
 
 
 def capture_half_expansion(
@@ -361,9 +385,10 @@ def draw_state(
     *,
     title: str,
     show_frontier: bool = True,
-    settled_alpha: float = 0.36,
+    settled_alpha: float = 1.0,
     chosen: tuple[float, int, int, int] | None = None,
     show_chosen_annotation: bool = True,
+    chosen_show_owner: bool = False,
     just_absorbed: tuple[float, int, int, int] | None = None,
     meeting: tuple[int, int] | None = None,
     meeting_label: str | None = None,
@@ -382,7 +407,7 @@ def draw_state(
 
     for cid, cells in SEED_CELLS.items():
         for y, x in cells:
-            add_cell_rect(ax, y, x, REGION_COLORS[cid], alpha=0.86, linewidth=1.8)
+            add_cell_rect(ax, y, x, REGION_COLORS[cid], alpha=1.0, linewidth=1.8)
             label_cell(ax, y, x, "0", color="white", fontsize=10.2, weight="bold")
 
     if show_frontier:
@@ -417,8 +442,8 @@ def draw_state(
             y,
             x,
             REGION_COLORS[cid],
-            alpha=0.70,
-            linewidth=2.4,
+            alpha=1.0,
+            linewidth=1.8,
             fill=True,
         )
         add_cell_rect(
@@ -432,7 +457,17 @@ def draw_state(
         )
 
     if chosen is not None:
-        d, y, x, _ = chosen
+        d, y, x, cid = chosen
+        if chosen_show_owner and cid in REGION_COLORS:
+            add_cell_rect(
+                ax,
+                y,
+                x,
+                REGION_COLORS[cid],
+                alpha=1.0,
+                linewidth=1.8,
+                fill=True,
+            )
         add_cell_rect(
             ax,
             y,
@@ -518,7 +553,7 @@ def draw_state(
         text_color = REGION_COLORS.get(cid, "#111111") if frontier[y, x] else "#111111"
         label_cell(ax, y, x, f"{float(dist[y, x]):.1f}", color=text_color)
 
-    ax.set_title(title, fontsize=10.5, fontweight="bold", pad=9)
+    # ax.set_title(title, fontsize=10.5, fontweight="bold", pad=9)
 
 
 def make_initial_state(cost_map: np.ndarray) -> dict:
@@ -573,6 +608,18 @@ def build_panel_specs(cost_map: np.ndarray) -> list[dict]:
     initial_frontier_state = init_search_state(cost_map)
     first_choice = peek_next_frontier(initial_frontier_state)
     first_expansion_state, first_absorbed = capture_first_expansion(cost_map)
+    second_frontier_state, second_choice = capture_frontier_after_n_expansions(
+        cost_map, 1
+    )
+    second_expansion_state, second_absorbed = capture_after_n_expansions(
+        cost_map, 2
+    )
+    third_frontier_state, third_choice = capture_frontier_after_n_expansions(
+        cost_map, 2
+    )
+    third_expansion_state, third_absorbed = capture_after_n_expansions(
+        cost_map, 3
+    )
     complete_expansion_state = capture_complete_expansion(cost_map)
     half_expansion_state, half_choice = capture_half_expansion(
         cost_map,
@@ -583,36 +630,51 @@ def build_panel_specs(cost_map: np.ndarray) -> list[dict]:
         {
             "slug": "panel_1_initial",
             "state": initial_state,
-            "title": "Panel 1 - Initial",
         },
         {
             "slug": "panel_2_initial_frontier",
             "state": initial_frontier_state,
-            "title": "Panel 2 - Initial Frontier",
-            "chosen": first_choice,
-            "show_chosen_annotation": False,
+            # "chosen": first_choice,
+            # "show_chosen_annotation": False,
+        
         },
         {
             "slug": "panel_3_first_expansion",
             "state": first_expansion_state,
-            "title": "Panel 3 - First Expansion",
             "just_absorbed": first_absorbed,
             "show_frontier": False,
         },
         {
-            "slug": "panel_4_half_expanded",
-            "state": half_expansion_state,
-            "title": "Panel 4 - Half Expanded",
-            "chosen": half_choice,
-            "show_chosen_annotation": False,
-            "settled_alpha": 1.0,
+            "slug": "panel_4_updated_frontier",
+            "state": second_frontier_state,
         },
         {
-            "slug": "panel_5_fully_expanded",
-            "state": complete_expansion_state,
-            "title": "Panel 5 - Fully Expanded",
+            "slug": "panel_5_second_expansion",
+            "state": second_expansion_state,
+            "just_absorbed": second_absorbed,
             "show_frontier": False,
-            "settled_alpha": 1.0,
+        },
+        {
+            "slug": "panel_6_third_frontier",
+            "state": third_frontier_state,
+        },
+        {
+            "slug": "panel_7_third_expansion",
+            "state": third_expansion_state,
+            "just_absorbed": third_absorbed,
+            "show_frontier": False,
+        },
+        {
+            "slug": "panel_9_fully_expanded",
+            "state": complete_expansion_state,
+            "chosen": half_choice,
+            "show_chosen_annotation": False,
+            "chosen_show_owner": True,
+        },
+        {
+            "slug": "panel_9_fully_expanded",
+            "state": complete_expansion_state,
+            "show_frontier": False,
         },
     ]
 
@@ -623,11 +685,13 @@ def draw_panel_from_spec(ax: plt.Axes, cost_map: np.ndarray, spec: dict) -> None
         ax,
         cost_map,
         spec["state"],
-        title=spec["title"],
+        # title=spec["title"],
+        title="",
         show_frontier=spec.get("show_frontier", True),
-        settled_alpha=spec.get("settled_alpha", 0.36),
+        settled_alpha=spec.get("settled_alpha", 1.0),
         chosen=spec.get("chosen"),
         show_chosen_annotation=spec.get("show_chosen_annotation", True),
+        chosen_show_owner=spec.get("chosen_show_owner", False),
         just_absorbed=spec.get("just_absorbed"),
         meeting=spec.get("meeting"),
         meeting_label=spec.get("meeting_label"),

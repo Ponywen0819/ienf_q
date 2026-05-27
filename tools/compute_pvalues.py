@@ -30,23 +30,30 @@ from scipy import stats
 # scanning per_combo/ for every unique value combination along those axes.
 # ---------------------------------------------------------------------------
 # GRID_DIR = Path("output/0510_grid")
+# GRID_DIR = Path("output/grid_0510/bg")
 # GRID_DIR = Path("output/grid_0510/clahe_grid")
-GRID_DIR = Path("output/grid_0510/threshold")
+# GRID_DIR = Path("output/grid_0510/clahe_clip")
+# GRID_DIR = Path("output/grid_0510/sato_s")
+# GRID_DIR = Path("output/grid_0510/sato_e")
+GRID_DIR = Path("output/grid_0510/stub")
 
-REFERENCE_PARAMS: dict = {"prune_threshold": 20}
+# REFERENCE_PARAMS: dict = {"prune_threshold": 20}
 # REFERENCE_PARAMS: dict = {"bg_kernel_size": 5}
-# REFERENCE_PARAMS: dict = {"clahe_grid": [768, 768], "clahe_clip": 30.0}
+# REFERENCE_PARAMS: dict = {"clahe_grid": [768, 768]}
+# REFERENCE_PARAMS: dict = {"clahe_clip": 30.0}
 # REFERENCE_PARAMS: dict = {"sato_sigmas_start": 2,
 #       "sato_sigmas_stop": 6,}
-
-METRICS: list[str] = ["hd95", "cldice"]
+# REFERENCE_PARAMS: dict = {"sato_sigmas_start": 1}
+# REFERENCE_PARAMS: dict = { "sato_sigmas_stop": 4,}
+REFERENCE_PARAMS: dict = { "stub_length_threshold": 3,}
+METRICS: list[str] = ["hd95", "cldice", "avg_hd"]
 # ---------------------------------------------------------------------------
 
 # Per-metric: (json key in samples[*], lower_is_better)
 METRIC_SPECS: dict[str, tuple[str, bool]] = {
     "hd95": ("hd95", True),
     "cldice": ("cldice", False),
-    "hausdorff": ("hausdorff_distance", True),
+    "avg_hd": ("avg_hd", True),
 }
 
 

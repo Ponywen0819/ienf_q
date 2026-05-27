@@ -1,0 +1,17 @@
+{
+  "name": "annotation-grow-linker",
+  "version": "0.1.0",
+  "description": "TypeScript port of the AnnotationGrowLinker orchestrator (neural fiber reconstruction via annotation expansion).",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  }
+}

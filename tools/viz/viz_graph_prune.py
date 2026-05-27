@@ -222,7 +222,8 @@ def render(edges: list, label: str, out_name: str) -> None:
 
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="4%", pad=0.04)
-    fig.colorbar(lc, cax=cax, label=label)
+    cbar = fig.colorbar(lc, cax=cax)
+    cbar.ax.tick_params(labelsize=16, colors="black")
 
     out_path = Path(__file__).parent / out_name
     fig.savefig(out_path, dpi=200, bbox_inches="tight")

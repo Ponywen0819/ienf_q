@@ -82,12 +82,17 @@ from .mask_operations import (
     combine_masks_or,
 )
 
-# Pipeline
-from .pipeline import (
-    SkinAnalysisPipeline,
+# Cost map / image enhancement
+from .cost_map import (
+    build_enhanced_image,
+    build_cost_map,
 )
 
-from .config import PipelineConfig
+# Pipeline
+from .pipeline import (
+    PreprocessingPipeline,
+    PreprocessingResult,
+)
 
 # Utilities
 from .utils import (
@@ -115,15 +120,18 @@ __all__ = [
     "apply_mask",
     "invert_mask",
     "combine_masks_or",
+    # Cost map / image enhancement
+    "build_enhanced_image",
+    "build_cost_map",
     # Pipeline
-    "SkinAnalysisPipeline",
+    "PreprocessingPipeline",
+    "PreprocessingResult",
     # Utilities
     "create_kernel",
     "ensure_grayscale",
     "validate_image",
     "regional_minmax_normalize",
     "regional_clahe_normalize",
-    "PipelineConfig",
 ]
 
 __version__ = "1.0.0"
