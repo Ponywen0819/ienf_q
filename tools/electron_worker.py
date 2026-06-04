@@ -22,11 +22,13 @@ _sys.stdout = _sys.stderr  # any stray print() now lands on stderr instead
 # Imports below are deliberately placed after the stdout swap so that any
 # module-level print() inside transitively-loaded dependencies cannot leak
 # onto the protocol channel.
+import base64  # noqa: E402
 import json  # noqa: E402
 import logging  # noqa: E402
 import sys  # noqa: E402
 import traceback  # noqa: E402
 import uuid  # noqa: E402
+from io import BytesIO  # noqa: E402
 from typing import Any  # noqa: E402
 
 logging.basicConfig(
@@ -55,14 +57,43 @@ from neural_reconstruction.algorithms.annotation_grow.graph_builder import (  # 
     minimum_spanning_forest,
     prune_edges,
 )
+from collections import defaultdict  # noqa: E402
+
 from neural_reconstruction.algorithms.annotation_grow.skeleton import build_result_graph  # noqa: E402
 from neural_reconstruction.core.crosses_detection import run_crossing_analysis  # noqa: E402
+from neural_reconstruction.core.crosses_detection.crossing_counter import (  # noqa: E402
+    CrossingCounter,
+)
+from neural_reconstruction.core.crosses_detection.pipeline import (  # noqa: E402
+    _exclude_small_subtrees_from_count,
+)
+from neural_reconstruction.core.crosses_detection.region_labeler import RegionLabeler  # noqa: E402
+from neural_reconstruction.core.crosses_detection.segment_detector import (  # noqa: E402
+    SegmentDetector,
+)
 from neural_reconstruction.core.preprocessing import dilate_epidermis_vertically  # noqa: E402
 
 
 def _send(frame: dict) -> None:
     _STDOUT.write(json.dumps(frame) + "\n")
     _STDOUT.flush()
+
+
+def _coerce_value(v: Any) -> Any:
+    """Numpy → plain Python so values survive json.dumps in `extract_graph`."""
+    if isinstance(v, np.generic):
+        return v.item()
+    if isinstance(v, np.ndarray):
+        return v.tolist()
+    if isinstance(v, (list, tuple)):
+        return [_coerce_value(x) for x in v]
+    if isinstance(v, dict):
+        return {str(k): _coerce_value(x) for k, x in v.items()}
+    return v
+
+
+def _coerce(attrs: dict) -> dict:
+    return {str(k): _coerce_value(v) for k, v in attrs.items()}
 
 
 class StageWorker:
@@ -222,6 +253,129 @@ class StageWorker:
             )
         )
 
+    def stage_reconstructed_graph(
+        self, result_graph: str, stub_length_threshold: int
+    ) -> str:
+        """Reconstruction-side post-processing: segment detect → stub trim →
+        re-segment. Mirrors steps 1-1c of run_crossing_analysis.
+
+        Output is the graph the user sees in the editor (and may modify before
+        counting). No region labelling or counting is performed here.
+        """
+        self._bump("reconstructed_graph")
+        seg_detector = SegmentDetector()
+        graph = self.handles[result_graph].copy()
+        graph = seg_detector.detect_segments(graph)
+
+        # Stub trim: drop segments shorter than threshold that touch an endpoint.
+        seg_edges: dict = defaultdict(list)
+        for u, v, data in graph.edges(data=True):
+            sid = data.get("segment_id")
+            if sid is not None:
+                seg_edges[sid].append((u, v, data))
+
+        thresh = int(stub_length_threshold)
+        edges_to_remove: list = []
+        for _, edges in seg_edges.items():
+            boundary_nodes: set = set()
+            for u, v, _data in edges:
+                if graph.nodes[u].get("node_type") in ("endpoint", "branchpoint"):
+                    boundary_nodes.add(u)
+                if graph.nodes[v].get("node_type") in ("endpoint", "branchpoint"):
+                    boundary_nodes.add(v)
+            has_endpoint = any(
+                graph.nodes[n].get("node_type") == "endpoint" for n in boundary_nodes
+            )
+            if not has_endpoint:
+                continue
+            total_length = sum(
+                len(data.get("path", [u, v])) - 1 for u, v, data in edges
+            )
+            if total_length < thresh:
+                edges_to_remove.extend((u, v) for u, v, _ in edges)
+
+        graph.remove_edges_from(edges_to_remove)
+        graph.remove_nodes_from(list(nx.isolates(graph)))
+
+        # Re-detect segments since topology changed.
+        graph = seg_detector.detect_segments(graph)
+        return self._new_handle(graph)
+
+    def stage_count(
+        self,
+        reconstructed_graph: str,
+        mask: str,
+        annot_labeled: str,
+        min_tree_components: int,
+    ) -> dict:
+        """Counting stage: region label → exclude small subtrees → count.
+
+        Designed to be runnable on a USER-EDITED graph (use ``import_graph`` to
+        register the edited graph as a handle first). Segments are re-detected
+        defensively in case the input graph lacks segment_id attributes.
+
+        Tags each edge with ``is_effective_segment`` so the UI can render
+        effective crossing segments in green.
+        """
+        self._bump("count")
+        graph = self.handles[reconstructed_graph].copy()
+        mask_arr = self.handles[mask]
+        annot_arr = self.handles[annot_labeled]
+
+        # Defensive re-segmentation: edits in the UI invalidate segment_ids.
+        graph = SegmentDetector().detect_segments(graph)
+
+        labeled, _ = RegionLabeler().label_topology(graph, mask_arr)
+
+        _exclude_small_subtrees_from_count(
+            labeled,
+            annot_arr,
+            min_tree_components=int(min_tree_components),
+            neighborhood=3,
+        )
+
+        details = CrossingCounter().count_effective_crossings(
+            labeled, epidermis_mask=mask_arr
+        )
+        valid_seg_ids = {
+            d["segment_id"] for d in details["segment_details"] if d["is_valid"]
+        }
+        for _u, _v, data in labeled.edges(data=True):
+            sid = data.get("segment_id")
+            data["is_effective_segment"] = sid is not None and sid in valid_seg_ids
+
+        return {
+            "labeled_graph": self._new_handle(labeled),
+            "pred_count": int(details["effective_crossing_count"]),
+        }
+
+    def import_graph(self, nodes: list, edges: list) -> str:
+        """Reconstruct an nx.Graph from the JSON form emitted by extract_graph.
+
+        Used to ingest a user-edited graph for re-counting. Node identity is
+        ``(y, x)`` to match the rest of the pipeline; per-edge ``path`` is
+        restored if provided, otherwise a 2-point fallback is used.
+        """
+        g = nx.Graph()
+        for n in nodes:
+            key = (int(n["y"]), int(n["x"]))
+            g.add_node(key, **(n.get("attrs") or {}))
+        for e in edges:
+            u = (int(e["u"][0]), int(e["u"][1]))
+            v = (int(e["v"][0]), int(e["v"][1]))
+            if u not in g:
+                g.add_node(u)
+            if v not in g:
+                g.add_node(v)
+            attrs = dict(e.get("attrs") or {})
+            raw_path = e.get("path")
+            if raw_path:
+                attrs["path"] = [(int(p[0]), int(p[1])) for p in raw_path]
+            else:
+                attrs["path"] = [u, v]
+            g.add_edge(u, v, **attrs)
+        return self._new_handle(g)
+
     def stage_labeled_graph(
         self,
         result_graph: str,
@@ -230,16 +384,36 @@ class StageWorker:
         min_tree_components: int,
         stub_length_threshold: int,
     ) -> dict:
-        """Crossing analysis. Copies result_graph because the function mutates."""
+        """Crossing analysis. Copies result_graph because the function mutates.
+
+        Also tags each edge with ``is_effective_segment``: True iff the edge's
+        segment passed the full validity test (≥1 crossing edge + epidermis and
+        dermis lengths meet the threshold). This drives the green colouring of
+        effective crossing segments in the Electron UI, mirroring
+        ``effective_ids`` in ``tools/viz/viz_crossing.py``.
+        """
         self._bump("labeled_graph")
         rg = self.handles[result_graph].copy()
+        mask_arr = self.handles[mask]
         pred_count, labeled = run_crossing_analysis(
             rg,
-            self.handles[mask],
+            mask_arr,
             self.handles[annot_labeled],
             min_tree_components=int(min_tree_components),
             stub_length_threshold=int(stub_length_threshold),
         )
+        # Re-run the per-segment validity check to recover which segment_ids
+        # were counted as effective; run_crossing_analysis discards the
+        # per-segment details and only returns the aggregate count.
+        details = CrossingCounter().count_effective_crossings(
+            labeled, epidermis_mask=mask_arr
+        )
+        valid_seg_ids = {
+            d["segment_id"] for d in details["segment_details"] if d["is_valid"]
+        }
+        for _u, _v, data in labeled.edges(data=True):
+            sid = data.get("segment_id")
+            data["is_effective_segment"] = sid is not None and sid in valid_seg_ids
         return {
             "labeled_graph": self._new_handle(labeled),
             "pred_count": int(pred_count),
@@ -281,6 +455,69 @@ class StageWorker:
         if isinstance(obj, tuple):
             return {"kind": "tuple", "len": len(obj)}
         return {"kind": type(obj).__name__}
+
+    def extract_graph(self, handle: str) -> dict:
+        """Serialize a NetworkX graph for transport over the RPC protocol.
+
+        Graph convention (see tools/viz/viz_crossing.py):
+          - Nodes are (y, x) integer tuples
+          - Edges may carry a `path` attribute = list of (y, x) pixel tuples
+
+        Returned shape:
+          {
+            "nodes": [{"y": int, "x": int, "attrs": {...}}, ...],
+            "edges": [{"u": [y, x], "v": [y, x], "path": [[y, x], ...], "attrs": {...}}, ...],
+          }
+        """
+        obj = self.handles[handle]
+        if not isinstance(obj, nx.Graph):
+            raise TypeError(
+                f"handle {handle!r} is not a Graph (kind={type(obj).__name__})"
+            )
+
+        nodes = [
+            {"y": int(n[0]), "x": int(n[1]), "attrs": _coerce(attrs)}
+            for n, attrs in obj.nodes(data=True)
+        ]
+
+        edges = []
+        for u, v, data in obj.edges(data=True):
+            path = data.get("path", [])
+            path_out = [[int(p[0]), int(p[1])] for p in path]
+            other = {k: _coerce_value(val) for k, val in data.items() if k != "path"}
+            edges.append(
+                {
+                    "u": [int(u[0]), int(u[1])],
+                    "v": [int(v[0]), int(v[1])],
+                    "path": path_out,
+                    "attrs": other,
+                }
+            )
+
+        return {"nodes": nodes, "edges": edges}
+
+    def render_handle_png(self, handle: str) -> str:
+        """Serialize a 2D ndarray handle as a base64 PNG data URL for display.
+
+        Used by the Electron UI to show intermediate stage outputs (currently
+        the ROI mask). Non-uint8 arrays are min-max stretched to 0..255.
+        """
+        arr = self.handles[handle]
+        if not isinstance(arr, np.ndarray):
+            raise TypeError(f"handle {handle!r} is not an ndarray")
+        if arr.ndim != 2:
+            raise ValueError(f"expected 2D array, got shape {tuple(arr.shape)}")
+        if arr.dtype != np.uint8:
+            a = arr.astype(np.float32)
+            amin, amax = float(a.min()), float(a.max())
+            if amax > amin:
+                a = (a - amin) / (amax - amin) * 255.0
+            arr = a.astype(np.uint8)
+        img = Image.fromarray(arr, mode="L")
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        return f"data:image/png;base64,{b64}"
 
     def ping(self) -> str:
         return "pong"

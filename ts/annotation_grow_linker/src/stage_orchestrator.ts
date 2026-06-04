@@ -297,6 +297,44 @@ export class StageOrchestrator {
     );
   }
 
+  /**
+   * Reconstruction-side post-processing: segment detect → stub trim → re-segment.
+   * The graph returned here is what the UI displays for editing; counting is
+   * a separate stage so it can be re-run against a user-edited graph.
+   */
+  async reconstructedGraph(p: StageParams): Promise<Handle> {
+    const rg = await this.resultGraph(p);
+    return this.memo(
+      "reconstructed_graph",
+      { stub_length_threshold: p.stub_length_threshold },
+      [rg],
+      () =>
+        this.worker.call<string>("stage_reconstructed_graph", {
+          result_graph: rg,
+          stub_length_threshold: p.stub_length_threshold,
+        }),
+    );
+  }
+
+  /**
+   * Counting stage on top of an arbitrary graph handle. Caller passes the
+   * graph explicitly so this can be invoked against either the reconstructed
+   * graph or a user-edited graph (imported via `import_graph`).
+   *
+   * Not memoised: edits invalidate any prior count, and the caller already
+   * decides when to invoke this. annotComp (and its upstream roi_mask) IS
+   * memoised via the standard cache, so the same `offset_px` reuses work.
+   */
+  async count(graphHandle: Handle, p: StageParams): Promise<LabeledGraphResult> {
+    const comp = await this.annotComp(p);
+    return this.worker.call<LabeledGraphResult>("stage_count", {
+      reconstructed_graph: graphHandle,
+      mask: this.sample.mask,
+      annot_labeled: comp.annot_labeled,
+      min_tree_components: p.min_tree_components,
+    });
+  }
+
   async labeledGraph(p: StageParams): Promise<LabeledGraphResult> {
     const [rg, comp] = await Promise.all([this.resultGraph(p), this.annotComp(p)]);
     return this.memo(
