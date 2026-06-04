@@ -17,7 +17,9 @@ Six figures are produced:
                                short-stub removal), with endpoints / branch points
 """
 
+from collections import defaultdict
 from pathlib import Path
+import networkx as nx
 
 import cv2
 import numpy as np
@@ -48,7 +50,8 @@ BASE_PATH = BASE_PATH / f"data_0331/{IMAGE_ID}"
 CROP_Y0, CROP_X0, CROP_H, CROP_W = 666, 4700, 200, 200
 
 PRUNE_THRESHOLD = 20.0  # tau
-DILATE_RADIUS = 1       # r_d — same default as build_result_graph()
+DILATE_RADIUS = 3       # r_d — same default as build_result_graph()
+STUB_THRESHOLD = 5       # same default as build_result_graph() for better visual consistency
 
 BRIDGE_COLOR = np.array([1.00, 0.78, 0.10], dtype=np.float32)   # gold
 ANNOT_COLOR = np.array([0.30, 0.85, 1.00], dtype=np.float32)    # light cyan
@@ -93,11 +96,11 @@ kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
 background = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel)
 image = cv2.subtract(image, background)
 
-clahe = cv2.createCLAHE(clipLimit=20.0, tileGridSize=(768, 768))
+clahe = cv2.createCLAHE(clipLimit=30.0, tileGridSize=(768, 768))
 image = clahe.apply(image)
 
 image = cv2.bitwise_and(image, image, mask=roi_mask)
-image = ski.filters.sato(image, sigmas=range(3, 8), black_ridges=False)
+image = ski.filters.sato(image, sigmas=range(1, 4), black_ridges=False)
 image = (image - image.min()) / (image.max() - image.min()) * 255
 image = image.astype(np.uint8)
 cost_map = np.exp(1.0 - (image.astype(np.float32) / 255.0)) - 1.0
@@ -154,9 +157,9 @@ raw_skeleton = ski.morphology.skeletonize(union)
 # skeletonises U and then removes short hang edges (short-stub removal).
 SEGMENT_LENGTH = 100.0  # same default as build_result_graph()
 seed_graph = TopologyBuilder(segment_length=SEGMENT_LENGTH).build_seed_graph(
-    union.astype(np.uint8)
+    union.astype(np.uint8),
+    stub_length_threshold=STUB_THRESHOLD,  # same default as build_result_graph() for better visual consistency
 )
-
 # Rasterise the graph's edge paths (+ node pixels) into a skeleton mask
 skeleton = np.zeros((H, W), dtype=bool)
 for _u, _v, data in seed_graph.edges(data=True):

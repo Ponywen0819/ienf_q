@@ -26,26 +26,52 @@ import cv2
 # === Edit these ===========================================================
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-SAMPLE_ID = "S558-2_a"
-# SAMPLE_ID = "S1196-2_a"
-# SAMPLE_ID = "S1585-2_b"
+# SAMPLE_ID = "S558-2_a"
+# SAMPLE_ID = "S487-2_a"
+# SAMPLE_ID = "S1196-2_b" 
+# SAMPLE_ID = "S1571-2_b"
+# SAMPLE_ID = "S2266-2_b"
+SAMPLE_ID = "S1585-2_b"
+# SAMPLE_ID = "S2745-2_a"
 
 # Crop regions. Each entry is (x, y, size): (x, y) is the top-left corner and
 # every crop is a square of side `size` pixels.
-CROPS = [
-    (3860, 800, 200),
-    (6525, 800, 200),
-]
-
 # CROPS = [
-#     (7533,335, 200),
-#     (2185, 808, 200),
+#     (3950, 900, 75),
+#     (6550, 825, 75),
 # ]
 
+# CROPS = [
+#     (1480, 1300, 75),
+#     (8224, 700, 75),
+# ]
 
 # CROPS = [
-#     (1492, 300, 200),
-#     (1280, 340, 200),
+#     (3320,840,75),
+#     (3766,885,75)
+# ]
+
+# CROPS = [
+#     (2640, 750, 75),
+#     (6100, 565, 75),
+# ]
+
+# # 2266-2_b
+# CROPS = [
+#     (3869, 692, 75),
+#     (1830, 1006, 75),
+# ]
+
+# 1585-2_b
+CROPS = [
+    (1620, 350, 75),
+    (1330, 420, 75),
+]
+
+# # 2745-2_a
+# CROPS = [
+#     (1790, 510, 75),
+#     (1076, 850, 75),
 # ]
 
 # Result visualizations to crop from. Each name maps to
@@ -56,7 +82,14 @@ OUTPUT_DIR = PROJECT_ROOT / "output" / "crop_showcase"
 
 # Red box appearance (drawn on the boxed green-channel overview).
 BOX_COLOR = (0, 0, 255)  # BGR -> red
-BOX_THICKNESS = 8
+BOX_THICKNESS = 12
+
+# Red label (a, b, ...) drawn next to each box.
+LABEL_COLOR = (0, 0, 255)  # BGR -> red
+LABEL_FONT = cv2.FONT_HERSHEY_SIMPLEX
+LABEL_SCALE = 18.0
+LABEL_THICKNESS = 40
+LABEL_MARGIN = 40  # gap between box and label
 # ==========================================================================
 
 
@@ -112,9 +145,29 @@ def main():
     # --- Output 1: green-channel overview with red boxes ------------------
     # Convert to BGR so the red boxes show up in color.
     boxed = cv2.cvtColor(green, cv2.COLOR_GRAY2BGR)
-    for x, y, size in CROPS:
+    for i, (x, y, size) in enumerate(CROPS):
         cv2.rectangle(
             boxed, (x, y), (x + size, y + size), BOX_COLOR, BOX_THICKNESS
+        )
+        # Label this region with a letter (a, b, ...) beside the box.
+        label = chr(ord("a") + i)
+        (tw, th), _ = cv2.getTextSize(
+            label, LABEL_FONT, LABEL_SCALE, LABEL_THICKNESS
+        )
+        # Default: place the label above the box's top-left corner.
+        org = (x, y - LABEL_MARGIN)
+        # If there's no room above, place it to the right of the box instead.
+        if org[1] - th < 0:
+            org = (x + size + LABEL_MARGIN, y + th)
+        cv2.putText(
+            boxed,
+            label,
+            org,
+            LABEL_FONT,
+            LABEL_SCALE,
+            LABEL_COLOR,
+            LABEL_THICKNESS,
+            cv2.LINE_AA,
         )
     boxed_path = OUTPUT_DIR / f"{SAMPLE_ID}_green_boxed.png"
     cv2.imwrite(str(boxed_path), boxed)

@@ -31,21 +31,21 @@ from scipy import stats
 # ---------------------------------------------------------------------------
 # GRID_DIR = Path("output/0510_grid")
 # GRID_DIR = Path("output/grid_0510/bg")
-# GRID_DIR = Path("output/grid_0510/clahe_grid")
+GRID_DIR = Path("output/grid_0510/clahe_grid")
 # GRID_DIR = Path("output/grid_0510/clahe_clip")
 # GRID_DIR = Path("output/grid_0510/sato_s")
 # GRID_DIR = Path("output/grid_0510/sato_e")
-GRID_DIR = Path("output/grid_0510/stub")
+# GRID_DIR = Path("output/grid_0510/stub")
 
-# REFERENCE_PARAMS: dict = {"prune_threshold": 20}
 # REFERENCE_PARAMS: dict = {"bg_kernel_size": 5}
-# REFERENCE_PARAMS: dict = {"clahe_grid": [768, 768]}
+REFERENCE_PARAMS: dict = {"clahe_grid": [768, 768]}
 # REFERENCE_PARAMS: dict = {"clahe_clip": 30.0}
 # REFERENCE_PARAMS: dict = {"sato_sigmas_start": 2,
 #       "sato_sigmas_stop": 6,}
 # REFERENCE_PARAMS: dict = {"sato_sigmas_start": 1}
 # REFERENCE_PARAMS: dict = { "sato_sigmas_stop": 4,}
-REFERENCE_PARAMS: dict = { "stub_length_threshold": 3,}
+# REFERENCE_PARAMS: dict = {"prune_threshold": 20}
+# REFERENCE_PARAMS: dict = { "stub_length_threshold": 3,}
 METRICS: list[str] = ["hd95", "cldice", "avg_hd"]
 # ---------------------------------------------------------------------------
 

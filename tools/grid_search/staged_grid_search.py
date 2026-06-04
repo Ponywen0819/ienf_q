@@ -19,9 +19,10 @@ Stage dependency chain:
   comp_graph     ← (same as dijkstra)
   pruned_graph   ← (dijkstra params) + prune_threshold
   mst            ← (same as pruned_graph)
-  result_graph   ← (pruned_graph params) + segment_length
-  labeled_graph  ← (result_graph params) + stub_length_threshold, min_tree_components
-                   (stub pruning + region labeling via crossing analysis)
+  result_graph   ← (pruned_graph params) + stub_length_threshold
+                   (stub pruning happens here via TopologyBuilder)
+  labeled_graph  ← (result_graph params) + min_tree_components
+                   (region labeling via crossing analysis)
   roi_gt         ← offset_px  (GT label masked to ROI, for metrics)
   gt_points      ← offset_px  (extracted GT topology points, for HD95)
 
@@ -81,11 +82,11 @@ DEFAULT_PARAM_GRID: Dict[str, List[Any]] = {
     # "bg_kernel_size": [0,3,5,7,9,11],
     # "clahe_grid": [(s, s) for s in [704, 736, 768, 800, 832]],
     # "clahe_clip": [10.0, 20.0, 30.0, 40.0, 50.0],
-    # "sato_sigmas_start": [i for i in range(1, 6) ],
+    "sato_sigmas_start": [0.5] + [i for i in range(1, 6) ],
     # "sato_sigmas_stop": [i+1 for i in range(1, 6)],
     # "prune_threshold": [10.0, 20.0, 30.0, 40.0, 50.0],
     # "stub_length_threshold" : [0, 3, 5, 7, 9],
-    "min_tree_components": [1,3, 5, 7, 9, 11],
+    # "min_tree_components": [1,3, 5, 7, 9, 11],
 
 }
 
@@ -99,8 +100,8 @@ FIXED_PARAMS: Dict[str, Any] = {
     "connectivity": 8,
     "prune_threshold": 20.0,
     "segment_length": 100.0,
-    "stub_length_threshold": 5,
-    "min_tree_components": 5,
+    "stub_length_threshold": 3,
+    "min_tree_components": 1,
 }
 
 # clDice spatial tolerance as a physical distance (micrometres). It is
@@ -265,7 +266,6 @@ def _run_staged_pipeline(
     sato_stop: int = params["sato_sigmas_stop"]
     connectivity: int = params["connectivity"]
     prune_threshold: float = params["prune_threshold"]
-    segment_length: float = params["segment_length"]
     stub_length_threshold: int = params["stub_length_threshold"]
     min_tree_components: int = params["min_tree_components"]
 
@@ -276,8 +276,8 @@ def _run_staged_pipeline(
     preproc_p = clahe_p + (sato_start, sato_stop)
     dijkstra_p = preproc_p + (connectivity,)
     pruned_p = dijkstra_p + (prune_threshold,)
-    result_p = pruned_p + (segment_length,)
-    labeled_p = result_p + (stub_length_threshold, min_tree_components)
+    result_p = pruned_p + (stub_length_threshold,)
+    labeled_p = result_p + (min_tree_components,)
 
     # Stage: roi_mask
     roi_mask: np.ndarray = _cached(
@@ -370,7 +370,7 @@ def _run_staged_pipeline(
     result_graph: nx.Graph = _cached(
         cache,
         (sid, "result_graph") + result_p,
-        lambda: build_result_graph(mst, annotation_bin, segment_length=segment_length),
+        lambda: build_result_graph(mst, annotation_bin, stub_length_threshold=stub_length_threshold,),
     )
 
     # Stage: labeled_graph — crossing analysis (stub pruning + region labeling).
@@ -384,7 +384,6 @@ def _run_staged_pipeline(
             sample.mask,
             annot_labeled,
             min_tree_components=min_tree_components,
-            stub_length_threshold=stub_length_threshold,
         ),
     )
 

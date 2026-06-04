@@ -80,6 +80,7 @@ class TopologyBuilder:
         self,
         annotation: np.ndarray,
         equalized_img: Optional[np.ndarray] = None,
+        stub_length_threshold: float = 5.0,
     ) -> nx.Graph:
         """從二值標注建構骨架圖。
 
@@ -131,7 +132,7 @@ class TopologyBuilder:
         coordinate_graph = nx.relabel_nodes(skeleton_graph, mapping)
 
         # 5. MultiGraph → Graph（自環跳過；平行邊：短邊過濾 + 中點拆分）
-        graph = self.to_simple_graph(coordinate_graph)
+        graph = self.to_simple_graph(coordinate_graph,stub_length_threshold)
 
         # 6. 合併 degree-2 中間點
         graph = self._merge_middle_points(graph)
@@ -153,6 +154,7 @@ class TopologyBuilder:
         self,
         annotation: np.ndarray,
         equalized_img: Optional[np.ndarray] = None,
+        stub_length_threshold: float = 5.0,
     ) -> nx.Graph:
         """從二值標注一步建構種子圖（骨架圖 → 種子圖）。
 
@@ -165,12 +167,13 @@ class TopologyBuilder:
             annotation (np.ndarray): 二值標注圖像，shape ``(H, W)``。
             equalized_img (np.ndarray, optional): 均衡化灰階圖像；
                 傳入 ``None`` 時孤立節點以質心補齊。
-
+            stub_length_threshold (float): 短_stub 長度門檻，用於過濾短邊。
+                    預設值為 ``5.0`` 像素。
         Returns:
             nx.Graph: 種子圖，節點為 ``(y, x)`` 座標元組，
             邊按 :attr:`segment_length` 切分，各邊含 ``path`` 屬性。
         """
-        skeleton_graph = self.build_skeleton_graph(annotation, equalized_img)
+        skeleton_graph = self.build_skeleton_graph(annotation, equalized_img,stub_length_threshold)
         seed_graph = nx.Graph()
         seed_graph.add_nodes_from(skeleton_graph.nodes(data=True))
 
@@ -233,7 +236,7 @@ class TopologyBuilder:
 
         return seed_graph
 
-    def to_simple_graph(self, multigraph: nx.MultiGraph) -> nx.Graph:
+    def to_simple_graph(self, multigraph: nx.MultiGraph, stub_length_threshold: float = 5.0) -> nx.Graph:
         """將 MultiGraph 轉換為 Graph，平行邊以路徑中點節點拆分。
 
         對於兩節點間只有單一邊的情況，直接複製到新圖；
@@ -242,6 +245,8 @@ class TopologyBuilder:
 
         Args:
             multigraph (nx.MultiGraph): 來源骨架圖（skan 輸出）。
+            stub_length_threshold (float): 短_stub 長度門檻，用於過濾短邊。
+                    預設值為 ``10.0`` 像素。
 
         Returns:
             nx.Graph: 不含平行邊與自環的簡單圖，節點為 ``(y, x)`` 整數座標元組；
@@ -314,7 +319,7 @@ class TopologyBuilder:
                 (u, v)
                 for u, v, data in graph.edges(data=True)
                 if (graph.degree(u) == 1 or graph.degree(v) == 1)
-                and self._path_length(data.get("path", [])) < 5
+                and self._path_length(data.get("path", [])) < stub_length_threshold
             ]
             for u, v in to_remove:
                 graph.remove_edge(u, v)

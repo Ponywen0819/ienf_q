@@ -18,8 +18,8 @@ from neural_reconstruction.core.topology import TopologyBuilder
 def build_result_graph(
     mst: nx.Graph,
     annotation_bin: np.ndarray,
-    segment_length: float = 100.0,
     dilate_radius: int = 3,
+    stub_length_threshold: float = 5.0,
 ) -> nx.Graph:
     """
     Build a pixel-level graph by merging MST bridge paths with the annotation mask.
@@ -52,5 +52,5 @@ def build_result_graph(
     combined = ((annotation_bin > 0) | bridge_dilated).astype(np.uint8)
 
     # ── 4. Global skeletonization → pixel-level graph ────────────────────
-    topology_builder = TopologyBuilder(segment_length=segment_length)
-    return topology_builder.build_seed_graph(combined)
+    topology_builder = TopologyBuilder(segment_length=500)
+    return topology_builder.build_seed_graph(combined, stub_length_threshold=stub_length_threshold)

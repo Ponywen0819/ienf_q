@@ -1,26 +1,38 @@
-"""Structural ablation of the annotation_grow preprocessing stack.
+"""Structural ablation of the annotation_grow pipeline.
 
-The preprocessing in ``annotation_grow/cost_map.py::build_enhanced_image`` has
-three sequential image-enhancement steps:
+Two groups of switches are ablated, all relative to the ``full`` reference.
+
+A. Image-enhancement (cost-map preprocessing), three sequential steps:
 
     1. white-top-hat  (background removal by morphological opening + subtract)
     2. CLAHE          (contrast-limited adaptive histogram equalization)
     3. Sato           (multi-scale vesselness filter)
 
-This script runs four configurations:
+B. Connection step (the actual annotation linking), ablated internally:
 
-    full     — all three enabled  (REFERENCE)
-    no_wth   — white-top-hat off
-    no_clahe — CLAHE off
-    no_sato  — Sato off
+    cost_mode  — "exp" (default) | "linear" | "uniform"
+                 uniform = constant cost ⇒ Dijkstra routes by hop-count only
+                 (straight-line bridging, ignores image intensity)
+    do_prune   — drop the high-cost edge cutoff before MST
+    do_mst     — keep the pruned graph as-is instead of reducing to a tree
+
+Configurations (the first, ``full``, is the REFERENCE):
+
+    full         — everything enabled
+    no/w_*       — image-enhancement ablations
+    linear_cost  — cost_mode="linear"
+    uniform_cost — cost_mode="uniform"  (straight-line bridges)
+    no_prune     — prune off
+    no_mst       — MST off (cycles allowed)
 
 For every config it runs full inference + evaluation across the dataset,
-caches per-sample (hd95, cldice) to JSON, then prints a comparison table.
-Each non-ref cell receives a ``*`` when a paired one-sided Wilcoxon
+caches per-sample (hd95, avg_hd, cldice) to JSON, then prints a comparison
+table. Each non-ref cell receives a ``*`` when a paired one-sided Wilcoxon
 signed-rank test (p < 0.05) shows the configuration is *significantly worse*
 than ``full``:
 
-    hd95  — worse means cmp > ref
+    hd95   — worse means cmp > ref
+    avg_hd — worse means cmp > ref
     cldice — worse means cmp < ref
 
 Re-running the script reuses cached per-config results unless ``--rerun`` is
@@ -43,7 +55,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import cv2
 import numpy as np
@@ -65,9 +77,9 @@ from neural_reconstruction.algorithms.annotation_grow.graph_builder import (
 from neural_reconstruction.algorithms.annotation_grow.skeleton import (
     build_result_graph,
 )
-from neural_reconstruction.algorithms.annotation_grow.cost_map import build_cost_map
 from neural_reconstruction.core.crosses_detection import run_crossing_analysis
 from neural_reconstruction.core.evaluation import (
+    compute_average_hausdorff_distance,
     compute_cldice,
     compute_hd95,
     extract_graph_points,
@@ -81,33 +93,69 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Linker parameters (kept fixed across ablations; only the three switches
-# below differ between configurations).
+# Linker parameters (kept fixed across ablations; only the switches in
+# DEFAULT_SWITCHES differ between configurations).
 # ---------------------------------------------------------------------------
-FIXED_PARAMS = dict(
+FIXED_PARAMS: dict[str, Any] = dict(
     offset_px=50,
-    bg_kernel_size=3,
-    clahe_clip=20.0,
+    bg_kernel_size=5,
+    clahe_clip=30.0,
     clahe_grid=(768, 768),
-    sato_sigmas_start=3,
-    sato_sigmas_stop=8,
+    sato_sigmas_start=1,
+    sato_sigmas_stop=4,
     connectivity=8,
     prune_threshold=20.0,
-    min_tree_components=5,
-    segment_length=100.0,
+    min_tree_components=1,
+    stub_length_threshold=3,
 )
 
-CLDICE_TOLERANCE_PX = 1
+# clDice spatial tolerance as a physical distance (micrometres). It is
+# converted to pixels *per sample* via px_um.json so the slack is identical
+# across acquisition resolutions: tolerance_px = CLDICE_TOLERANCE_UM / px_um.
+CLDICE_TOLERANCE_UM = 1.28
 ALPHA = 0.05
 
+# Default switches = the ``full`` reference configuration. Each ablation row
+# overrides one (or a few) of these via ``_cfg``.
+DEFAULT_SWITCHES: dict[str, object] = {
+    # image-enhancement (group A)
+    "use_wth": True,
+    "use_clahe": True,
+    "use_sato": True,
+    # connection step (group B)
+    "cost_mode": "exp",   # "exp" | "linear" | "uniform"
+    "do_prune": True,
+    "do_mst": True,
+}
+
+
+def _cfg(**overrides: object) -> dict[str, object]:
+    """Build a switch dict from DEFAULT_SWITCHES with the given overrides."""
+    unknown = set(overrides) - set(DEFAULT_SWITCHES)
+    if unknown:
+        raise KeyError(f"unknown switch keys: {sorted(unknown)}")
+    cfg = dict(DEFAULT_SWITCHES)
+    cfg.update(overrides)
+    return cfg
+
+
 # Per-ablation switches. The first entry is treated as the reference.
-ABLATIONS: list[tuple[str, dict[str, bool]]] = [
-    ("full",     {"use_wth": True,  "use_clahe": True,  "use_sato": True}),
-    ("no",   {"use_wth": False, "use_clahe": False,  "use_sato": False}),
-    ("w_bg", {"use_wth": True,  "use_clahe": False, "use_sato": False}),
-    ("w_clahe", {"use_wth": True,  "use_clahe": True, "use_sato": False}),
-    ("w_sato", {"use_wth": True,  "use_clahe": False, "use_sato": True}),
-    ("only_sato", {"use_wth": False,  "use_clahe": False, "use_sato": True}),
+ABLATIONS: list[tuple[str, dict[str, object]]] = [
+    ("full",         _cfg()),
+    # ── group A: image enhancement ─────────────────────────────────────
+    ("no_wth",       _cfg(use_wth=False)),
+    ("no_clahe",       _cfg(use_clahe=False)),
+    ("no_sato",      _cfg(use_sato=False)),
+
+    ("no",           _cfg(use_wth=False, use_clahe=False, use_sato=False)),
+    ("w_bg",         _cfg(use_clahe=False, use_sato=False)),
+    ("only_sato",    _cfg(use_wth=False, use_clahe=False)),
+    
+    # ── group B: connection step ───────────────────────────────────────
+    ("linear_cost",  _cfg(cost_mode="linear")),
+    ("uniform_cost", _cfg(cost_mode="uniform")),
+    ("no_prune",     _cfg(do_prune=False)),
+    ("no_mst",       _cfg(do_mst=False)),
 ]
 REF_NAME = ABLATIONS[0][0]
 
@@ -155,16 +203,40 @@ def build_enhanced_image_ablated(
     return img
 
 
+def build_cost_map_ablated(enhanced: np.ndarray, *, mode: str) -> np.ndarray:
+    """Convert an enhanced image into a Dijkstra traversal cost map.
+
+    Mirrors ``cost_map.build_cost_map`` but supports connection-step ablations:
+
+        "exp"     — cost = exp(1 - norm) - 1   (production: bright ⇒ low cost)
+        "linear"  — cost = 1 - norm            (no exponential emphasis)
+        "uniform" — cost = 1 everywhere        (intensity ignored; Dijkstra
+                    minimises hop count ⇒ straight-line bridging)
+    """
+    if mode == "uniform":
+        return np.ones_like(enhanced, dtype=np.float32)
+
+    norm = enhanced.astype(np.float32) / 255.0
+    if mode == "linear":
+        cost = 1.0 - norm
+    elif mode == "exp":
+        cost = np.exp(1.0 - norm) - 1.0
+    else:
+        raise ValueError(f"unknown cost_mode: {mode!r}")
+    return cost.astype(np.float32)
+
+
 # ---------------------------------------------------------------------------
 # A free-function reimplementation of AnnotationGrowLinker.run() that swaps
-# in the ablated preprocessing. The rest of the pipeline is identical.
+# in the ablated preprocessing and connection step. The rest of the pipeline
+# is identical.
 # ---------------------------------------------------------------------------
 def run_ablated_inference(
     image: np.ndarray,
     mask: np.ndarray,
     annotation: np.ndarray,
     *,
-    switches: dict[str, bool],
+    switches: dict[str, object],
 ):
     if image.ndim == 3:
         green = image[:, :, 1]
@@ -192,7 +264,7 @@ def run_ablated_inference(
     )
 
     roi_annotation = cv2.bitwise_and(annotation, annotation, mask=roi_mask)
-    cost_map = build_cost_map(roi_image)
+    cost_map = build_cost_map_ablated(roi_image, mode=str(switches["cost_mode"]))
 
     annotation_bin = (roi_annotation > 127).astype(np.uint8)
     annot_labeled = get_components(annotation_bin)
@@ -206,10 +278,17 @@ def run_ablated_inference(
     )
     connections = find_meeting_points(owner_map, dist_map, prev_y, prev_x)
     g = build_component_graph(connections, n_components)
-    g_pruned = prune_edges(g, threshold=FIXED_PARAMS["prune_threshold"])
-    mst = minimum_spanning_forest(g_pruned)
+    # Connection-step ablations: prune cutoff and tree (MST) constraint.
+    if switches["do_prune"]:
+        g = prune_edges(g, threshold=FIXED_PARAMS["prune_threshold"])
+    # build_result_graph only reads each edge's 'path'; passing the (pruned)
+    # graph instead of its MST keeps every surviving connection (cycles allowed).
+    mst = minimum_spanning_forest(g) if switches["do_mst"] else g
     result_graph = build_result_graph(
-        mst, annotation_bin, segment_length=FIXED_PARAMS["segment_length"]
+        mst,
+        annotation_bin,
+        dilate_radius=3,
+        stub_length_threshold=FIXED_PARAMS["stub_length_threshold"],
     )
     _valid_count, labeled_graph = run_crossing_analysis(
         result_graph,
@@ -228,6 +307,7 @@ def run_ablated_inference(
 class SampleMetrics:
     sample_id: str
     hd95: Optional[float]
+    avg_hd: Optional[float]
     cldice: Optional[float]
     error: Optional[str] = None
 
@@ -243,14 +323,14 @@ def _topology_builder() -> TopologyBuilder:
 
 def evaluate_sample(
     sample: SampleFiles,
-    switches: dict[str, bool],
+    switches: dict[str, object],
     px_um_ratios: dict[str, float],
 ) -> SampleMetrics:
     is_complete, reason = sample.is_complete()
     if not is_complete:
-        return SampleMetrics(sample.sample_id, None, None, error=f"skip:{reason}")
+        return SampleMetrics(sample.sample_id, None, None, None, error=f"skip:{reason}")
     if sample.label_path is None or not sample.label_path.exists():
-        return SampleMetrics(sample.sample_id, None, None, error="skip:missing_label")
+        return SampleMetrics(sample.sample_id, None, None, None, error="skip:missing_label")
 
     try:
         image = np.array(Image.open(sample.image_path))
@@ -270,19 +350,33 @@ def evaluate_sample(
         pred_pts = extract_graph_points(pred_graph)
         gt_pts = extract_graph_points(graph_gt)
 
-        hd95_val, _, _ = compute_hd95(pred_pts, gt_pts)
+        # HD95 and average Hausdorff distance share the same point sets; both
+        # are scaled to microns when a px/um ratio is available.
         ratio = px_um_ratios.get(sample.sample_id)
-        if ratio is not None:
-            hd95_val *= ratio
+        scale = ratio if ratio is not None else 1.0
+        hd95_val, _, _ = compute_hd95(pred_pts, gt_pts)
+        hd95_val *= scale
+        avg_hd_val, _, _ = compute_average_hausdorff_distance(pred_pts, gt_pts)
+        avg_hd_val *= scale
+
+        # clDice tolerance is a fixed physical distance (microns) converted to
+        # pixels per sample so the slack is identical across acquisition
+        # resolutions: tolerance_px = CLDICE_TOLERANCE_UM / px_um.
+        if ratio is not None and ratio > 0:
+            cldice_tol_px = round(CLDICE_TOLERANCE_UM / ratio)
+        else:
+            cldice_tol_px = round(CLDICE_TOLERANCE_UM)
 
         cld, _tp, _ts = compute_cldice(
-            pred_graph, roi_label, tolerance_px=CLDICE_TOLERANCE_PX
+            pred_graph, roi_label, tolerance_px=cldice_tol_px
         )
-        return SampleMetrics(sample.sample_id, float(hd95_val), float(cld))
+        return SampleMetrics(
+            sample.sample_id, float(hd95_val), float(avg_hd_val), float(cld)
+        )
 
     except Exception as e:
         logger.exception("Sample %s failed: %s", sample.sample_id, e)
-        return SampleMetrics(sample.sample_id, None, None, error=f"fail:{e}")
+        return SampleMetrics(sample.sample_id, None, None, None, error=f"fail:{e}")
 
 
 # ---------------------------------------------------------------------------
@@ -300,7 +394,7 @@ def load_cached(path: Path) -> dict[str, dict]:
 
 
 def save_cached(
-    path: Path, switches: dict[str, bool], samples: dict[str, dict]
+    path: Path, switches: dict[str, object], samples: dict[str, dict]
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w") as f:
@@ -320,7 +414,7 @@ def _serializable(d: dict) -> dict:
 
 def run_ablation(
     name: str,
-    switches: dict[str, bool],
+    switches: dict[str, object],
     samples: list[SampleFiles],
     px_um_ratios: dict[str, float],
     out_dir: Path,
@@ -329,7 +423,12 @@ def run_ablation(
 ) -> dict[str, dict]:
     path = cache_path(out_dir, name)
     cached = {} if rerun else load_cached(path)
-    todo = [s for s in samples if s.sample_id not in cached]
+    # Re-run any sample that isn't cached as a clean success, so stale "failed"
+    # entries (e.g. from an older code version) don't silently poison the table.
+    todo = [
+        s for s in samples
+        if cached.get(s.sample_id, {}).get("status") != "success"
+    ]
     if not todo:
         logger.info("[%s] all %d samples cached, skipping", name, len(samples))
         return cached
@@ -352,6 +451,7 @@ def run_ablation(
                 if m.error is None:
                     row["status"] = "success"
                     row["hd95"] = m.hd95
+                    row["avg_hd"] = m.avg_hd
                     row["cldice"] = m.cldice
                 else:
                     row["status"] = "failed"
@@ -369,6 +469,7 @@ def run_ablation(
 METRIC_SPECS = {
     # name: (json key, lower_is_better, decimals)
     "hd95":   ("hd95",   True,  3),
+    "avg_hd": ("avg_hd", True,  4),
     "cldice": ("cldice", False, 4),
 }
 
@@ -405,13 +506,23 @@ def wilcoxon_p_cmp_worse(
     return float(res.pvalue)  # type: ignore[union-attr]
 
 
+def fmt_pvalue(p: float) -> str:
+    """Format a p-value compactly: '<.001' for tiny values, else 3 decimals."""
+    if p < 0.001:
+        return "<.001"
+    return f"{p:.3f}"
+
+
 def fmt_cell(metric: str, value: float, p: Optional[float]) -> str:
     if not np.isfinite(value):
         return "nan"
     decimals = METRIC_SPECS[metric][2]
     body = f"{value:.{decimals}f}"
-    if p is not None and np.isfinite(p) and p < ALPHA:
-        body += "*"
+    if p is not None and np.isfinite(p):
+        star = "*" if p < ALPHA else ""
+        ptxt = fmt_pvalue(p)
+        sep = "" if ptxt.startswith("<") else "="
+        body += f" (p{sep}{ptxt}){star}"
     return body
 
 
@@ -421,10 +532,16 @@ def print_table(rows: list[dict], metrics: list[str], ref_name: str) -> None:
         len(ref_name) + len(" (ref)"),
         12,
     )
-    col_w = 12
+    col_w = {
+        m: max(
+            len(m),
+            max((len(r["cells"][m]) for r in rows), default=0),
+        )
+        for m in metrics
+    }
     header = f"{'ablation':<{name_w}} {'n':>3}"
     for m in metrics:
-        header += f" {m:>{col_w}}"
+        header += f" {m:>{col_w[m]}}"
     bar = "-" * len(header)
 
     cmp_rows = [r for r in rows if r["name"] != ref_name]
@@ -436,19 +553,19 @@ def print_table(rows: list[dict], metrics: list[str], ref_name: str) -> None:
     for r in cmp_rows:
         line = f"{r['name']:<{name_w}} {r['n']:>3}"
         for m in metrics:
-            line += f" {r['cells'][m]:>{col_w}}"
+            line += f" {r['cells'][m]:>{col_w[m]}}"
         print(line)
     print(bar)
     line = f"{ref_row['name'] + ' (ref)':<{name_w}} {ref_row['n']:>3}"
     for m in metrics:
-        line += f" {ref_row['cells'][m]:>{col_w}}"
+        line += f" {ref_row['cells'][m]:>{col_w[m]}}"
     print(line)
     print()
     print(
-        f"  * = paired one-sided Wilcoxon p < {ALPHA:g}: "
-        f"ablation is significantly WORSE than {ref_name}"
+        f"  (p=…) = paired one-sided Wilcoxon p-value; "
+        f"* marks p < {ALPHA:g} (ablation significantly WORSE than {ref_name})"
     )
-    print("  (lower is better: hd95; higher is better: cldice)")
+    print("  (lower is better: hd95, avg_hd; higher is better: cldice)")
 
 
 def write_csv(rows: list[dict], metrics: list[str], path: Path) -> None:

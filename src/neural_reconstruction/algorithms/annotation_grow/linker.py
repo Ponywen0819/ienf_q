@@ -138,7 +138,8 @@ class AnnotationGrowLinker:
         result_graph = build_result_graph(
             mst,
             annotation_bin,
-            segment_length=500,
+            dilate_radius=3,  # same as viz_bridge_skeleton.py for better visual consistency
+            stub_length_threshold=self.stub_length_threshold
         )
         logger.info(
             f"Result graph: {result_graph.number_of_nodes()} nodes, "
@@ -149,7 +150,7 @@ class AnnotationGrowLinker:
             mask,
             annot_labeled,
             min_tree_components=self.min_tree_components,
-            stub_length_threshold=self.stub_length_threshold
+            stub_length_threshold=5
 
         )
         return LinkerResult(

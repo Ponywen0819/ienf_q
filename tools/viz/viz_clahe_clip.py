@@ -1,43 +1,28 @@
 """
-CLAHE clip-limit (β) sweep visualisation.
+CLAHE clip-limit (β) difference visualisation.
 
-Renders, for several CLAHE clip limits β on the same fixed crop used by the
-other paper viz scripts, three views of the pipeline:
+For several CLAHE clip limits β on the same fixed crop used by the other paper
+viz scripts, renders the *signed difference* of each β's CLAHE output against
+the β = 30 baseline:
 
-    green channel  ->  morphological background removal  ->  CLAHE(β)  ->  Sato
-                                                                          |
-                                                                  reconstruction
+    diff(β) = CLAHE(β) − CLAHE(30)
 
-1. CLAHE output           — the raw CLAHE image; β barely moves it.
-2. Sato vesselness        — Sato of the CLAHE output; β-driven contrast changes
-                            are amplified here.
-3. Reconstruction result  — the full AnnotationGrowLinker network reconstructed
-                            with that β; this answers whether β changes the
-                            *final* output at all.
+The pipeline up to CLAHE is: green channel → morphological background removal
+→ CLAHE(β). Differences use a diverging colormap centred at zero, and all
+diff panels share one symmetric scale so they are directly comparable across β.
+The β = 30 panel instead shows the raw CLAHE output (the baseline itself).
 
-For reference the bg-removed input (before CLAHE) and its Sato image are also
-saved. All Sato panels share one normalisation scale, so they are directly
-comparable across β.
-
-Outputs (one panel each):
-  viz_clahe_clip_bg_removed.png        — input to CLAHE
-  viz_clahe_clip_bg_removed_sato.png   — Sato of the bg-removed input (no CLAHE)
-  viz_clahe_clip_b{β}.png              — CLAHE output for each β in CLIP_LIMITS
-  viz_clahe_clip_b{β}_sato.png         — Sato of the CLAHE output for each β
-  viz_clahe_clip_b{β}_recon.png        — reconstructed network for each β
+Outputs (one bare panel each, written into this script's directory):
+  viz_clahe_clip_b30.png         — raw CLAHE output for the β = 30 baseline
+  viz_clahe_clip_b{β}_diff.png   — CLAHE(β) − CLAHE(30) for every other β
 """
 
+import csv
 from pathlib import Path
 
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-import skimage as ski
-
-from neural_reconstruction.core.preprocessing import dilate_epidermis_vertically
-from neural_reconstruction.algorithms.annotation_grow.linker import (
-    AnnotationGrowLinker,
-)
 
 # === Edit these ===========================================================
 BASE_PATH = Path("/home/pony/projects/ienf_q/")
@@ -51,23 +36,14 @@ CROP_Y0, CROP_X0, CROP_H, CROP_W = 666, 4700, 200, 200
 # Background-removal and CLAHE tile size: pipeline defaults (see viz_preprocessing).
 BG_KERNEL_SIZE = 5
 CLAHE_TILE = 768
-OFFSET_PX = 50  # epidermis ROI dilation, matches viz_region_grow.py
 
-# Clip limits β to sweep; 30 is the pipeline default.
+# Clip limits β to sweep; 30 is the baseline every panel is differenced against.
 CLIP_LIMITS = [10, 20, 30, 40, 50]
 BETA_REF = 30
 
-# Sato vesselness scales: cost-map pipeline default (see cost_map.build_enhanced_image).
-SATO_SIGMAS = (3, 4, 5, 6, 7)
-# Halo padding for the Sato crop: 4·σ_max (gaussian truncate) plus a few px for
-# the finite-difference Hessian, matching cost_map's strip padding.
-SATO_PAD = int(np.ceil(4 * max(SATO_SIGMAS))) + 4
-
-# Panel colour scale: plain grayscale on a fixed 0-255 scale, so the panels
-# show the raw CLAHE output and stay directly comparable.
-PANEL_CMAP = "gray"
-# Reconstruction overlay colour (gold), drawn on a faded green background.
-RECON_COLOR = np.array([1.00, 0.78, 0.10], dtype=np.float32)
+# Diverging colormap for signed differences (centred at 0). Positive = red,
+# negative = blue.
+DIFF_CMAP = "RdBu_r"
 # ==========================================================================
 
 OUT_DIR = Path(__file__).parent
@@ -78,156 +54,149 @@ def _crop(arr: np.ndarray) -> np.ndarray:
     return arr[CROP_Y0 : CROP_Y0 + CROP_H, CROP_X0 : CROP_X0 + CROP_W]
 
 
-def _sato_crop(full: np.ndarray) -> np.ndarray:
-    """Sato vesselness for the fixed crop.
+def _save_panel(
+    img: np.ndarray,
+    label: str,
+    out_name: str,
+    *,
+    cmap: str,
+    vmin: float,
+    vmax: float,
+    colorbar: bool = False,
+) -> None:
+    """Render a bare image panel (no title/axes) on a fixed scale.
 
-    Sato is run on the crop plus a ``SATO_PAD`` halo so the result inside the
-    crop matches a full-image call (no boundary artefacts), then the halo is
-    discarded. Returns a float array — normalisation is left to the caller so
-    multiple panels can share one scale.
-    """
-    H, W = full.shape
-    gy0 = max(0, CROP_Y0 - SATO_PAD)
-    gx0 = max(0, CROP_X0 - SATO_PAD)
-    gy1 = min(H, CROP_Y0 + CROP_H + SATO_PAD)
-    gx1 = min(W, CROP_X0 + CROP_W + SATO_PAD)
-
-    region = full[gy0:gy1, gx0:gx1]
-    sato = ski.filters.sato(region, sigmas=list(SATO_SIGMAS), black_ridges=False)
-
-    cy0, cx0 = CROP_Y0 - gy0, CROP_X0 - gx0
-    return sato[cy0 : cy0 + CROP_H, cx0 : cx0 + CROP_W]
-
-
-def _save_panel(img: np.ndarray, label: str, out_name: str) -> None:
-    """Render a sweep panel as a bare plain-grayscale image on a fixed 0-255 scale.
-
-    No title, axes, colorbar or any other text.
+    If ``colorbar`` is set, a large colour bar is drawn with numeric ticks
+    spanning the symmetric scale (no title, just the tick numbers).
     """
     fig, ax = plt.subplots(figsize=(5.0, 5.0))
-    ax.imshow(img, cmap=PANEL_CMAP, vmin=0, vmax=255)
+    im = ax.imshow(img, cmap=cmap, vmin=vmin, vmax=vmax)
     ax.set_axis_off()
+    if colorbar:
+        cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        ticks = np.linspace(vmin, vmax, 5).tolist()
+        cbar.set_ticks(ticks)
+        cbar.set_ticklabels([f"{t:.0f}" for t in ticks])
+        cbar.ax.tick_params(labelsize=11, length=3, width=1.0)
     out_path = OUT_DIR / out_name
     fig.savefig(out_path, dpi=200, bbox_inches="tight", pad_inches=0)
     plt.close(fig)
     print(f"Saved: {out_path}  ({label})")
-
-
-def _save_rgb_panel(img: np.ndarray, label: str, out_name: str) -> None:
-    """Render a bare HxWx3 RGB panel (no title/axes), same framing as _save_panel."""
-    fig, ax = plt.subplots(figsize=(5.0, 5.0))
-    ax.imshow(img)
-    ax.set_axis_off()
-    out_path = OUT_DIR / out_name
-    fig.savefig(out_path, dpi=200, bbox_inches="tight", pad_inches=0)
-    plt.close(fig)
-    print(f"Saved: {out_path}  ({label})")
-
-
-def _reconstruction_panel(graph, green_crop: np.ndarray,
-                          roi_crop: np.ndarray) -> np.ndarray:
-    """Rasterise a reconstructed network graph onto the faded green crop.
-
-    Edge ``path`` points and node coordinates are painted in ``RECON_COLOR``;
-    the network is dilated by 1px so the 1-px paths stay visible at panel size.
-    Outside-ROI pixels are blacked out, matching viz_bridge_skeleton.py.
-    """
-    H, W = green_crop.shape[0], green_crop.shape[1]
-    net = np.zeros((CROP_H, CROP_W), dtype=np.uint8)
-
-    def _plot(py: int, px: int) -> None:
-        ly, lx = py - CROP_Y0, px - CROP_X0
-        if 0 <= ly < CROP_H and 0 <= lx < CROP_W:
-            net[ly, lx] = 1
-
-    for _u, _v, data in graph.edges(data=True):
-        for py, px in data.get("path", []):
-            _plot(int(py), int(px))
-    for ny, nx_ in graph.nodes():
-        _plot(int(ny), int(nx_))
-
-    net = cv2.dilate(net, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)))
-
-    disp = np.stack([green_crop] * 3, axis=-1).astype(np.float32) / 255.0 * 0.5
-    disp[net.astype(bool)] = RECON_COLOR
-    disp[roi_crop == 0] = 0.0
-    return disp
 
 
 def main() -> None:
-    # ── load inputs ─────────────────────────────────────────────────────────
+    # ── load input + background removal (the CLAHE input) ────────────────────
     image_rgb = cv2.imread(f"{BASE_PATH}/image.png", cv2.IMREAD_COLOR_RGB)
     if image_rgb is None:
         raise FileNotFoundError(f"image.png not found under {BASE_PATH}")
     green = image_rgb[:, :, 1]
-    mask = cv2.imread(f"{BASE_PATH}/mask.png", cv2.IMREAD_GRAYSCALE)
-    annotation = cv2.imread(f"{BASE_PATH}/weka.png", cv2.IMREAD_GRAYSCALE)
 
-    green_crop = _crop(green)
-    roi_crop = _crop(dilate_epidermis_vertically(mask, offset_px=OFFSET_PX))
-
-    # ── green channel → morphological background removal ────────────────────
     kernel = cv2.getStructuringElement(
         cv2.MORPH_ELLIPSE, (BG_KERNEL_SIZE, BG_KERNEL_SIZE)
     )
     background = cv2.morphologyEx(green, cv2.MORPH_OPEN, kernel)
     bg_removed = cv2.subtract(green, background)
 
-    # Reference panel: the CLAHE input.
-    _save_panel(_crop(bg_removed), "bg removed (CLAHE input)",
-                "viz_clahe_clip_bg_removed.png")
+    # ── CLAHE output crop per β ───────────────────────────────────────────────
+    if BETA_REF not in CLIP_LIMITS:
+        raise ValueError(f"BETA_REF={BETA_REF} must be in CLIP_LIMITS={CLIP_LIMITS}")
 
-    # ── CLAHE for each clip limit β, then Sato of each result ───────────────
-    # CLAHE outputs are saved immediately; Sato crops are collected first so
-    # every Sato panel can share one normalisation scale (fair β comparison).
-    sato_crops: dict[str, np.ndarray] = {
-        "viz_clahe_clip_bg_removed_sato.png": _sato_crop(bg_removed),
-    }
-    sato_labels: dict[str, str] = {
-        "viz_clahe_clip_bg_removed_sato.png": "Sato of bg removed (no CLAHE)",
-    }
-
+    clahe_crops: dict[int, np.ndarray] = {}
     for beta in CLIP_LIMITS:
         clahe = cv2.createCLAHE(
             clipLimit=float(beta), tileGridSize=(CLAHE_TILE, CLAHE_TILE)
         )
-        clahe_out = clahe.apply(bg_removed)
-        is_ref = beta == BETA_REF
-        suffix = " (default)" if is_ref else ""
-        _save_panel(_crop(clahe_out), f"β = {beta}{suffix}",
-                    f"viz_clahe_clip_b{beta}.png")
+        # int16 so the signed difference below cannot under/overflow.
+        clahe_crops[beta] = _crop(clahe.apply(bg_removed)).astype(np.int16)
 
-        name = f"viz_clahe_clip_b{beta}_sato.png"
-        sato_crops[name] = _sato_crop(clahe_out)
-        sato_labels[name] = f"Sato of β = {beta}{suffix}"
+    # ── signed differences vs baseline, shared symmetric scale ────────────────
+    # The β = BETA_REF panel shows the raw CLAHE output (the baseline itself);
+    # every other β shows CLAHE(β) − CLAHE(BETA_REF). The baseline's own diff is
+    # zero (kept in the dict only so the stats table below is complete).
+    baseline = clahe_crops[BETA_REF]
+    diffs = {beta: crop - baseline for beta, crop in clahe_crops.items()}
+    vlim = max(1, max(int(np.abs(diffs[b]).max()) for b in CLIP_LIMITS if b != BETA_REF))
 
-    # Shared 0-255 scale across all Sato panels.
-    vmin = min(c.min() for c in sato_crops.values())
-    vmax = max(c.max() for c in sato_crops.values())
-    scale = 255.0 / (vmax - vmin) if vmax > vmin else 0.0
-
-    for name, crop in sato_crops.items():
-        panel = ((crop - vmin) * scale).astype(np.uint8)
-        _save_panel(panel, sato_labels[name], name)
-
-    # ── full reconstruction for each β ──────────────────────────────────────
-    # Runs the real AnnotationGrowLinker per β (other params held at the values
-    # the rest of the viz scripts use) and overlays the resulting network.
     for beta in CLIP_LIMITS:
-        linker = AnnotationGrowLinker(
-            offset_px=OFFSET_PX,
-            bg_kernel_size=BG_KERNEL_SIZE,
-            clahe_clip=float(beta),
-            clahe_grid=(CLAHE_TILE, CLAHE_TILE),
-            sato_sigmas_start=min(SATO_SIGMAS),
-            sato_sigmas_stop=max(SATO_SIGMAS) + 1,
+        if beta == BETA_REF:
+            _save_panel(
+                baseline,
+                f"CLAHE β={beta} (baseline, raw output)",
+                f"viz_clahe_clip_b{beta}.png",
+                cmap="gray",
+                vmin=0,
+                vmax=255,
+            )
+        else:
+            _save_panel(
+                diffs[beta],
+                f"CLAHE β={beta} − β={BETA_REF}",
+                f"viz_clahe_clip_b{beta}_diff.png",
+                cmap=DIFF_CMAP,
+                vmin=-vlim,
+                vmax=vlim,
+                colorbar=True,
+            )
+    print(f"Shared symmetric diff scale: ±{vlim} (grey 8-bit levels)")
+
+    _report_diff_stats(diffs, baseline)
+
+
+def _report_diff_stats(diffs: dict[int, np.ndarray], baseline: np.ndarray) -> None:
+    """Print (and CSV-dump) per-β difference statistics, split fiber vs background.
+
+    Fibre / background pixels are separated by Otsu on the β = BETA_REF CLAHE
+    output, so the stats answer the question the diff *image* cannot: does each
+    β change fibres more than background? Per region we report the signed mean
+    (direction: darker/brighter than baseline) and the mean magnitude |Δ|; the
+    fibre/background |Δ| ratio summarises "how concentrated on fibres" the
+    change is (>1 = mostly on fibres).
+    """
+    base_u8 = np.clip(baseline, 0, 255).astype(np.uint8)
+    _thr, fiber = cv2.threshold(
+        base_u8, 0, 1, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+    )
+    fiber = fiber.astype(bool)
+    bg = ~fiber
+    frac = float(fiber.mean())
+
+    header = (
+        f"{'beta':>5} {'mean|d|':>8} {'fib_mean':>9} {'bg_mean':>8} "
+        f"{'fib|d|':>7} {'bg|d|':>7} {'fib/bg':>7}"
+    )
+    print(
+        f"\nDiff statistics vs baseline β={BETA_REF} "
+        f"(Otsu fibre mask: {frac*100:.1f}% of crop is fibre)"
+    )
+    print(header)
+    print("-" * len(header))
+
+    rows = []
+    for beta in CLIP_LIMITS:
+        d = diffs[beta].astype(np.float64)
+        ad = np.abs(d)
+        g = float(ad.mean())
+        fib_m = float(d[fiber].mean())
+        bg_m = float(d[bg].mean())
+        fib_a = float(ad[fiber].mean())
+        bg_a = float(ad[bg].mean())
+        ratio = fib_a / bg_a if bg_a > 0 else float("inf")
+        rows.append((beta, g, fib_m, bg_m, fib_a, bg_a, ratio))
+        print(
+            f"{beta:>5} {g:>8.3f} {fib_m:>+9.3f} {bg_m:>+8.3f} "
+            f"{fib_a:>7.3f} {bg_a:>7.3f} {ratio:>7.2f}"
         )
-        result = linker.run(image_rgb, mask, annotation)
-        is_ref = beta == BETA_REF
-        suffix = " (default)" if is_ref else ""
-        panel = _reconstruction_panel(result.graph, green_crop, roi_crop)
-        _save_rgb_panel(panel, f"reconstruction β = {beta}{suffix}",
-                        f"viz_clahe_clip_b{beta}_recon.png")
+
+    csv_path = OUT_DIR / "viz_clahe_clip_diff_stats.csv"
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(
+            ["beta", "mean_abs_diff", "fiber_mean_signed", "bg_mean_signed",
+             "fiber_mean_abs", "bg_mean_abs", "fiber_bg_abs_ratio", "fiber_fraction"]
+        )
+        for beta, g, fib_m, bg_m, fib_a, bg_a, ratio in rows:
+            w.writerow([beta, g, fib_m, bg_m, fib_a, bg_a, ratio, frac])
+    print(f"Saved: {csv_path}")
 
 
 if __name__ == "__main__":

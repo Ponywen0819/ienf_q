@@ -47,7 +47,7 @@ IMAGE_ID = "S222-2_a"
 BASE_PATH = BASE_PATH / f"data_0331/{IMAGE_ID}"
 CROP_Y0, CROP_X0, CROP_H, CROP_W = 666, 4700, 200, 200
 
-PRUNE_THRESHOLD = 20.0  # tau — same default as run_inference.py / staged grid search
+PRUNE_THRESHOLD = 50.0  # tau — same default as run_inference.py / staged grid search
 EDGE_CMAP = "cool"  # colormap for edge weights; bright at both ends → visible on dark bg
 
 
