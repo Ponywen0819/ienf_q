@@ -291,14 +291,13 @@ class StageWorker:
         return self._new_handle(minimum_spanning_forest(self.handles[pruned_graph]))
 
     def stage_result_graph(
-        self, mst: str, annotation_bin: str, segment_length: float
+        self, mst: str, annotation_bin: str
     ) -> str:
         self._bump("result_graph")
         return self._new_handle(
             build_result_graph(
                 self.handles[mst],
                 self.handles[annotation_bin],
-                segment_length=float(segment_length),
             )
         )
 
