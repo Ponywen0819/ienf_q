@@ -72,6 +72,7 @@ from neural_reconstruction.core.crosses_detection.segment_detector import (  # n
     SegmentDetector,
 )
 from neural_reconstruction.core.preprocessing import dilate_epidermis_vertically  # noqa: E402
+from neural_reconstruction.core.topology import TopologyBuilder  # noqa: E402
 
 
 def _send(frame: dict) -> None:
@@ -344,6 +345,12 @@ class StageWorker:
 
         graph.remove_edges_from(edges_to_remove)
         graph.remove_nodes_from(list(nx.isolates(graph)))
+
+        # Trimming one branch off a junction leaves a degree-2 node behind, and
+        # the skeleton builder's own merge ran long before this point. Re-merge
+        # so the editor only ever shows endpoints and branch points — a degree-2
+        # node is just a waypoint in the middle of a segment.
+        graph = TopologyBuilder().merge_middle_points(graph)
 
         # Re-detect segments since topology changed.
         graph = seg_detector.detect_segments(graph)

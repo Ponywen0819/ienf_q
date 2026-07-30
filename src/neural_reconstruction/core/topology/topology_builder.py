@@ -135,7 +135,7 @@ class TopologyBuilder:
         graph = self.to_simple_graph(coordinate_graph,stub_length_threshold)
 
         # 6. 合併 degree-2 中間點
-        graph = self._merge_middle_points(graph)
+        graph = self.merge_middle_points(graph)
 
         # 7. 補齊缺失節點
         graph = self._fill_missing_nodes(graph, binary, equalized_img)
@@ -337,7 +337,7 @@ class TopologyBuilder:
         pts = np.array(path)
         return float(np.sum(np.linalg.norm(np.diff(pts, axis=0), axis=1)))
 
-    def _merge_middle_points(self, graph: nx.Graph) -> nx.Graph:
+    def merge_middle_points(self, graph: nx.Graph) -> nx.Graph:
         """合併 degree-2 中間點，將相鄰兩條邊合併為一條並串接 path。
 
         骨架中 degree-2 的節點是純粹的中繼點（非端點、非交叉），
