@@ -50,6 +50,7 @@ class AnnotationGrowLinker:
         clahe_grid: tuple[int, int] = (16, 16),
         sato_sigmas_start: int = 3,
         sato_sigmas_stop: int = 8,
+        sato_sigmas: list[int] | None = None,
         # Dijkstra
         connectivity: int = 8,
         # Edge pruning
@@ -57,6 +58,7 @@ class AnnotationGrowLinker:
         # Subtree filtering
         min_tree_components: int = 5,
         stub_length_threshold: int = 5,
+
     ):
         self.offset_px = offset_px
         self.bg_kernel_size = bg_kernel_size
@@ -64,6 +66,7 @@ class AnnotationGrowLinker:
         self.clahe_grid = clahe_grid
         self.sato_sigmas_start = sato_sigmas_start
         self.sato_sigmas_stop = sato_sigmas_stop
+        self.sato_sigmas = sato_sigmas
         self.connectivity = connectivity
         self.prune_threshold = prune_threshold
         self.min_tree_components = min_tree_components
@@ -93,6 +96,7 @@ class AnnotationGrowLinker:
             clahe_grid=self.clahe_grid,
             sato_sigmas_start=self.sato_sigmas_start,
             sato_sigmas_stop=self.sato_sigmas_stop,
+            sato_sigmas=self.sato_sigmas,
         ).run(image, mask, annotation)
         logger.info("Preprocessing done")
 

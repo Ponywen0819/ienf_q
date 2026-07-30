@@ -31,7 +31,7 @@ from neural_reconstruction.algorithms.annotation_grow.dijkstra import (
 BASE_PATH = Path("/home/pony/projects/ienf_q/")
 IMAGE_ID = "S222-2_a"
 BASE_PATH = BASE_PATH / f"data_0331/{IMAGE_ID}"
-CROP_Y0, CROP_X0, CROP_H, CROP_W = 666, 4700, 200, 200
+CROP_Y0, CROP_X0, CROP_H, CROP_W = 755, 4775, 140, 140
 
 
 def crop(arr):
@@ -240,8 +240,17 @@ mid_y = (arr[:, 0] + arr[:, 2]) / 2.0 - CROP_Y0
 mid_x = (arr[:, 1] + arr[:, 3]) / 2.0 - CROP_X0
 mp_cost = arr[:, 4]
 inside = (mid_y >= 0) & (mid_y < CROP_H) & (mid_x >= 0) & (mid_x < CROP_W)
+arr_inside = arr[inside]
 mid_y, mid_x, mp_cost = mid_y[inside], mid_x[inside], mp_cost[inside]
 imin = int(np.argmin(mp_cost))
+
+# The minimum-cost meeting point is a pair of 8-adjacent pixels, one owned by A
+# and one by B. Recover both endpoints in local crop coordinates so each can be
+# marked and labelled (x_a, y_a) / (x_b, y_b).
+ya_a = arr_inside[imin, 0] - CROP_Y0
+xa_a = arr_inside[imin, 1] - CROP_X0
+yb_b = arr_inside[imin, 2] - CROP_Y0
+xb_b = arr_inside[imin, 3] - CROP_X0
 
 
 def crop_centroid(cid: int):
@@ -255,8 +264,8 @@ def draw_seed_labels(ax) -> None:
     """Draw plain text 'a' / 'b' beside the two components (away from each other)."""
     ca_local = crop_centroid(A_ID)
     cb_local = crop_centroid(B_ID)
-    label_offset = 26.0  # px, placed beside the component
-    margin = 16.0
+    label_offset = 12.0  # px, placed beside the component
+    margin = 12.0
     for txt, col, this_c, other_c in (
         ("a", A_COLOR, ca_local, cb_local),
         ("b", B_COLOR, cb_local, ca_local),
@@ -280,6 +289,42 @@ def draw_seed_labels(ax) -> None:
         )
 
 
+def draw_meet_pixels(ax) -> None:
+    """Mark the two pixels of the minimum-cost meeting point and label each
+    with its coordinate (x_a, y_a) / (x_b, y_b), offset toward its own
+    component so the two labels separate."""
+    ca_local = crop_centroid(A_ID)
+    cb_local = crop_centroid(B_ID)
+    label_offset = 22.0  # px between pixel and its text label
+    margin = 12.0
+    for py, px, txt, col, comp_c in (
+        (ya_a, xa_a, r"$(x_a,\, y_a)$", A_COLOR, ca_local),
+        (yb_b, xb_b, r"$(x_b,\, y_b)$", B_COLOR, cb_local),
+    ):
+        # Offset the label toward this pixel's own component centroid (away
+        # from the other endpoint), so the two labels do not overlap.
+        if comp_c is not None:
+            dy = comp_c[0] - py
+            dx = comp_c[1] - px
+            norm = float(np.hypot(dy, dx)) or 1.0
+            ty = py + label_offset * dy / norm
+            tx = px + label_offset * dx / norm
+        else:
+            ty, tx = py - label_offset, px
+        ty = float(np.clip(ty, margin, CROP_H - margin))
+        tx = float(np.clip(tx, margin, CROP_W - margin))
+    ax.scatter(
+        px, py, marker="o", s=80, c=[col],
+        edgecolors="none", zorder=5,
+    )
+        # ax.annotate(
+        #     txt, xy=(px, py), xytext=(tx, ty),
+        #     color="white", fontsize=14, ha="center", va="center", zorder=6,
+        #     arrowprops=dict(arrowstyle="-", color="white", lw=0.9),
+        #     path_effects=[pe.withStroke(linewidth=2.4, foreground="black")],
+        # )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Output 1: all meeting points coloured by cost
 # ─────────────────────────────────────────────────────────────────────────────
@@ -289,13 +334,10 @@ ax.axis("off")
 
 sc = ax.scatter(
     mid_x, mid_y, c=mp_cost, cmap="cool",
-    s=22, edgecolors="white", linewidths=0.3, zorder=3,
+    s=22, edgecolors="none", zorder=3,
 )
-ax.scatter(
-    mid_x[imin], mid_y[imin], marker="*", s=360,
-    c="yellow", edgecolors="black", linewidths=1.0, zorder=4,
-)
-draw_seed_labels(ax)
+# draw_seed_labels(ax)
+draw_meet_pixels(ax)
 
 divider = make_axes_locatable(ax)
 cax = divider.append_axes("right", size="4%", pad=0.04)

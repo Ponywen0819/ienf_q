@@ -31,15 +31,17 @@ from scipy import stats
 # ---------------------------------------------------------------------------
 # GRID_DIR = Path("output/0510_grid")
 # GRID_DIR = Path("output/grid_0510/bg")
-GRID_DIR = Path("output/grid_0510/clahe_grid")
+# GRID_DIR = Path("output/grid_0510/clahe_grid")
+GRID_DIR = Path("output/grid_fk/clahe_grid")
 # GRID_DIR = Path("output/grid_0510/clahe_clip")
+# GRID_DIR = Path("output/grid_0510/clahe_clip_half")
 # GRID_DIR = Path("output/grid_0510/sato_s")
 # GRID_DIR = Path("output/grid_0510/sato_e")
 # GRID_DIR = Path("output/grid_0510/stub")
 
 # REFERENCE_PARAMS: dict = {"bg_kernel_size": 5}
 REFERENCE_PARAMS: dict = {"clahe_grid": [768, 768]}
-# REFERENCE_PARAMS: dict = {"clahe_clip": 30.0}
+# REFERENCE_PARAMS: dict = {"clahe_clip": 40.0}
 # REFERENCE_PARAMS: dict = {"sato_sigmas_start": 2,
 #       "sato_sigmas_stop": 6,}
 # REFERENCE_PARAMS: dict = {"sato_sigmas_start": 1}

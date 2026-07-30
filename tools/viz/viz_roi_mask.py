@@ -4,6 +4,7 @@ import heapq
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
+import matplotlib.patheffects as pe
 import networkx as nx
 from pathlib import Path
 import pandas as pd
@@ -234,10 +235,17 @@ def _annotate_aux_mask(ax, H_crop: int, W_crop: int) -> None:
             arrowprops=dict(
                 arrowstyle="-|>",
                 color="red",
-                lw=2,
-                mutation_scale=12,
+                lw=3.5,
+                mutation_scale=26,
             ),
             zorder=6,
+        )
+
+        # Label the arrow with y_max: the topmost mask row at this column is
+        # the maximum y in the origin='lower' display convention.
+        ax.text(
+            chosen_col + 40, edge_y * 0.62, r"$y_{max}$",
+            ha="left", va="center", color="red", fontsize=20, zorder=7,
         )
 
 

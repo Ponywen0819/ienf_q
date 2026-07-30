@@ -1,24 +1,29 @@
 """
-Sato sigma-range visualisation.
+Sato vesselness contribution visualisation.
 
-Sato vesselness runs over a scale range sigmas = range(start, stop). This
-renders the *signed difference* of each range's enhanced image against the
-(1, 4) baseline, sweeping two 1-D arms through it (NOT the full 2-D grid):
+Sato vesselness runs over a scale range sigmas = range(start, stop) on top of
+the CLAHE-enhanced image. For each range this renders the raw enhanced output
+crop and its *signed difference* against the post-CLAHE image — i.e. the Sato
+input, the pipeline image up to and including CLAHE but before Sato:
+
+    diff(a,b) = enhanced(a,b) − post_CLAHE
+
+so each diff isolates what the Sato stage adds (red) or removes (blue) relative
+to the plain CLAHE intensity, for that scale range. The sigma range is swept as
+two 1-D arms (NOT the full 2-D grid):
 
     start arm (stop fixed = 4):  (1,4)  (2,4)  (3,4)
     stop  arm (start fixed = 1):  (1,4)  (1,2)  (1,3)  (1,5)  (1,6)
     (arms are configured via START_SWEEP / STOP_SWEEP)
 
-    diff(a,b) = enhanced(a,b) − enhanced(1,4)
-
 The enhanced image is produced by the real pipeline function
 ``cost_map.build_enhanced_image`` (green → bg removal → CLAHE → Sato →
-min-max → uint8), so panels reflect exactly what feeds the cost map.
-Differences use a diverging colormap centred at zero and share one symmetric
-scale so they are directly comparable across ranges; the (1, 4) panel instead
-shows the raw enhanced output (the baseline itself). On the merge crop the
-stop arm's positive (red) gap-fill between adjacent fibres is the high-σ_max
-bleeding; the start arm's negative (blue) loss is high-σ_min fibre drop-out.
+min-max → uint8) and the post-CLAHE baseline replicates that same pipeline up
+to the CLAHE step, so panels reflect exactly what feeds the cost map.
+The Sato diff is genuinely signed (Sato brightens *and* darkens relative to
+plain CLAHE), so the diff panels use a diverging colormap centred at zero on a
+symmetric −v → +v scale (red = Sato brighter, blue = Sato darker), shared
+across all ranges so they are directly comparable.
 
 Per range we also report, over the labelled fibre region vs background, the
 fibre contrast (fibre_mean − bg_mean) and background noise (bg_std) so the
@@ -26,8 +31,9 @@ fibre-loss / noise-amplification trade-off can be read as numbers.
 
 Outputs (into this script's directory):
   viz_sato_label.png              — label (GT) crop, spatial reference
-  viz_sato_s1_4.png               — raw enhanced output for the (1,4) baseline
-  viz_sato_s{a}_{b}_diff.png      — enhanced(a,b) − enhanced(1,4) per range
+  viz_sato_post_clahe.png         — post-CLAHE image (the diff baseline, Sato input)
+  viz_sato_s{a}_{b}.png           — raw enhanced (Sato) output per range
+  viz_sato_s{a}_{b}_diff.png      — enhanced(a,b) − post_CLAHE per range
   viz_sato_diff_stats.csv         — per-range contrast/noise + mean|Δ| stats
 """
 
@@ -35,10 +41,14 @@ import csv
 from pathlib import Path
 
 import cv2
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 
 from neural_reconstruction.algorithms.annotation_grow.cost_map import (
+    DEFAULT_STRIP_WIDTH,
+    _morph_open_subtract,
+    apply_within_mask_strips,
     build_enhanced_image,
 )
 from neural_reconstruction.core.preprocessing import dilate_epidermis_vertically
@@ -71,8 +81,14 @@ STOP_SWEEP = [2,3,4, 5, 6]    # vary stop, start fixed at SIGMA_REF[0]
 # the "noise" measurement is not contaminated by peri-fibre transitions.
 BG_FIBRE_MARGIN = 9
 
-# Diverging colormap for signed differences (centred at 0).
+# Diff colormap — diverging, centred at zero. The Sato diff is signed (Sato
+# both brightens and darkens vs plain CLAHE), so we plot the *signed* difference
+# on a symmetric −v → +v scale: red = Sato brighter, blue = Sato darker, white =
+# unchanged. Quantised into DIFF_LEVELS discrete bands (even count -> a band
+# boundary sits exactly at 0). No gamma here: PowerNorm needs a non-negative
+# range, and a diverging map should stay linear about its centre.
 DIFF_CMAP = "RdBu_r"
+DIFF_LEVELS = 10
 # ==========================================================================
 
 OUT_DIR = Path(__file__).parent
@@ -106,18 +122,35 @@ def _save_panel(
     vmin: float,
     vmax: float,
     colorbar: bool = False,
+    levels: int | None = None,
+    gamma: float | None = None,
 ) -> None:
     """Render a bare image panel (no title/axes) on a fixed scale.
 
-    If ``colorbar`` is set, a colour bar is drawn with numeric ticks spanning
-    the symmetric scale (no title, just the tick numbers).
+    If ``levels`` is given, the colormap is quantised into that many discrete
+    bands (flat colour blocks instead of a smooth gradient). If ``gamma`` is
+    given, the value→colour mapping is non-linear (``PowerNorm``): gamma > 1
+    compresses low values and expands high ones, so combined with ``levels`` the
+    discrete bands are spaced non-linearly (more bands at the high end). If
+    ``colorbar`` is set, a colour bar is drawn with numeric ticks at the band
+    boundaries (which sit at non-linear value positions when ``gamma`` is used).
     """
+    cmap_obj = plt.get_cmap(cmap, levels) if levels else cmap
     fig, ax = plt.subplots(figsize=(5.0, 5.0))
-    im = ax.imshow(img, cmap=cmap, vmin=vmin, vmax=vmax)
+    if gamma is not None:
+        norm = mcolors.PowerNorm(gamma=gamma, vmin=vmin, vmax=vmax)
+        im = ax.imshow(img, cmap=cmap_obj, norm=norm)
+    else:
+        im = ax.imshow(img, cmap=cmap_obj, vmin=vmin, vmax=vmax)
     ax.set_axis_off()
     if colorbar:
         cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        ticks = np.linspace(vmin, vmax, 5).tolist()
+        n_ticks = levels + 1 if levels else 5
+        edges = np.linspace(0.0, 1.0, n_ticks)
+        # Band boundaries in value space (inverse of the PowerNorm) so the ticks
+        # line up with the discrete colour blocks.
+        frac = edges ** (1.0 / gamma) if gamma is not None else edges
+        ticks = (vmin + (vmax - vmin) * frac).tolist()
         cbar.set_ticks(ticks)
         cbar.set_ticklabels([f"{t:.0f}" for t in ticks])
         cbar.ax.tick_params(labelsize=11, length=3, width=1.0)
@@ -137,6 +170,28 @@ def _enhanced(green: np.ndarray, roi_mask: np.ndarray, start: int, stop: int) ->
         clahe_grid=(CLAHE_TILE, CLAHE_TILE),
         sato_sigmas=range(start, stop),
     )
+
+
+def _post_clahe(green: np.ndarray, roi_mask: np.ndarray) -> np.ndarray:
+    """Pipeline image up to (and including) CLAHE — the Sato input (uint8).
+
+    Mirrors ``build_enhanced_image`` exactly through the CLAHE step (masked
+    strip-based background removal → ROI mask → CLAHE), stopping before Sato, so
+    the diff baseline matches what the Sato stage actually receives.
+    """
+    if BG_KERNEL_SIZE > 0:
+        corrected = apply_within_mask_strips(
+            green,
+            roi_mask,
+            lambda patch: _morph_open_subtract(patch, BG_KERNEL_SIZE),
+            pad=BG_KERNEL_SIZE,
+            strip_w=DEFAULT_STRIP_WIDTH,
+        )
+    else:
+        corrected = green
+    roi_image = cv2.bitwise_and(corrected, corrected, mask=roi_mask)
+    clahe = cv2.createCLAHE(clipLimit=CLAHE_CLIP, tileGridSize=(CLAHE_TILE, CLAHE_TILE))
+    return clahe.apply(roi_image)
 
 
 def main() -> None:
@@ -159,6 +214,13 @@ def main() -> None:
         )
         fiber = _crop(label) > 127
 
+    # ── post-CLAHE baseline (the Sato input) ──────────────────────────────────
+    base_crop = _crop(_post_clahe(green, roi_mask)).astype(np.int16)
+    _save_panel(
+        base_crop, "post-CLAHE (Sato input / diff baseline)",
+        "viz_sato_post_clahe.png", cmap="gray", vmin=0, vmax=255,
+    )
+
     # ── enhanced-image crop per sigma range ──────────────────────────────────
     configs = _sigma_configs()
     crops: dict[tuple[int, int], np.ndarray] = {
@@ -166,30 +228,27 @@ def main() -> None:
         for cfg in configs
     }
 
-    # ── signed differences vs baseline, shared symmetric scale ────────────────
-    # The (1,4) panel shows the raw enhanced output (the baseline itself); every
-    # other range shows enhanced(a,b) − enhanced(1,4). The baseline's own diff is
-    # zero (kept in the dict only so the stats table is complete).
-    diffs = {cfg: crop - crops[SIGMA_REF] for cfg, crop in crops.items()}
-    vlim = max(
-        1, max(int(np.abs(diffs[cfg]).max()) for cfg in configs if cfg != SIGMA_REF)
-    )
+    # ── differences vs the post-CLAHE baseline, shared symmetric scale ────────
+    # Each range gets a raw enhanced panel plus diff(a,b) = enhanced(a,b) −
+    # post_CLAHE, isolating what the Sato stage contributes over plain CLAHE.
+    # The diff is signed and plotted on a diverging map about zero (red = Sato
+    # brighter, blue = darker), so the −v → +v scale is symmetric.
+    diffs = {cfg: crop - base_crop for cfg, crop in crops.items()}
+    vlim = max(1, max(int(np.abs(diffs[cfg]).max()) for cfg in configs))
 
-    a0, b0 = SIGMA_REF
     for cfg in configs:
         a, b = cfg
-        if cfg == SIGMA_REF:
-            _save_panel(
-                crops[cfg], f"sigmas=({a},{b}) raw enhanced (baseline)",
-                f"viz_sato_s{a}_{b}.png", cmap="gray", vmin=0, vmax=255,
-            )
-        else:
-            _save_panel(
-                diffs[cfg], f"sigmas=({a},{b}) − ({a0},{b0})",
-                f"viz_sato_s{a}_{b}_diff.png", cmap=DIFF_CMAP,
-                vmin=-vlim, vmax=vlim, colorbar=True,
-            )
-    print(f"Shared symmetric diff scale: ±{vlim} (grey 8-bit levels)")
+        _save_panel(
+            crops[cfg], f"sigmas=({a},{b}) raw enhanced (Sato)",
+            f"viz_sato_s{a}_{b}.png", cmap="gray", vmin=0, vmax=255,
+        )
+        _save_panel(
+            diffs[cfg], f"sigmas=({a},{b}) enhanced − post-CLAHE",
+            f"viz_sato_s{a}_{b}_diff.png", cmap=DIFF_CMAP,
+            vmin=-vlim, vmax=vlim, colorbar=True, levels=DIFF_LEVELS,
+        )
+    print(f"Shared diff scale: ±{vlim} (grey 8-bit levels, {DIFF_LEVELS} "
+          f"diverging bands centred at 0)")
 
     _report_stats(configs, crops, diffs, fiber)
 

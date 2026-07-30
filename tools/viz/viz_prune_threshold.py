@@ -13,16 +13,16 @@ Figure 1 — quantitative (from cached weights.npz):
     viz_prune_kept.png     fraction of correct/spurious bridges kept vs threshold
                            (the precision/sensitivity knee at 20)
 
-Figure 2 — overlay, two crops of ONE sample, one per failure mode:
-  frag crop (under-pruning):
-    viz_prune_overlay_frag_label.png   GT label (yellow).
-    viz_prune_overlay_frag_t10.png     MST coloured by connected component: a
-    viz_prune_overlay_frag_t20.png     fibre is one colour at tau=20 but breaks
-                           into several at tau=10 — topological fragmentation.
-  over crop (over-pruning):
-    viz_prune_overlay_over_label.png   GT label (yellow).
-    viz_prune_overlay_over_t20.png     chosen-tau MST in grey (clean); tau=30
-    viz_prune_overlay_over_t30.png     adds bridges in red, visibly off-fibre.
+Figure 2 — overlay, two crops of ONE sample, each swept over the full tau set
+(THRESHOLDS = 10, 15, 20, 25, 30, 40):
+  Per-pixel prediction-vs-GT confusion map, three colours only (pred and GT are
+  each dilated by COV_TOL before comparing):
+    yellow = pred & GT      (overlap / true positive)
+    green  = GT, no pred    (missing / false negative)
+    red    = pred, no GT    (spurious / false positive)
+  As tau rises more bridges are admitted: green shrinks, red grows.
+    viz_prune_overlay_{frag,over}_label.png        GT label (all yellow).
+    viz_prune_overlay_{frag,over}_t{10..40}.png    confusion map per tau.
 
 Run (after analyze_prune_threshold.py has written prune_analysis/):
     uv run python tools/viz/viz_prune_threshold.py
@@ -35,12 +35,14 @@ from pathlib import Path
 
 import cv2
 import matplotlib.pyplot as plt
-import networkx as nx
 import numpy as np
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from neural_reconstruction.algorithms.annotation_grow.dijkstra import (  # noqa: E402
+    get_components,
+)
 from neural_reconstruction.algorithms.annotation_grow.graph_builder import (  # noqa: E402
     minimum_spanning_forest,
     prune_edges,
@@ -58,48 +60,41 @@ from tools.viz.analyze_prune_threshold import (  # noqa: E402
 # === Edit these ===========================================================
 DATA_DIR = Path("/home/pony/projects/ienf_q/data_0510")
 
-# Overlay sample + zoom window. The figure shows BOTH failure modes of the U,
-# each in the encoding that actually makes it visible (verified empirically —
-# see below). Two crops of one sample carry the two modes separately.
+# Overlay = a GT COVERAGE ERROR MAP shown for two crops of one sample, one per
+# failure mode of the U. The GT label is coloured by whether the reconstruction
+# (annotation bodies + the bridges kept at tau) reaches it — yellow=covered,
+# red=uncovered — and the bridges that differ from the chosen tau are overlaid:
+#   frag crop (tau < chosen): bridges LOST are drawn green. Under-pruning drops
+#       real connections, so coverage breaks up (red gaps appear on GT) and the
+#       missing links are the green segments. tau=20 is clean, tau=10 is broken.
+#   over crop (tau > chosen): bridges ADMITTED are drawn red (same error colour
+#       as uncovered GT). Over-pruning admits spurious links that run off-fibre
+#       across background; coverage barely improves. tau=20 clean, tau=30 adds.
 #
-# Under-pruning (tau < chosen): the harm is TOPOLOGICAL FRAGMENTATION, not a
-# detour and not a visible gap. Pruning only removes edges (MST10 ⊆ MST20), so
-# tau=10 leaves real fibres split into more disconnected trees (frame-wide the
-# MST gains ~50% more components at tau=10) — but the pieces stay spatially
-# adjacent, so plotting the MST as one colour looks unchanged. We instead
-# colour each MST edge by its
-# CONNECTED COMPONENT: a fibre that is one component (one colour) at tau=20
-# breaks into several colours at tau=10. The colour boundaries are the breaks.
-#
-# Over-pruning (tau > chosen): extra bridges are ADMITTED. We draw the chosen-
-# tau MST as a faint grey reference and highlight the admitted bridges in red;
-# compared to the GT label they visibly run off-fibre across background. (No
-# algorithmic correct/spurious claim is made — the reader compares to GT.)
-#
-# One sample carries both modes in two separate crops (found by a dataset-wide
-# search for a sample with both a fragmentation-rich and an admission-rich
-# window): the "frag" crop uses the component encoding, the "over" crop the
-# red-admitted-bridge encoding. Each region declares its own mode.
+# (No algorithmic correct/spurious claim is made — coverage is measured against
+# the GT label directly. The sample was found by a dataset-wide search for one
+# with both a fragmentation-rich and an admission-rich window.)
 OVERLAY_SID = "S3091-2_b"
 OVERLAY_REGIONS = {            # name: (y0, x0, win, mode)  mode: fragment|overconn
     "frag": (297, 3986, 180, "fragment"),
-    "over": (279, 1790, 180, "overconn"),
+    "over": (305, 1790, 140, "overconn"),
 }
 
 CHOSEN = 20.0
-FRAG_THRESHOLDS = [10.0, 20.0]       # component-coloured (under-pruning)
-OVERCONN_THRESHOLDS = [20.0, 30.0]   # grey ref (+red admitted) (over-pruning)
+# One sweep applied to BOTH crops. Diff colour is driven by T vs CHOSEN:
+# T < 20 -> bridges lost (green, missing); T > 20 -> bridges admitted (red).
+THRESHOLDS = [10.0, 15.0, 20.0, 25.0, 30.0, 40.0]
 
-# Colours (BGR) and the dimmed-background factor.
-COLOR_ADDED = (60, 60, 255)      # red, bridges admitted above the chosen tau
-COLOR_GT = (0, 235, 235)         # bright yellow, the GT label panel
-COLOR_GT_FAINT = (0, 90, 90)     # dark yellow, GT location shown under overlays
-COLOR_REF = (120, 120, 120)      # grey, the chosen-tau MST (over-pruning ref)
+# A GT pixel is "covered" if the reconstruction (annotation bodies + kept
+# bridges) passes within this many pixels of it.
+COV_TOL = 3
+
+# Colours (BGR). The figure is a coverage error map: GT coloured by whether the
+# reconstruction reaches it, plus the bridges that differ from the chosen tau.
+COLOR_GT = (0, 235, 235)         # yellow, pred & GT overlap (true positive)
+COLOR_MISSING = (0, 230, 0)      # green, GT only / no prediction (false negative)
+COLOR_ADDED = (60, 60, 255)      # red, prediction only / no GT (false positive)
 BG_DIM = 0.45
-W_REF = 1                        # reference skeleton (thin)
-W_DELTA = 4                      # highlighted admitted bridges (thick)
-W_COMP = 2                       # component-coloured MST edges
-COMP_SEED = 7                    # palette RNG seed (reproducible colours)
 # ==========================================================================
 
 OUT_DIR = Path(__file__).parent
@@ -198,93 +193,70 @@ def figure_overlay() -> None:
     )
     gt_bin = (label[:, :, 0] if label.ndim == 3 else label) > 127
 
-    # MST graphs per threshold; the chosen-tau MST is the over-pruning reference.
-    thresholds = set(FRAG_THRESHOLDS) | set(OVERCONN_THRESHOLDS) | {CHOSEN}
+    # Annotation bodies (manual fibre segments). With the kept bridges these
+    # form the reconstruction whose GT coverage we colour below.
+    ann2d = annotation[:, :, 0] if annotation.ndim == 3 else annotation
+    ann_roi = cv2.bitwise_and(ann2d, ann2d, mask=roi_mask)
+    ann_lab = get_components((ann_roi > 127).astype(np.uint8))
+
+    # MST graph per threshold (chosen tau only tagged for the filename).
+    thresholds = set(THRESHOLDS) | {CHOSEN}
     msts = {T: minimum_spanning_forest(prune_edges(g, threshold=T))
             for T in thresholds}
-    ref = {_key(ab) for ab in msts[CHOSEN].edges()}
 
-    def _clip(ys, xs, y0, x0, win):
-        m = (ys >= y0) & (ys < y0 + win) & (xs >= x0) & (xs < x0 + win)
-        if not m.any():
-            return None
-        return np.stack([xs[m] - x0, ys[m] - y0], axis=1).astype(np.int32)
+    # Per-threshold prediction mask = annotation bodies + the kept bridge paths
+    # (thin pixels — NOT dilated for display). Following evaluate_dataset, the
+    # dilation by COV_TOL is used ONLY to decide overlap (a tolerance), so the
+    # painted pixels stay the original thin GT / prediction; only their colour
+    # class is decided against the dilated counterpart.
+    ann_body = ann_lab > 0
+    cov_kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (2 * COV_TOL + 1, 2 * COV_TOL + 1))
+    gt_dil = cv2.dilate(gt_bin.astype(np.uint8), cov_kernel).astype(bool)
 
-    def _draw(canvas, keys, y0, x0, win, color, width):
-        """Stroke each edge's in-window path in `color`; return #drawn."""
-        n = 0
-        for k in keys:
-            rec = geom.get(k)
-            if rec is None:
-                continue
-            pts = _clip(rec[1], rec[2], y0, x0, win)
-            if pts is None:
-                continue
-            cv2.polylines(canvas, [pts], False, color, width, cv2.LINE_AA)
-            n += 1
-        return n
+    pred_masks, pred_dils = {}, {}
+    for T in thresholds:
+        recon = ann_body.copy()
+        for a, b in msts[T].edges():
+            rec = geom.get(_key((a, b)))
+            if rec is not None:
+                recon[rec[1], rec[2]] = True
+        pred_masks[T] = recon
+        pred_dils[T] = cv2.dilate(recon.astype(np.uint8), cov_kernel).astype(bool)
 
-    def _draw_components(canvas, mst, y0, x0, win):
-        """Colour each MST edge by its connected component (one colour per tree).
-        Returns the number of distinct components with an edge in view."""
-        rng = np.random.default_rng(COMP_SEED)
-        n_comp = 0
-        for cc in nx.connected_components(mst):
-            colour = tuple(int(v) for v in rng.integers(70, 256, 3))
-            drew = False
-            for a, b in mst.subgraph(cc).edges():
-                rec = geom.get(_key((a, b)))
-                if rec is None:
-                    continue
-                pts = _clip(rec[1], rec[2], y0, x0, win)
-                if pts is None:
-                    continue
-                cv2.polylines(canvas, [pts], False, colour, W_COMP, cv2.LINE_AA)
-                drew = True
-            n_comp += drew
-        return n_comp
-
-    for name, (y0, x0, win, mode) in OVERLAY_REGIONS.items():
+    for name, (y0, x0, win, _mode) in OVERLAY_REGIONS.items():
         bg = (enhanced[y0:y0 + win, x0:x0 + win].astype(np.float64)
               * BG_DIM).astype(np.uint8)
         base = cv2.cvtColor(bg, cv2.COLOR_GRAY2BGR)
-        gt_win = gt_bin[y0:y0 + win, x0:x0 + win]
+        gt_w = gt_bin[y0:y0 + win, x0:x0 + win]
 
-        # GT label panel (bright yellow), the spatial reference.
+        # GT label panel (all yellow), the spatial reference.
         gt_panel = base.copy()
-        gt_panel[gt_win] = COLOR_GT
+        gt_panel[gt_w] = COLOR_GT
         cv2.imwrite(str(OUT_DIR / f"viz_prune_overlay_{name}_label.png"), gt_panel)
         print(f"Saved: viz_prune_overlay_{name}_label.png  (GT label reference)")
 
-        if mode == "fragment":
-            # Component-coloured MST: a fibre that is one component (one colour)
-            # at the chosen tau breaks into several colours at smaller tau — the
-            # colour boundaries are the fragmentation points.
-            for T in FRAG_THRESHOLDS:
-                canvas = base.copy()
-                canvas[gt_win] = COLOR_GT_FAINT
-                n_comp = _draw_components(canvas, msts[T], y0, x0, win)
-                out = OUT_DIR / f"viz_prune_overlay_{name}_t{int(T)}.png"
-                cv2.imwrite(str(out), canvas)
-                tag = " (chosen)" if T == CHOSEN else ""
-                print(f"Saved: {out}  region={name} T={T:g}{tag}  "
-                      f"components in view: {n_comp}")
-        elif mode == "overconn":
-            # Chosen-tau MST in grey, bridges admitted above it in red (visibly
-            # off-fibre vs the GT label). tau=chosen has no admissions -> clean.
-            for T in OVERCONN_THRESHOLDS:
-                canvas = base.copy()
-                canvas[gt_win] = COLOR_GT_FAINT
-                _draw(canvas, ref, y0, x0, win, COLOR_REF, W_REF)
-                added = {_key(ab) for ab in msts[T].edges()} - ref
-                n_added = _draw(canvas, added, y0, x0, win, COLOR_ADDED, W_DELTA)
-                out = OUT_DIR / f"viz_prune_overlay_{name}_t{int(T)}.png"
-                cv2.imwrite(str(out), canvas)
-                tag = " (chosen, reference)" if T == CHOSEN else ""
-                print(f"Saved: {out}  region={name} T={T:g}{tag}  "
-                      f"bridges admitted vs tau={CHOSEN:g} in view: {n_added}")
-        else:
-            raise ValueError(f"unknown region mode: {mode!r}")
+        # Per-pixel prediction-vs-GT confusion map (three colours only), painting
+        # the raw thin masks (no dilation on the displayed pixels):
+        #   yellow = overlap within tolerance, green = GT only (missing),
+        #   red    = prediction only (spurious). Background keeps the dim image.
+        gt_dil_w = gt_dil[y0:y0 + win, x0:x0 + win]
+        for T in THRESHOLDS:
+            canvas = base.copy()
+            pred_w = pred_masks[T][y0:y0 + win, x0:x0 + win]
+            pred_dil_w = pred_dils[T][y0:y0 + win, x0:x0 + win]
+            overlap = (gt_w & pred_dil_w) | (pred_w & gt_dil_w)
+            gt_only = gt_w & ~pred_dil_w
+            pred_only = pred_w & ~gt_dil_w
+            canvas[gt_only] = COLOR_MISSING
+            canvas[pred_only] = COLOR_ADDED
+            canvas[overlap] = COLOR_GT
+            out = OUT_DIR / f"viz_prune_overlay_{name}_t{int(T)}.png"
+            cv2.imwrite(str(out), canvas)
+            tag = " (chosen)" if T == CHOSEN else ""
+            print(f"Saved: {out}  region={name} T={T:g}{tag}  "
+                  f"overlap/missing/spurious: "
+                  f"{int(overlap.sum())}/{int(gt_only.sum())}/{int(pred_only.sum())}")
 
 
 def _key(ab: tuple[int, int]) -> tuple[int, int]:

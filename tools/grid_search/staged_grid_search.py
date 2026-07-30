@@ -81,11 +81,13 @@ from neural_reconstruction.dataset import DatasetLoader, SampleFiles
 DEFAULT_PARAM_GRID: Dict[str, List[Any]] = {
     # "bg_kernel_size": [0,3,5,7,9,11],
     # "clahe_grid": [(s, s) for s in [704, 736, 768, 800, 832]],
-    # "clahe_clip": [10.0, 20.0, 30.0, 40.0, 50.0],
-    "sato_sigmas_start": [0.5] + [i for i in range(1, 6) ],
+    "clahe_grid": [(s, s) for s in [672]],
+    # "clahe_clip": [30.0, 35.0, 40.0,45.0, 50.0,55.0],
+    # "clahe_clip": [35.0, 40, 45],
+    # "sato_sigmas_start": [i for i in range(1, 4)]
     # "sato_sigmas_stop": [i+1 for i in range(1, 6)],
-    # "prune_threshold": [10.0, 20.0, 30.0, 40.0, 50.0],
-    # "stub_length_threshold" : [0, 3, 5, 7, 9],
+    # "prune_threshold": [10.0, 15.0,20.0,25.0, 30.0, 40.0],
+    # "stub_length_threshold" : [0,1, 3, 5, 7, 9],
     # "min_tree_components": [1,3, 5, 7, 9, 11],
 
 }
@@ -93,7 +95,7 @@ DEFAULT_PARAM_GRID: Dict[str, List[Any]] = {
 FIXED_PARAMS: Dict[str, Any] = {
     "offset_px": 50,
     "bg_kernel_size": 5,
-    "clahe_clip": 30.0,
+    "clahe_clip": 40.0,
     "clahe_grid": (768, 768),
     "sato_sigmas_start": 1,
     "sato_sigmas_stop": 4,

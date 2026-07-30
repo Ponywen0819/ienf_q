@@ -27,3 +27,15 @@ stub_length_threshold=3  77    0.7386    0.7396   -0.0010   3.63e-05    1.81e-05
 stub_length_threshold=7  77    0.7386    0.7659   -0.0272   5.70e-13    2.85e-13
 stub_length_threshold=9  77    0.7386    0.7948   -0.0562   4.98e-14    2.49e-14
   wilcox_p<  : one-sided p-value for 'reference is better than comparison'.
+
+
+
+
+
+
+
+
+
+
+
+742 16 9432

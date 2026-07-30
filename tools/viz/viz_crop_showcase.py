@@ -26,31 +26,34 @@ import cv2
 # === Edit these ===========================================================
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-# SAMPLE_ID = "S558-2_a"
+SAMPLE_ID = "S558-2_a"
 # SAMPLE_ID = "S487-2_a"
 # SAMPLE_ID = "S1196-2_b" 
 # SAMPLE_ID = "S1571-2_b"
 # SAMPLE_ID = "S2266-2_b"
-SAMPLE_ID = "S1585-2_b"
+# SAMPLE_ID = "S1585-2_b"
 # SAMPLE_ID = "S2745-2_a"
 
 # Crop regions. Each entry is (x, y, size): (x, y) is the top-left corner and
 # every crop is a square of side `size` pixels.
-# CROPS = [
-#     (3950, 900, 75),
-#     (6550, 825, 75),
-# ]
+CROPS = [
+    (3950, 900, 75),
+    (6550, 825, 75),
+]
 
+# # 487-2_a
 # CROPS = [
 #     (1480, 1300, 75),
 #     (8224, 700, 75),
 # ]
 
+# # 1196-2_b 
 # CROPS = [
 #     (3320,840,75),
 #     (3766,885,75)
 # ]
 
+# # 1571-2_b
 # CROPS = [
 #     (2640, 750, 75),
 #     (6100, 565, 75),
@@ -62,11 +65,11 @@ SAMPLE_ID = "S1585-2_b"
 #     (1830, 1006, 75),
 # ]
 
-# 1585-2_b
-CROPS = [
-    (1620, 350, 75),
-    (1330, 420, 75),
-]
+# # 1585-2_b
+# CROPS = [
+#     (1620, 350, 75),
+#     (1330, 420, 75),
+# ]
 
 # # 2745-2_a
 # CROPS = [
@@ -82,15 +85,37 @@ OUTPUT_DIR = PROJECT_ROOT / "output" / "crop_showcase"
 
 # Red box appearance (drawn on the boxed green-channel overview).
 BOX_COLOR = (0, 0, 255)  # BGR -> red
-BOX_THICKNESS = 12
-
-# Red label (a, b, ...) drawn next to each box.
 LABEL_COLOR = (0, 0, 255)  # BGR -> red
-LABEL_FONT = cv2.FONT_HERSHEY_SIMPLEX
-LABEL_SCALE = 18.0
-LABEL_THICKNESS = 40
-LABEL_MARGIN = 40  # gap between box and label
+LABEL_FONT = cv2.FONT_HERSHEY_TRIPLEX
+
+# Box/label sizes are specified at the width the overview is actually *viewed*
+# at (DISPLAY_WIDTH px), then scaled up to the image's real width so they look
+# the same regardless of source resolution. scale = img_width / DISPLAY_WIDTH;
+# every size below is multiplied by it (font size in display px -> on-image px).
+DISPLAY_WIDTH = 742
+FONT_SIZE_PX = 20       # label height (px) as seen at DISPLAY_WIDTH
+BOX_THICKNESS_PX = 2.5  # box line width (px) at DISPLAY_WIDTH
+LABEL_MARGIN_PX = 5.0   # gap between box and label (px) at DISPLAY_WIDTH
 # ==========================================================================
+
+
+def _scaled_styles(img_width: int):
+    """Box thickness, label gap, cv2 font scale + stroke for this image width.
+
+    Sizes are defined at DISPLAY_WIDTH and scaled by img_width / DISPLAY_WIDTH.
+    cv2's fontScale is not pixels, so we calibrate it against the font's actual
+    pixel height at scale 1.0 to hit the requested on-image height.
+    """
+    scale = img_width / DISPLAY_WIDTH
+    ref_h = cv2.getTextSize("a", LABEL_FONT, 1.0, 1)[0][1]
+    font_scale = FONT_SIZE_PX * scale / ref_h
+    return {
+        "box_thickness": max(1, round(BOX_THICKNESS_PX * scale)),
+        "label_margin": max(1, round(LABEL_MARGIN_PX * scale)),
+        "font_scale": font_scale,
+        # stroke must grow with the font or large text turns into outlines.
+        "label_thickness": max(1, round(font_scale * 2.2)),
+    }
 
 
 def load_green_channel(image_path: Path):
@@ -143,30 +168,35 @@ def main():
             check_crop(x, y, size, vis.shape, f"vis/{name}")
 
     # --- Output 1: green-channel overview with red boxes ------------------
+    # Box/label sizes scale with the image width (see _scaled_styles).
+    st = _scaled_styles(green.shape[1])
+    print(f"[style] width={green.shape[1]} scale={green.shape[1] / DISPLAY_WIDTH:.2f} "
+          f"font_scale={st['font_scale']:.2f} box={st['box_thickness']} "
+          f"margin={st['label_margin']} stroke={st['label_thickness']}")
     # Convert to BGR so the red boxes show up in color.
     boxed = cv2.cvtColor(green, cv2.COLOR_GRAY2BGR)
     for i, (x, y, size) in enumerate(CROPS):
         cv2.rectangle(
-            boxed, (x, y), (x + size, y + size), BOX_COLOR, BOX_THICKNESS
+            boxed, (x, y), (x + size, y + size), BOX_COLOR, st["box_thickness"]
         )
         # Label this region with a letter (a, b, ...) beside the box.
         label = chr(ord("a") + i)
         (tw, th), _ = cv2.getTextSize(
-            label, LABEL_FONT, LABEL_SCALE, LABEL_THICKNESS
+            label, LABEL_FONT, st["font_scale"], st["label_thickness"]
         )
         # Default: place the label above the box's top-left corner.
-        org = (x, y - LABEL_MARGIN)
+        org = (x, y - st["label_margin"])
         # If there's no room above, place it to the right of the box instead.
         if org[1] - th < 0:
-            org = (x + size + LABEL_MARGIN, y + th)
+            org = (x + size + st["label_margin"], y + th)
         cv2.putText(
             boxed,
             label,
             org,
             LABEL_FONT,
-            LABEL_SCALE,
+            st["font_scale"],
             LABEL_COLOR,
-            LABEL_THICKNESS,
+            st["label_thickness"],
             cv2.LINE_AA,
         )
     boxed_path = OUTPUT_DIR / f"{SAMPLE_ID}_green_boxed.png"

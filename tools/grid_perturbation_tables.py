@@ -26,7 +26,7 @@ other parameter is held at its reference value (see `fixed` in TABLE_SPECS).
 
 Run:
     uv run python tools/grid_perturbation_tables.py
-    uv run python tools/grid_perturbation_tables.py --output-dir output/grid_0510/perturbation_tables
+    uv run python tools/grid_perturbation_tables.py --output-dir output/grid_fk/perturbation_tables
 """
 
 from __future__ import annotations
@@ -59,44 +59,56 @@ from compute_pvalues import (  # noqa: E402
 TABLE_SPECS: list[dict] = [
     {
         "name": "bg_kernel_size",
-        "grid_dir": "output/grid_0510/bg",
+        "grid_dir": "output/grid_fk/bg",
         "fixed": {},
         "ref_value": 5,
     },
     {
-        "name": "clahe_clip",
-        "grid_dir": "output/grid_0510/clahe_grid",
-        "fixed": {"clahe_grid": [768, 768]},
-        "ref_value": 30.0,
-    },
-    {
         "name": "clahe_grid",
-        "grid_dir": "output/grid_0510/clahe_grid",
-        "fixed": {"clahe_clip": 30.0},
+        "grid_dir": "output/grid_fk/clahe_grid",
+        "fixed": {},
         "ref_value": [768, 768],
     },
     {
+        "name": "clahe_clip",
+        "grid_dir": "output/grid_fk/clahe_clip",
+        "fixed": {},
+        "ref_value": 40.0,
+    },
+    {
         "name": "sato_sigmas_start",
-        "grid_dir": "output/grid_0510/sato_n",
+        "grid_dir": "output/grid_fk/sato_s",
         "fixed": {"sato_sigmas_stop": 4},
         "ref_value": 1,
     },
     {
         "name": "sato_sigmas_stop",
-        "grid_dir": "output/grid_0510/sato_n",
+        "grid_dir": "output/grid_fk/sato_e",
         "fixed": {"sato_sigmas_start": 1},
         "ref_value": 4,
     },
     {
         "name": "prune_threshold",
-        "grid_dir": "output/grid_0510/threshold",
+        "grid_dir": "output/grid_fk/prune",
         "fixed": {},
         "ref_value": 20.0,
     },
+    {
+        "name": "stub_length_threshold",
+        "grid_dir": "output/grid_fk/stub",
+        "fixed": {},
+        "ref_value": 3,
+    },
 ]
 
-METRICS: list[str] = ["hd95", "cldice"]
-DEFAULT_OUTPUT_DIR = Path("output/grid_0510/perturbation_tables")
+METRICS: list[str] = ["hd95", "cldice", "avg_hd"]
+# Display labels for each metric (column headers).
+METRIC_LABELS: dict[str, str] = {
+    "hd95": "hd95",
+    "cldice": "clDice",
+    "avg_hd": "avg_hd",
+}
+DEFAULT_OUTPUT_DIR = Path("output/grid_fk/perturbation_tables")
 
 
 def discover_values(grid_dir: Path, sweep_key: str, fixed: dict) -> list:
@@ -147,6 +159,15 @@ def fmt_p(p: float) -> str:
     return text + sig_mark(p)
 
 
+def fmt_mean_std(mean: float, std: float) -> str:
+    """Compact "mean ± std" string (drops the ± part when std is undefined)."""
+    if not np.isfinite(mean):
+        return "-"
+    if np.isfinite(std):
+        return f"{mean:.4f} ± {std:.4f}"
+    return f"{mean:.4f}"
+
+
 def build_table(spec: dict) -> dict:
     """Compute all rows for one perturbation table."""
     sweep_key = spec["name"]
@@ -177,6 +198,9 @@ def build_table(spec: dict) -> dict:
             ref_vals, cmp_vals = paired_values(ref_samples, cmp_samples, metric_key)
             stats = run_tests(ref_vals, cmp_vals, lower_is_better)
             row[f"{metric}_mean"] = stats["cmp_mean"]
+            row[f"{metric}_std"] = (
+                float(np.std(cmp_vals, ddof=1)) if len(cmp_vals) > 1 else float("nan")
+            )
             row[f"{metric}_n"] = stats["n"]
             # One-sided Wilcoxon p: "reference is better than this value".
             row[f"{metric}_p"] = float("nan") if is_ref else stats["wilcoxon_p_ref_better"]
@@ -199,41 +223,42 @@ def print_table(table: dict) -> None:
     )
     print()
     print(f"### {table['name']}  [ref = {fmt_value(table['ref_value'])}]{fixed_str}")
-    header = (
-        f"{'value':>10} {'n':>4} "
-        f"{'hd95_mean':>11} {'hd95_p':>13} "
-        f"{'cldice_mean':>13} {'cldice_p':>13}"
-    )
+    cols = [f"{'value':>10}", f"{'n':>4}"]
+    for m in METRICS:
+        label = METRIC_LABELS.get(m, m)
+        cols.append(f"{label + '_mean±std':>21}")
+        cols.append(f"{label + '_p':>13}")
+    header = " ".join(cols)
     print(header)
     print("-" * len(header))
     for r in table["rows"]:
         tag = "  <- ref" if r["is_ref"] else ""
-        print(
-            f"{fmt_value(r['value']):>10} {r['hd95_n']:>4} "
-            f"{r['hd95_mean']:>11.4f} {fmt_p(r['hd95_p']):>13} "
-            f"{r['cldice_mean']:>13.4f} {fmt_p(r['cldice_p']):>13}"
-            f"{tag}"
-        )
+        cells = [f"{fmt_value(r['value']):>10}", f"{r[f'{METRICS[0]}_n']:>4}"]
+        for m in METRICS:
+            cells.append(f"{fmt_mean_std(r[f'{m}_mean'], r[f'{m}_std']):>21}")
+            cells.append(f"{fmt_p(r[f'{m}_p']):>13}")
+        print(" ".join(cells) + tag)
 
 
 def write_csv(table: dict, out_path: Path) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    header = ["value", "is_ref", "n"]
+    for m in METRICS:
+        header += [f"{m}_mean", f"{m}_std", f"{m}_wilcoxon_p_ref_better"]
     with out_path.open("w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(
-            ["value", "is_ref", "n", "hd95_mean", "hd95_wilcoxon_p_ref_better",
-             "cldice_mean", "cldice_wilcoxon_p_ref_better"]
-        )
+        writer.writerow(header)
         for r in table["rows"]:
-            writer.writerow([
-                fmt_value(r["value"]),
-                r["is_ref"],
-                r["hd95_n"],
-                f"{r['hd95_mean']:.6f}",
-                "" if not np.isfinite(r["hd95_p"]) else f"{r['hd95_p']:.6f}",
-                f"{r['cldice_mean']:.6f}",
-                "" if not np.isfinite(r["cldice_p"]) else f"{r['cldice_p']:.6f}",
-            ])
+            cells = [fmt_value(r["value"]), r["is_ref"], r[f"{METRICS[0]}_n"]]
+            for m in METRICS:
+                cells.append(f"{r[f'{m}_mean']:.6f}")
+                cells.append(
+                    "" if not np.isfinite(r[f"{m}_std"]) else f"{r[f'{m}_std']:.6f}"
+                )
+                cells.append(
+                    "" if not np.isfinite(r[f"{m}_p"]) else f"{r[f'{m}_p']:.6f}"
+                )
+            writer.writerow(cells)
 
 
 def markdown_table(table: dict) -> str:
@@ -242,21 +267,29 @@ def markdown_table(table: dict) -> str:
         if table["fixed"]
         else ""
     )
+    metric_headers = "".join(
+        f" {METRIC_LABELS.get(m, m)} mean ± std | {METRIC_LABELS.get(m, m)} p |"
+        for m in METRICS
+    )
     lines = [
         f"### `{table['name']}`",
         "",
         f"Reference value: **{fmt_value(table['ref_value'])}**{fixed_str}. "
-        f"p = one-sided Wilcoxon (reference better); `*` p<0.05, `**` p<0.01.",
+        f"mean ± std over samples; p = one-sided Wilcoxon (reference better); "
+        f"`*` p<0.05, `**` p<0.01.",
         "",
-        "| value | n | hd95 mean | hd95 p | clDice mean | clDice p |",
-        "|---|---|---|---|---|---|",
+        f"| value | n |{metric_headers}",
+        "|---|---|" + "---|---|" * len(METRICS),
     ]
     for r in table["rows"]:
         value = fmt_value(r["value"]) + (" **(ref)**" if r["is_ref"] else "")
-        lines.append(
-            f"| {value} | {r['hd95_n']} | {r['hd95_mean']:.4f} | {fmt_p(r['hd95_p'])} "
-            f"| {r['cldice_mean']:.4f} | {fmt_p(r['cldice_p'])} |"
-        )
+        cells = f"| {value} | {r[f'{METRICS[0]}_n']} |"
+        for m in METRICS:
+            cells += (
+                f" {fmt_mean_std(r[f'{m}_mean'], r[f'{m}_std'])} | "
+                f"{fmt_p(r[f'{m}_p'])} |"
+            )
+        lines.append(cells)
     lines.append("")
     return "\n".join(lines)
 

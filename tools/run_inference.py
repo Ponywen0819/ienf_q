@@ -211,6 +211,7 @@ def build_linker(algorithm: str) -> Any:
             clahe_clip=30.0,
             sato_sigmas_start=1,
             sato_sigmas_stop=4,
+            # sato_sigmas=[0.5] + [i for i in range(1, 4)],
             prune_threshold=20.0,
             min_tree_components=0,
         )

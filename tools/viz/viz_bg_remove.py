@@ -32,7 +32,7 @@ import numpy as np
 # === Edit these ===========================================================
 BASE_PATH = Path("/home/pony/projects/ienf_q/")
 IMAGE_ID = "S222-2_a"
-BASE_PATH = BASE_PATH / f"data_0331/{IMAGE_ID}"
+BASE_PATH = BASE_PATH / f"data_0510/{IMAGE_ID}"
 
 # Shared crop region: same as every other viz script.
 CROP_Y0, CROP_X0, CROP_H, CROP_W = 666, 4700, 200, 200

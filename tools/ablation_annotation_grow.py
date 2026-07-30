@@ -58,6 +58,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import cv2
+import networkx as nx
 import numpy as np
 import skimage as ski
 from PIL import Image
@@ -124,6 +125,7 @@ DEFAULT_SWITCHES: dict[str, object] = {
     "use_sato": True,
     # connection step (group B)
     "cost_mode": "exp",   # "exp" | "linear" | "uniform"
+    "do_connect": True,   # False = skip all bridge connections (annotation only)
     "do_prune": True,
     "do_mst": True,
 }
@@ -156,6 +158,7 @@ ABLATIONS: list[tuple[str, dict[str, object]]] = [
     ("uniform_cost", _cfg(cost_mode="uniform")),
     ("no_prune",     _cfg(do_prune=False)),
     ("no_mst",       _cfg(do_mst=False)),
+    ("no_connect",   _cfg(do_connect=False)),
 ]
 REF_NAME = ABLATIONS[0][0]
 
@@ -270,20 +273,26 @@ def run_ablated_inference(
     annot_labeled = get_components(annotation_bin)
     n_components = int(annot_labeled.max())
 
-    owner_map, dist_map, prev_y, prev_x = multi_source_dijkstra(
-        cost_map,
-        annot_labeled,
-        connectivity=FIXED_PARAMS["connectivity"],
-        roi_mask=(roi_mask > 127),
-    )
-    connections = find_meeting_points(owner_map, dist_map, prev_y, prev_x)
-    g = build_component_graph(connections, n_components)
-    # Connection-step ablations: prune cutoff and tree (MST) constraint.
-    if switches["do_prune"]:
-        g = prune_edges(g, threshold=FIXED_PARAMS["prune_threshold"])
-    # build_result_graph only reads each edge's 'path'; passing the (pruned)
-    # graph instead of its MST keeps every surviving connection (cycles allowed).
-    mst = minimum_spanning_forest(g) if switches["do_mst"] else g
+    # Connection-step ablations. do_connect=False skips bridging entirely so the
+    # annotation components stay isolated (an empty bridge graph ⇒ build_result_graph
+    # skeletonises only the annotation bodies). Otherwise prune cutoff and tree
+    # (MST) constraint are the remaining switches.
+    if switches.get("do_connect", True):
+        owner_map, dist_map, prev_y, prev_x = multi_source_dijkstra(
+            cost_map,
+            annot_labeled,
+            connectivity=FIXED_PARAMS["connectivity"],
+            roi_mask=(roi_mask > 127),
+        )
+        connections = find_meeting_points(owner_map, dist_map, prev_y, prev_x)
+        g = build_component_graph(connections, n_components)
+        if switches["do_prune"]:
+            g = prune_edges(g, threshold=FIXED_PARAMS["prune_threshold"])
+        # build_result_graph only reads each edge's 'path'; passing the (pruned)
+        # graph instead of its MST keeps every surviving connection (cycles allowed).
+        mst = minimum_spanning_forest(g) if switches["do_mst"] else g
+    else:
+        mst = nx.Graph()
     result_graph = build_result_graph(
         mst,
         annotation_bin,
@@ -513,11 +522,13 @@ def fmt_pvalue(p: float) -> str:
     return f"{p:.3f}"
 
 
-def fmt_cell(metric: str, value: float, p: Optional[float]) -> str:
+def fmt_cell(metric: str, value: float, std: float, p: Optional[float]) -> str:
     if not np.isfinite(value):
         return "nan"
     decimals = METRIC_SPECS[metric][2]
     body = f"{value:.{decimals}f}"
+    if np.isfinite(std):
+        body += f"±{std:.{decimals}f}"
     if p is not None and np.isfinite(p):
         star = "*" if p < ALPHA else ""
         ptxt = fmt_pvalue(p)
@@ -571,7 +582,7 @@ def print_table(rows: list[dict], metrics: list[str], ref_name: str) -> None:
 def write_csv(rows: list[dict], metrics: list[str], path: Path) -> None:
     fields = ["ablation", "is_reference", "n"]
     for m in metrics:
-        fields += [m, f"{m}_p_cmp_worse_than_ref"]
+        fields += [m, f"{m}_std", f"{m}_p_cmp_worse_than_ref"]
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fields)
@@ -584,6 +595,7 @@ def write_csv(rows: list[dict], metrics: list[str], path: Path) -> None:
             }
             for m in metrics:
                 row[m] = r["values"][m]
+                row[f"{m}_std"] = r["stds"][m]
                 row[f"{m}_p_cmp_worse_than_ref"] = r["pvalues"][m]
             w.writerow(row)
 
@@ -613,24 +625,30 @@ def build_summary_rows(
     for name, _switches in ABLATIONS:
         samples = ablation_samples[name]
         values: dict[str, float] = {}
+        stds: dict[str, float] = {}
         pvalues: dict[str, Optional[float]] = {}
         cells: dict[str, str] = {}
         for metric, (key, lower_is_better, _dec) in METRIC_SPECS.items():
             per_sample = collect_metric(samples, key)
-            v = float(np.mean(list(per_sample.values()))) if per_sample else float("nan")
+            vals = list(per_sample.values())
+            v = float(np.mean(vals)) if vals else float("nan")
+            # sample std (ddof=1); needs >=2 samples, else undefined
+            s = float(np.std(vals, ddof=1)) if len(vals) > 1 else float("nan")
             values[metric] = v
+            stds[metric] = s
             if name == REF_NAME:
                 pvalues[metric] = None
             else:
                 pvalues[metric] = wilcoxon_p_cmp_worse(
                     ref_metric_vals[metric], per_sample, lower_is_better
                 )
-            cells[metric] = fmt_cell(metric, v, pvalues[metric])
+            cells[metric] = fmt_cell(metric, v, s, pvalues[metric])
         n_success = sum(1 for s in samples.values() if s.get("status") == "success")
         rows.append({
             "name": name,
             "n": n_success,
             "values": values,
+            "stds": stds,
             "pvalues": pvalues,
             "cells": cells,
         })

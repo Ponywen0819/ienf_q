@@ -69,6 +69,7 @@ class PreprocessingPipeline:
         clahe_grid: tuple[int, int] = (16, 16),
         sato_sigmas_start: int = 3,
         sato_sigmas_stop: int = 8,
+        sato_sigmas = None,
     ):
         self.offset_px = offset_px
         self.bg_kernel_size = bg_kernel_size
@@ -76,6 +77,7 @@ class PreprocessingPipeline:
         self.clahe_grid = clahe_grid
         self.sato_sigmas_start = sato_sigmas_start
         self.sato_sigmas_stop = sato_sigmas_stop
+        self.sato_sigmas = sato_sigmas
 
     def run(
         self,
@@ -116,7 +118,7 @@ class PreprocessingPipeline:
             bg_kernel_size=self.bg_kernel_size,
             clahe_clip=self.clahe_clip,
             clahe_grid=self.clahe_grid,
-            sato_sigmas=range(self.sato_sigmas_start, self.sato_sigmas_stop),
+            sato_sigmas=self.sato_sigmas or range(self.sato_sigmas_start, self.sato_sigmas_stop),
         )
 
         # 4. Clip annotation to ROI

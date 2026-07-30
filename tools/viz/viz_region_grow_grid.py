@@ -357,7 +357,7 @@ def label_cell(
     *,
     color: str = "#111111",
     fontsize: float = 8.8,
-    weight: str = "regular",
+    weight: str = "bold",
 ) -> None:
     ax.text(
         x,
@@ -408,7 +408,7 @@ def draw_state(
     for cid, cells in SEED_CELLS.items():
         for y, x in cells:
             add_cell_rect(ax, y, x, REGION_COLORS[cid], alpha=1.0, linewidth=1.8)
-            label_cell(ax, y, x, "0", color="white", fontsize=10.2, weight="bold")
+            label_cell(ax, y, x, "0", fontsize=10.2)
 
     if show_frontier:
         fy, fx = np.where(frontier)
@@ -515,9 +515,7 @@ def draw_state(
             my,
             mx,
             f"{float(dist[my, mx]):.1f}",
-            color="white",
             fontsize=9.8,
-            weight="bold",
         )
         if meeting_label is not None:
             ax.text(
@@ -549,9 +547,7 @@ def draw_state(
     for y, x in zip(ys.tolist(), xs.tolist()):
         if (y, x) in seed_cells:
             continue
-        cid = int(owner[y, x])
-        text_color = REGION_COLORS.get(cid, "#111111") if frontier[y, x] else "#111111"
-        label_cell(ax, y, x, f"{float(dist[y, x]):.1f}", color=text_color)
+        label_cell(ax, y, x, f"{float(dist[y, x]):.1f}")
 
     # ax.set_title(title, fontsize=10.5, fontweight="bold", pad=9)
 

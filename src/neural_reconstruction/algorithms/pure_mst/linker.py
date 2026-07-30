@@ -45,6 +45,7 @@ class PureMstLinker:
         clahe_grid: tuple[int, int] = (1024, 1024),
         sato_sigmas_start: int = 3,
         sato_sigmas_stop: int = 8,
+        sato_sigmas: list[float] | None = None,
         # 元件分析參數
         segment_length: float = 5.0,
         # 路徑查找參數
