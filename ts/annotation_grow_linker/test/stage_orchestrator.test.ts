@@ -48,6 +48,9 @@ function makeStubWorker(): StubWorker {
         return {
           labeled_graph: `labeled_graph:${counter}`,
           pred_count: 42,
+          subtree_lengths: [
+            { tree_id: 0, num_nodes: 3, num_edges: 2, total_length: 12.5 },
+          ],
         };
       default:
         return h;
@@ -223,6 +226,18 @@ describe("StageOrchestrator — concurrent identical resolves dedupe", () => {
     const c = w.countsByMethod();
     expect(c.stage_roi_mask).toBe(1);
     expect(c.stage_labeled_graph).toBe(1);
+  });
+});
+
+describe("StageOrchestrator — subtree lengths", () => {
+  it("forwards subtree_lengths from stage_labeled_graph untouched", async () => {
+    const w = makeStubWorker();
+    const o = new StageOrchestrator(w, SAMPLE);
+
+    const result = await o.labeledGraph(BASE);
+    expect(result.subtree_lengths).toEqual([
+      { tree_id: 0, num_nodes: 3, num_edges: 2, total_length: 12.5 },
+    ]);
   });
 });
 

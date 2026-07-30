@@ -78,6 +78,12 @@ describe.skipIf(!SAMPLE_FILES_EXIST)("integration: Python worker + orchestrator"
         const r1 = await orchestrator.labeledGraph(BASE);
         expect(r1.labeled_graph).toMatch(/^[0-9a-f]+$/);
         expect(typeof r1.pred_count).toBe("number");
+        expect(Array.isArray(r1.subtree_lengths)).toBe(true);
+        expect(r1.subtree_lengths.length).toBeGreaterThan(0);
+        for (const t of r1.subtree_lengths) {
+          expect(typeof t.tree_id).toBe("number");
+          expect(t.total_length).toBeGreaterThanOrEqual(0);
+        }
 
         // Tweak prune_threshold twice more
         await orchestrator.labeledGraph({ ...BASE, prune_threshold: 10 });
@@ -110,6 +116,20 @@ describe.skipIf(!SAMPLE_FILES_EXIST)("integration: Python worker + orchestrator"
         );
         expect(summary.kind).toBe("graph");
         expect(summary.nodes).toBeGreaterThan(0);
+
+        // tree_id must survive extract_graph serialization so the frontend
+        // can join subtree_lengths entries back to on-canvas nodes/edges.
+        const extracted = await worker.call<{
+          nodes: { attrs: Record<string, unknown> }[];
+          edges: { attrs: Record<string, unknown> }[];
+        }>("extract_graph", { handle: r1.labeled_graph });
+        const treeIds = new Set(r1.subtree_lengths.map((t) => t.tree_id));
+        for (const n of extracted.nodes) {
+          expect(treeIds.has(n.attrs.tree_id as number)).toBe(true);
+        }
+        for (const e of extracted.edges) {
+          expect(treeIds.has(e.attrs.tree_id as number)).toBe(true);
+        }
       } finally {
         await worker.close();
       }

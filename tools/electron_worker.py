@@ -96,6 +96,55 @@ def _coerce(attrs: dict) -> dict:
     return {str(k): _coerce_value(v) for k, v in attrs.items()}
 
 
+def _path_length(path) -> float:
+    """Cumulative Euclidean distance along a path's pixel coordinates.
+
+    Not the edge's `weight` attribute — that's an A* search cost, not a
+    real-world length.
+    """
+    if path is None or len(path) < 2:
+        return 0.0
+    pts = np.array(path)
+    return float(np.sum(np.linalg.norm(np.diff(pts, axis=0), axis=1)))
+
+
+def _tag_and_measure_subtrees(graph: nx.Graph) -> list:
+    """Tag every node/edge with `tree_id` (connected-component index) and
+    return each tree's total path length.
+
+    One independent nerve fiber = one connected component (the MST forest
+    is already disjoint per-tree). Tagging `tree_id` directly onto the graph
+    means it survives `extract_graph` serialization, so the frontend can
+    join a `subtree_lengths` list entry back to its on-canvas nodes/edges by
+    `tree_id` without any separate lookup.
+    """
+    node_tree_id: dict = {}
+    tree_node_counts: list = []
+    for tree_id, nodes in enumerate(nx.connected_components(graph)):
+        for n in nodes:
+            node_tree_id[n] = tree_id
+            graph.nodes[n]["tree_id"] = tree_id
+        tree_node_counts.append(len(nodes))
+
+    tree_lengths = [0.0] * len(tree_node_counts)
+    tree_edge_counts = [0] * len(tree_node_counts)
+    for u, v, data in graph.edges(data=True):
+        tid = node_tree_id[u]
+        data["tree_id"] = tid
+        tree_lengths[tid] += _path_length(data.get("path", [u, v]))
+        tree_edge_counts[tid] += 1
+
+    return [
+        {
+            "tree_id": tid,
+            "num_nodes": tree_node_counts[tid],
+            "num_edges": tree_edge_counts[tid],
+            "total_length": tree_lengths[tid],
+        }
+        for tid in range(len(tree_node_counts))
+    ]
+
+
 class StageWorker:
     """Handle-based stateful pipeline. Each stage owns no caching; the TS
     orchestrator decides when to call. `stats()` exposes per-stage call counts
@@ -344,9 +393,12 @@ class StageWorker:
             sid = data.get("segment_id")
             data["is_effective_segment"] = sid is not None and sid in valid_seg_ids
 
+        subtree_lengths = _tag_and_measure_subtrees(labeled)
+
         return {
             "labeled_graph": self._new_handle(labeled),
             "pred_count": int(details["effective_crossing_count"]),
+            "subtree_lengths": subtree_lengths,
         }
 
     def import_graph(self, nodes: list, edges: list) -> str:
@@ -414,9 +466,13 @@ class StageWorker:
         for _u, _v, data in labeled.edges(data=True):
             sid = data.get("segment_id")
             data["is_effective_segment"] = sid is not None and sid in valid_seg_ids
+
+        subtree_lengths = _tag_and_measure_subtrees(labeled)
+
         return {
             "labeled_graph": self._new_handle(labeled),
             "pred_count": int(pred_count),
+            "subtree_lengths": subtree_lengths,
         }
 
     # ── Inspection / lifecycle ──────────────────────────────────────────

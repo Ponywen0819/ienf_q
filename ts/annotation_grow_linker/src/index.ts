@@ -18,6 +18,7 @@ export {
   type SampleHandles,
   type AnnotCompResult,
   type LabeledGraphResult,
+  type SubtreeLength,
   type Handle,
   type WorkerLike,
 } from "./stage_orchestrator.js";

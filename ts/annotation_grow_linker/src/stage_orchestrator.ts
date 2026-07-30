@@ -52,9 +52,17 @@ export interface AnnotCompResult {
   n_components: number;
 }
 
+export interface SubtreeLength {
+  tree_id: number;
+  num_nodes: number;
+  num_edges: number;
+  total_length: number;
+}
+
 export interface LabeledGraphResult {
   labeled_graph: string;
   pred_count: number;
+  subtree_lengths: SubtreeLength[];
 }
 
 export type Handle = string;
