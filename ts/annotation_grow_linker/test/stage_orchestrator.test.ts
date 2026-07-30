@@ -90,7 +90,6 @@ const BASE: StageParams = {
   sato_sigmas_stop: 8, // sigmas: 3, 4, 5, 6, 7  → 5 per-sigma calls
   connectivity: 8,
   prune_threshold: 20.0,
-  segment_length: 500,
   min_tree_components: 5,
   stub_length_threshold: 5,
 };
@@ -265,13 +264,13 @@ describe("StageOrchestrator — argument plumbing", () => {
     expect(call.params.prune_threshold).toBe(12.5);
   });
 
-  it("forwards segment_length to stage_result_graph", async () => {
+  it("does not send segment_length — stage_result_graph no longer takes it", async () => {
     const w = makeStubWorker();
     const o = new StageOrchestrator(w, SAMPLE);
 
-    await o.labeledGraph({ ...BASE, segment_length: 250 });
+    await o.labeledGraph(BASE);
     const call = w.calls.find((c) => c.method === "stage_result_graph")!;
-    expect(call.params.segment_length).toBe(250);
+    expect(Object.keys(call.params).sort()).toEqual(["annotation_bin", "mst"]);
   });
 
   it("forwards clahe_grid as a [w, h] tuple to stage_clahe_applied", async () => {
