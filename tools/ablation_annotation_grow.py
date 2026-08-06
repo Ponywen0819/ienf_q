@@ -675,7 +675,8 @@ def main() -> int:
     parser.add_argument("--rerun", action="store_true",
                         help="Ignore cached results and recompute everything.")
     parser.add_argument("--csv", type=Path, default=None,
-                        help="Optional CSV output for the summary table.")
+                        help="CSV output path for the summary table "
+                             "(default: <output-dir>/summary.csv).")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -705,9 +706,9 @@ def main() -> int:
     rows = build_summary_rows(ablation_samples)
     print_table(rows, list(METRIC_SPECS.keys()), REF_NAME)
 
-    if args.csv is not None:
-        write_csv(rows, list(METRIC_SPECS.keys()), args.csv)
-        print(f"CSV written to: {args.csv}")
+    csv_path = args.csv if args.csv is not None else args.output_dir / "summary.csv"
+    write_csv(rows, list(METRIC_SPECS.keys()), csv_path)
+    print(f"CSV written to: {csv_path}")
 
     return 0
 

@@ -29,6 +29,7 @@ METHODS = {
 }
 DATA_DIR = ROOT / "data_0510"
 OUT_CSV = ROOT / "output" / "length_rmse.csv"
+OUT_SUMMARY_CSV = ROOT / "output" / "length_rmse_summary.csv"
 
 
 def path_length(path) -> float:
@@ -75,8 +76,6 @@ def main() -> None:
                 result = pickle.load(f)
             pred_um = graph_length(result.graph) * ratio
             row[f"{name}_length_um"] = pred_um
-            row[f"{name}_diff_um"] = pred_um - gt_um
-            row[f"{name}_diff_pct"] = 100.0 * (pred_um - gt_um) / gt_um
         rows.append(row)
 
     OUT_CSV.parent.mkdir(parents=True, exist_ok=True)
@@ -89,8 +88,8 @@ def main() -> None:
     # Wilcoxon signed-rank, paired per-sample, H1: msf significantly worse.
     # MAE  -> compare |error|   (mean of this is exactly MAE)
     # RMSE -> compare error^2   (mean of this is exactly RMSE^2)
-    msf_diffs = np.array([r["msf_diff_um"] for r in rows])
-    proposed_diffs = np.array([r["Proposed_diff_um"] for r in rows])
+    msf_diffs = np.array([r["msf_length_um"] - r["gt_length_um"] for r in rows])
+    proposed_diffs = np.array([r["Proposed_length_um"] - r["gt_length_um"] for r in rows])
     _, p_mae = wilcoxon(np.abs(msf_diffs), np.abs(proposed_diffs), alternative="greater")
     _, p_rmse = wilcoxon(msf_diffs ** 2, proposed_diffs ** 2, alternative="greater")
     p_mae_by_name = {"msf": p_mae, "Proposed": None}
@@ -100,8 +99,9 @@ def main() -> None:
               f"{'RMSE±SD':>18} {'p(RMSE)':>10}")
     print(header)
     print("-" * len(header))
+    summary_rows = []
     for name in METHODS:
-        diffs = np.array([r[f"{name}_diff_um"] for r in rows])
+        diffs = np.array([r[f"{name}_length_um"] - r["gt_length_um"] for r in rows])
         ae = np.abs(diffs)
         mae, mae_sd = ae.mean(), ae.std(ddof=1)
         rmse, rmse_sd = np.sqrt((diffs ** 2).mean()), diffs.std(ddof=1)
@@ -109,6 +109,21 @@ def main() -> None:
         p_rmse_str = f"{p_rmse_by_name[name]:.4g}" if p_rmse_by_name[name] is not None else "-"
         print(f"{name:<12} {f'{mae:.2f}±{mae_sd:.2f}':>18} {p_mae_str:>10} "
               f"{f'{rmse:.2f}±{rmse_sd:.2f}':>18} {p_rmse_str:>10}")
+        summary_rows.append({
+            "method": name,
+            "mae_um": mae,
+            "mae_sd_um": mae_sd,
+            "p_mae": p_mae_by_name[name],
+            "rmse_um": rmse,
+            "rmse_sd_um": rmse_sd,
+            "p_rmse": p_rmse_by_name[name],
+        })
+
+    with open(OUT_SUMMARY_CSV, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(summary_rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(summary_rows)
+    print(f"summary CSV: {OUT_SUMMARY_CSV}")
 
 
 if __name__ == "__main__":

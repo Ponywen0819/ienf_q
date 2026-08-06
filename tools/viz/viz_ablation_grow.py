@@ -24,6 +24,17 @@ Two kinds of panel are written for each crop:
   suppression, contrast, vesselness continuity) shows on the cost-map basis.
   File: {ID}_crop{i}_{config}_costmap.png
 
+  COST / DISTANCE (matplotlib, with colorbar) — additionally, for every config
+  in COST_DIST_CONFIGS (the connection-step group: full/linear_cost/uniform_cost).
+  The Dijkstra traversal cost field (build_cost_map_ablated) rendered like
+  tools/viz/viz_cost_map.py (viridis_r: bright=low cost=preferred path,
+  ROI-outside masked dark #1a1a1a), and the resulting accumulated-distance
+  field (multi_source_dijkstra's dist_map) rendered like
+  tools/viz/viz_region_grow.py (cool, 0..99th-percentile, ROI-outside masked
+  black). Each config keeps its own colour scale (shown in the colorbar) since
+  cost_mode changes the underlying units. Shows how cost_mode reshapes bridge
+  routing. Files: {ID}_crop{i}_{config}_cost.png, {ID}_crop{i}_{config}_dist.png
+
 Layout otherwise mirrors tools/viz/viz_crop_showcase.py:
 
   1. {ID}_green_boxed.png        green channel with a red box per crop (a, b, …)
@@ -43,11 +54,17 @@ import sys
 from pathlib import Path
 
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from neural_reconstruction.algorithms.annotation_grow.dijkstra import (  # noqa: E402
+    get_components,
+    multi_source_dijkstra,
+)
 from neural_reconstruction.core.preprocessing import (  # noqa: E402
     dilate_epidermis_vertically,
 )
@@ -55,6 +72,7 @@ from neural_reconstruction.core.topology import TopologyBuilder  # noqa: E402
 from tools.ablation_annotation_grow import (  # noqa: E402
     ABLATIONS,
     FIXED_PARAMS,
+    build_cost_map_ablated,
     build_enhanced_image_ablated,
     run_ablated_inference,
 )
@@ -93,6 +111,24 @@ COSTMAP_CONFIGS = [
     "no",            # 移除全部前處理
 ]
 
+# COST / DISTANCE panels — additionally rendered ({config}_cost.png /
+# {config}_dist.png) for the connection-step group. cost_mode reshapes the
+# Dijkstra traversal cost, which reshapes the accumulated-distance field that
+# drives bridge routing; neither is visible in the result overlay. Set to []
+# to skip.
+COST_DIST_CONFIGS = [
+    "full",          # exp cost (reference)
+    "linear_cost",   # linear cost
+    "uniform_cost",  # uniform cost (straight-line bridges)
+]
+# Colour scale: cost -> viridis_r (viz_cost_map.py), dist -> cool (viz_region_grow.py).
+# Both are fixed (not read off each config's own full-frame range) so the three
+# configs share one scale and are directly comparable.
+COST_VMIN, COST_VMAX = 0.0, 1.7  # exp cost tops out at exp(1)-1 ≈ 1.718
+# dist vmax is fixed (not the full-frame 99th percentile) because the crops only
+# ever reach ~25-47; a full-frame percentile (>100) washed them out to flat cyan.
+DIST_VMAX = 40.0
+
 # Crop regions. Each entry is (x, y, size): (x, y) top-left corner, square of
 # side `size`. Windows below were located by tools/viz/find_ablation_crops.py.
 CROPS = [
@@ -121,7 +157,7 @@ LABEL_FONT = cv2.FONT_HERSHEY_TRIPLEX
 # at (DISPLAY_WIDTH px), then scaled up to the image's real width so they look
 # the same regardless of source resolution. scale = img_width / DISPLAY_WIDTH.
 DISPLAY_WIDTH = 742
-FONT_SIZE_PX = 20       # label height (px) as seen at DISPLAY_WIDTH
+FONT_SIZE_PX = 12       # label height (px) as seen at DISPLAY_WIDTH
 BOX_THICKNESS_PX = 2.5  # box line width (px) at DISPLAY_WIDTH
 LABEL_MARGIN_PX = 5.0   # gap between box and label (px) at DISPLAY_WIDTH
 # ==========================================================================
@@ -219,6 +255,87 @@ def render_costmap(name, green, mask):
     return cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR), info
 
 
+def render_cost_dist(name, green, mask, annotation):
+    """Raw cost_map + dist_map + roi_mask (full-frame, unrendered) for a config."""
+    sw = _SWITCHES_BY_NAME[name]
+    roi_mask = dilate_epidermis_vertically(mask, offset_px=FIXED_PARAMS["offset_px"])
+    enhanced = build_enhanced_image_ablated(
+        green=green,
+        roi_mask=roi_mask,
+        use_wth=sw["use_wth"],
+        use_clahe=sw["use_clahe"],
+        use_sato=sw["use_sato"],
+        bg_kernel_size=FIXED_PARAMS["bg_kernel_size"],
+        clahe_clip=FIXED_PARAMS["clahe_clip"],
+        clahe_grid=FIXED_PARAMS["clahe_grid"],
+        sato_sigmas=range(
+            FIXED_PARAMS["sato_sigmas_start"], FIXED_PARAMS["sato_sigmas_stop"]
+        ),
+    )
+    cost_map = build_cost_map_ablated(enhanced, mode=str(sw["cost_mode"]))
+
+    roi_annotation = cv2.bitwise_and(annotation, annotation, mask=roi_mask)
+    annotation_bin = (roi_annotation > 127).astype(np.uint8)
+    annot_labeled = get_components(annotation_bin)
+    _owner, dist_map, _py, _px = multi_source_dijkstra(
+        cost_map, annot_labeled,
+        connectivity=FIXED_PARAMS["connectivity"], roi_mask=(roi_mask > 127),
+    )
+
+    finite_dist = dist_map[np.isfinite(dist_map)]
+    dist_hi = f"{finite_dist.max():.1f}" if finite_dist.size else "nan"
+    info = (
+        f"cost range=[{cost_map.min():.3f},{cost_map.max():.3f}]"
+        f"  dist range=[0,{dist_hi}]"
+    )
+    return cost_map, dist_map, roi_mask, info
+
+
+def save_cost_panel(cost_map, roi_mask, out_path, vmin=None, vmax=None):
+    """Cost-map panel: viridis_r (bright=low cost=preferred), ROI-outside dark.
+
+    Mirrors tools/viz/viz_cost_map.py's rendering exactly (same cmap + masking).
+    """
+    masked = np.ma.masked_where(roi_mask == 0, cost_map)
+    cmap = plt.get_cmap("viridis_r").copy()
+    cmap.set_bad(color="#1a1a1a")
+    if vmin is None:
+        vmin = COST_VMIN
+    if vmax is None:
+        vmax = COST_VMAX
+    h, w = cost_map.shape[:2]
+    fig, ax = plt.subplots(figsize=(5, 5 * h / w))
+    im = ax.imshow(masked, cmap=cmap, vmin=vmin, vmax=vmax)
+    ax.axis("off")
+    cax = make_axes_locatable(ax).append_axes("right", size="4%", pad=0.04)
+    fig.colorbar(im, cax=cax)
+    fig.savefig(out_path, dpi=150, bbox_inches="tight", pad_inches=0.05)
+    plt.close(fig)
+
+
+def save_dist_panel(dist_map, roi_mask, out_path, vmax=None):
+    """Distance-map panel: cool colormap 0..vmax, ROI-outside masked black.
+
+    Mirrors tools/viz/viz_region_grow.py's rendering exactly (same cmap +
+    masking + percentile ceiling for contrast against the long Dijkstra tail).
+    """
+    dist_view = dist_map.astype(np.float32).copy()
+    finite_mask = np.isfinite(dist_view) & (roi_mask > 0)
+    if vmax is None:
+        vmax = DIST_VMAX
+    dist_view[~finite_mask] = np.nan
+    cmap = plt.get_cmap("cool").copy()
+    cmap.set_bad(color="black")
+    h, w = dist_map.shape[:2]
+    fig, ax = plt.subplots(figsize=(5, 5 * h / w))
+    im = ax.imshow(dist_view, cmap=cmap, vmin=0.0, vmax=vmax)
+    ax.axis("off")
+    cax = make_axes_locatable(ax).append_axes("right", size="4%", pad=0.04)
+    fig.colorbar(im, cax=cax)
+    fig.savefig(out_path, dpi=150, bbox_inches="tight", pad_inches=0.05)
+    plt.close(fig)
+
+
 def check_crop(x, y, size, shape, source_name):
     h, w = shape[:2]
     if x < 0 or y < 0 or x + size > w or y + size > h:
@@ -237,7 +354,7 @@ def main():
     full_dir = OUTPUT_DIR / "_full"  # full-frame renders, before cropping
     full_dir.mkdir(parents=True, exist_ok=True)
 
-    for group in (VIS_CONFIGS, COSTMAP_CONFIGS):
+    for group in (VIS_CONFIGS, COSTMAP_CONFIGS, COST_DIST_CONFIGS):
         unknown = [c for c in group if c not in _SWITCHES_BY_NAME]
         if unknown:
             raise KeyError(
@@ -265,6 +382,18 @@ def main():
     for name in COSTMAP_CONFIGS:
         costmap_full[name], info = render_costmap(name, green, mask)
         print(f"[costmap] {name:<13} {info}")
+
+    # Raw fields; cost/dist both use a fixed colour scale (COST_VMIN/VMAX,
+    # DIST_VMAX above) shared across configs so the three are comparable.
+    cost_full, dist_full = {}, {}
+    for name in COST_DIST_CONFIGS:
+        cost_map, dist_map, roi_mask_cd, info = render_cost_dist(
+            name, green, mask, annotation
+        )
+        cost_full[name], dist_full[name] = cost_map, dist_map
+        print(f"[costdist] {name:<12} {info}")
+    # roi_mask doesn't depend on the config's switches, so any iteration's is fine.
+    roi_mask_full = roi_mask_cd
 
     # --- Output 1: green-channel overview with red boxes ------------------
     boxed = cv2.cvtColor(green, cv2.COLOR_GRAY2BGR)
@@ -311,8 +440,23 @@ def main():
             )
             n_files += 1
 
+        # COST / DISTANCE panels (connection-step group; matplotlib, with colorbar).
+        roi_crop = crop_square(roi_mask_full, x, y, size)
+        for name in COST_DIST_CONFIGS:
+            save_cost_panel(
+                crop_square(cost_full[name], x, y, size), roi_crop,
+                OUTPUT_DIR / f"{SAMPLE_ID}_crop{i}_{name}_cost.png",
+            )
+            save_dist_panel(
+                crop_square(dist_full[name], x, y, size), roi_crop,
+                OUTPUT_DIR / f"{SAMPLE_ID}_crop{i}_{name}_dist.png",
+                vmax=DIST_VMAX,
+            )
+            n_files += 2
+
         print(f"[save] crop{i} ({x},{y},{size}): "
-              f"{len(VIS_CONFIGS)} result + {len(COSTMAP_CONFIGS)} costmap + green")
+              f"{len(VIS_CONFIGS)} result + {len(COSTMAP_CONFIGS)} costmap + "
+              f"{len(COST_DIST_CONFIGS)} cost/dist + green")
 
     print(f"\nDone. {n_files} files written to {OUTPUT_DIR}")
 

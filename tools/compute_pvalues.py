@@ -31,8 +31,8 @@ from scipy import stats
 # ---------------------------------------------------------------------------
 # GRID_DIR = Path("output/0510_grid")
 # GRID_DIR = Path("output/grid_0510/bg")
-# GRID_DIR = Path("output/grid_0510/clahe_grid")
-GRID_DIR = Path("output/grid_fk/clahe_grid")
+GRID_DIR = Path("output/grid_0510/clahe_grid")
+# GRID_DIR = Path("output/grid_fk/clahe_grid")
 # GRID_DIR = Path("output/grid_0510/clahe_clip")
 # GRID_DIR = Path("output/grid_0510/clahe_clip_half")
 # GRID_DIR = Path("output/grid_0510/sato_s")
@@ -177,6 +177,7 @@ def run_tests(
         "n": n,
         "ref_mean": float(np.mean(ref)) if n else float("nan"),
         "cmp_mean": float(np.mean(cmp)) if n else float("nan"),
+        "cmp_std": float(np.std(cmp, ddof=1)) if n > 1 else float("nan"),
         "ref_median": float(np.median(ref)) if n else float("nan"),
         "cmp_median": float(np.median(cmp)) if n else float("nan"),
         "mean_diff": float(np.mean(diff)) if n else float("nan"),
@@ -278,32 +279,18 @@ def print_human(rows: list[dict], metrics: list[str], ref_name: str) -> None:
         )
 
 
-def write_csv(rows: list[dict], out_path: Path) -> None:
-    fieldnames = [
-        "metric",
-        "reference",
-        "comparison",
-        "n",
-        "ref_mean",
-        "cmp_mean",
-        "ref_median",
-        "cmp_median",
-        "mean_diff",
-        "wins_ref",
-        "wins_cmp",
-        "ties",
-        "wilcoxon_stat",
-        "wilcoxon_p",
-        "wilcoxon_p_ref_better",
-        "ttest_stat",
-        "ttest_p",
-        "ttest_p_ref_better",
-    ]
+CSV_METRIC_ORDER = ["hd95", "avg_hd", "cldice"]
+
+
+def write_csv(wide_rows: list[dict], setting_col: str, out_path: Path) -> None:
+    fieldnames = [setting_col]
+    for m in CSV_METRIC_ORDER:
+        fieldnames += [m, f"{m}_std", f"{m}_p_cmp_worse_than_ref"]
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-        for r in rows:
+        for r in wide_rows:
             writer.writerow({k: r.get(k, "") for k in fieldnames})
 
 
@@ -313,7 +300,7 @@ def main() -> int:
         "--output",
         type=Path,
         default=None,
-        help="Optional CSV output path.",
+        help="CSV output path (default: <GRID_DIR>/pvalues.csv).",
     )
     args = parser.parse_args()
 
@@ -334,6 +321,26 @@ def main() -> int:
         return 1
     print(f"Discovered {len(comparisons)} comparison(s) over axes: {axis_keys}")
 
+    # Axis values are numeric (kernel sizes, thresholds, ...) — sort ascending.
+    comparisons.sort(key=lambda p: tuple(p[k] for k in axis_keys))
+
+    setting_col = axis_keys[0] if len(axis_keys) == 1 else "setting"
+
+    def setting_value(params: dict) -> object:
+        return params[axis_keys[0]] if len(axis_keys) == 1 else str(params)
+
+    # Reference row: mean/std of its own samples, no p-value (nothing to compare against).
+    ref_row: dict = {setting_col: setting_value(REFERENCE_PARAMS)}
+    for metric in METRICS:
+        metric_key, _ = METRIC_SPECS[metric]
+        vals = [
+            float(s[metric_key]) for s in ref_samples.values()
+            if s.get(metric_key) is not None and np.isfinite(s[metric_key])
+        ]
+        ref_row[metric] = float(np.mean(vals)) if vals else float("nan")
+        ref_row[f"{metric}_std"] = float(np.std(vals, ddof=1)) if len(vals) > 1 else float("nan")
+    wide_rows: list[dict] = [ref_row]
+
     rows: list[dict] = []
     for cmp_params in comparisons:
         try:
@@ -342,16 +349,21 @@ def main() -> int:
             print(f"  skip: {exc}", file=sys.stderr)
             continue
 
+        wide_row: dict = {setting_col: setting_value(cmp_params)}
         for metric in METRICS:
             metric_key, lower_is_better = METRIC_SPECS[metric]
             ref_vals, cmp_vals = paired_values(ref_samples, cmp_samples, metric_key)
-            row = {
+            stats_out = run_tests(ref_vals, cmp_vals, lower_is_better)
+            rows.append({
                 "metric": metric,
                 "reference": ref_name,
                 "comparison": cmp_name,
-                **run_tests(ref_vals, cmp_vals, lower_is_better),
-            }
-            rows.append(row)
+                **stats_out,
+            })
+            wide_row[metric] = stats_out["cmp_mean"]
+            wide_row[f"{metric}_std"] = stats_out["cmp_std"]
+            wide_row[f"{metric}_p_cmp_worse_than_ref"] = stats_out["wilcoxon_p_ref_better"]
+        wide_rows.append(wide_row)
 
     if not rows:
         print("No comparison results produced.", file=sys.stderr)
@@ -359,9 +371,11 @@ def main() -> int:
 
     print_human(rows, METRICS, ref_name)
 
-    if args.output is not None:
-        write_csv(rows, args.output)
-        print(f"\nCSV written to: {args.output}")
+    wide_rows.sort(key=lambda r: r[setting_col])
+
+    out_path = args.output if args.output is not None else GRID_DIR / "pvalues.csv"
+    write_csv(wide_rows, setting_col, out_path)
+    print(f"\nCSV written to: {out_path}")
 
     return 0
 

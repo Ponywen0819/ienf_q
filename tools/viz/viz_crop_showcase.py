@@ -26,20 +26,21 @@ import cv2
 # === Edit these ===========================================================
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-SAMPLE_ID = "S558-2_a"
+# SAMPLE_ID = "S558-2_a"
 # SAMPLE_ID = "S487-2_a"
 # SAMPLE_ID = "S1196-2_b" 
 # SAMPLE_ID = "S1571-2_b"
 # SAMPLE_ID = "S2266-2_b"
 # SAMPLE_ID = "S1585-2_b"
-# SAMPLE_ID = "S2745-2_a"
+SAMPLE_ID = "S2745-2_a"
 
 # Crop regions. Each entry is (x, y, size): (x, y) is the top-left corner and
 # every crop is a square of side `size` pixels.
-CROPS = [
-    (3950, 900, 75),
-    (6550, 825, 75),
-]
+# S558-2_a
+# CROPS = [
+#     (3950, 900, 75),
+#     (6550, 825, 75),
+# ]
 
 # # 487-2_a
 # CROPS = [
@@ -53,13 +54,13 @@ CROPS = [
 #     (3766,885,75)
 # ]
 
-# # 1571-2_b
+# 1571-2_b
 # CROPS = [
 #     (2640, 750, 75),
 #     (6100, 565, 75),
 # ]
 
-# # 2266-2_b
+# 2266-2_b
 # CROPS = [
 #     (3869, 692, 75),
 #     (1830, 1006, 75),
@@ -71,11 +72,11 @@ CROPS = [
 #     (1330, 420, 75),
 # ]
 
-# # 2745-2_a
-# CROPS = [
-#     (1790, 510, 75),
-#     (1076, 850, 75),
-# ]
+# 2745-2_a
+CROPS = [
+    (1790, 510, 75),
+    (1076, 850, 75),
+]
 
 # Result visualizations to crop from. Each name maps to
 # output/ref/{name}/vis/{ID}.png
@@ -93,7 +94,7 @@ LABEL_FONT = cv2.FONT_HERSHEY_TRIPLEX
 # the same regardless of source resolution. scale = img_width / DISPLAY_WIDTH;
 # every size below is multiplied by it (font size in display px -> on-image px).
 DISPLAY_WIDTH = 742
-FONT_SIZE_PX = 20       # label height (px) as seen at DISPLAY_WIDTH
+FONT_SIZE_PX = 14       # label height (px) as seen at DISPLAY_WIDTH
 BOX_THICKNESS_PX = 2.5  # box line width (px) at DISPLAY_WIDTH
 LABEL_MARGIN_PX = 5.0   # gap between box and label (px) at DISPLAY_WIDTH
 # ==========================================================================
