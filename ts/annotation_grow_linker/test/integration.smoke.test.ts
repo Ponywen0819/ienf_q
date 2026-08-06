@@ -29,7 +29,6 @@ const BASE: StageParams = {
   sato_sigmas_stop: 8,
   connectivity: 8,
   prune_threshold: 20.0,
-  segment_length: 500,
   min_tree_components: 5,
   stub_length_threshold: 5,
 };

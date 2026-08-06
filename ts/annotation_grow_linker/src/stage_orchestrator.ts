@@ -14,7 +14,7 @@
  *   comp_graph     ← (same)
  *   pruned_graph   ← + prune_threshold
  *   mst            ← (same)
- *   result_graph   ← + segment_length
+ *   result_graph   ← (same)
  *   labeled_graph  ← + min_tree_components, stub_length_threshold
  *
  * Cache key = (stage name, own governing params, upstream handle IDs). Because
@@ -35,7 +35,6 @@ export interface StageParams {
   sato_sigmas_stop: number;
   connectivity: number;
   prune_threshold: number;
-  segment_length: number;
   min_tree_components: number;
   stub_length_threshold: number;
 }
@@ -294,13 +293,12 @@ export class StageOrchestrator {
     const [m, comp] = await Promise.all([this.mst(p), this.annotComp(p)]);
     return this.memo(
       "result_graph",
-      { segment_length: p.segment_length },
+      {},
       [m, comp.annotation_bin],
       () =>
         this.worker.call<string>("stage_result_graph", {
           mst: m,
           annotation_bin: comp.annotation_bin,
-          segment_length: p.segment_length,
         }),
     );
   }

@@ -72,6 +72,7 @@ from neural_reconstruction.core.crosses_detection.segment_detector import (  # n
     SegmentDetector,
 )
 from neural_reconstruction.core.preprocessing import dilate_epidermis_vertically  # noqa: E402
+from neural_reconstruction.core.topology import TopologyBuilder  # noqa: E402
 
 
 def _send(frame: dict) -> None:
@@ -117,10 +118,20 @@ def _tag_and_measure_subtrees(graph: nx.Graph) -> list:
     means it survives `extract_graph` serialization, so the frontend can
     join a `subtree_lengths` list entry back to its on-canvas nodes/edges by
     `tree_id` without any separate lookup.
+
+    Ids run left to right: `nx.connected_components` yields in node-insertion
+    order, which is arbitrary and reshuffles whenever an edit re-imports the
+    graph. Ordering by the leftmost node instead keeps the id tied to where the
+    fiber actually is on screen.
     """
     node_tree_id: dict = {}
     tree_node_counts: list = []
-    for tree_id, nodes in enumerate(nx.connected_components(graph)):
+    # Nodes are (y, x); sort on (x, y) so a shared leftmost column is stable.
+    components = sorted(
+        nx.connected_components(graph),
+        key=lambda nodes: min((n[1], n[0]) for n in nodes),
+    )
+    for tree_id, nodes in enumerate(components):
         for n in nodes:
             node_tree_id[n] = tree_id
             graph.nodes[n]["tree_id"] = tree_id
@@ -344,6 +355,12 @@ class StageWorker:
 
         graph.remove_edges_from(edges_to_remove)
         graph.remove_nodes_from(list(nx.isolates(graph)))
+
+        # Trimming one branch off a junction leaves a degree-2 node behind, and
+        # the skeleton builder's own merge ran long before this point. Re-merge
+        # so the editor only ever shows endpoints and branch points — a degree-2
+        # node is just a waypoint in the middle of a segment.
+        graph = TopologyBuilder().merge_middle_points(graph)
 
         # Re-detect segments since topology changed.
         graph = seg_detector.detect_segments(graph)
